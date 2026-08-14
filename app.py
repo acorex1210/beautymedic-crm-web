@@ -570,19 +570,75 @@ def _col_order(filas):
     return sorted(cols, key=lambda c: openpyxl.utils.column_index_from_string(c))
 
 
+def _valores_maestro():
+    """Valores únicos de CAMPAÑA y RED SOCIAL desde la pestaña 'DATA' del
+    archivo AGENDADOS (la fuente de los dropdowns en Drive). La cabecera
+    está en la fila 3, con RED SOCIAL y CAMPAÑAS; los valores van desde
+    la fila 4 en adelante."""
+    try:
+        ruta = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+        if not os.path.exists(ruta):
+            return {}
+        wb = openpyxl.load_workbook(ruta, data_only=True, read_only=True)
+        ws = wb['DATA'] if 'DATA' in wb.sheetnames else None
+        if ws is None:
+            return {}
+        filas_ws = list(ws.iter_rows(min_row=1, max_row=8, values_only=True))
+        cab = None
+        cols_campana = cols_red = None
+        for r, fila in enumerate(filas_ws, start=1):
+            cabeceras = {str(v or '').strip().upper()
+                         .replace('Ñ', 'N').replace('Á', 'A').replace('É', 'E')
+                         .replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U'): c
+                         for c, v in enumerate(fila, start=1)}
+            if 'CAMPAÑAS'.replace('Ñ', 'N') in cabeceras:
+                cab = r
+                cols_campana = cabeceras['CAMPAÑAS'.replace('Ñ', 'N')]
+                cols_red = cabeceras.get('RED SOCIAL')
+                break
+        if cab is None:
+            return {}
+        campanas = set()
+        redes = set()
+        for r, fila in enumerate(ws.iter_rows(min_row=cab + 1, values_only=True),
+                                 start=cab + 1):
+            c = fila[cols_campana - 1] if cols_campana <= len(fila) else None
+            if isinstance(c, str) and c.strip():
+                campanas.add(c.strip())
+            if cols_red and cols_red <= len(fila):
+                h = fila[cols_red - 1]
+                if isinstance(h, str) and h.strip():
+                    redes.add(h.strip())
+        return {'campana': sorted(campanas), 'red_social': sorted(redes)}
+    except Exception:  # noqa: BLE001
+        return {}
+    finally:
+        try:
+            wb.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 @app.get('/api/crm/agendados')
 async def crm_agendados():
     try:
         data = crm.leer_agendados()
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo leer AGENDADOS de Drive: {e}')
+    valores = crm.valores_unicos_agendados(data['filas'])
+    maestro = _valores_maestro()
+    for campo in ('campana', 'red_social'):
+        extra = maestro.get(campo, [])
+        if extra:
+            actuales = set(valores.get(campo, []))
+            valores[campo] = sorted(actuales | set(extra))
     return {
         'ok': True,
         'filas': data['filas'],
         'total': data['total'],
         'descargado': data['descargado'],
         'columnas': data['columnas'],
-        'valores': crm.valores_unicos_agendados(data['filas']),
+        'valores': valores,
     }
 
 
@@ -602,6 +658,17 @@ async def crm_agendados_nuevo(data: AgendadoReq):
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo guardar en AGENDADOS (Drive): {e}')
     return res
+
+
+@app.delete('/api/crm/agendados/{fila}')
+async def crm_agendados_borrar(fila: int):
+    with _bloqueo:
+        try:
+            return crm.borrar_agendado(fila)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo borrar el agendado en Drive: {e}')
 
 
 @app.get('/api/crm/venta')
@@ -636,6 +703,17 @@ async def crm_venta_nuevo(data: VentaReq):
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo guardar en VENTA DIARIA (Drive): {e}')
     return res
+
+
+@app.delete('/api/crm/venta/{fila}')
+async def crm_venta_borrar(fila: int, hoja: str):
+    with _bloqueo:
+        try:
+            return crm.borrar_venta(hoja, fila)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo borrar la venta en Drive: {e}')
 
 
 # ============================================================

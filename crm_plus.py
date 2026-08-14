@@ -562,7 +562,8 @@ def leer_hoy():
         citas.append({'nombre': f.get('G'), 'telefono': f.get('I'),
                       'hora': f.get('P'), 'crm': f.get('B'),
                       'campana': f.get('O'), 'estado': f.get('Q'),
-                      'dia': f.get('L'), 'mes': f.get('M')})
+                      'dia': f.get('L'), 'mes': f.get('M'),
+                      'fila': f.get('_fila')})
     citas.sort(key=lambda c: c['hora'] or '99')
 
     ventas = []

@@ -293,14 +293,25 @@ def _mapa_hojas(ruta):
     with zipfile.ZipFile(ruta) as z:
         wb = z.read('xl/workbook.xml').decode('utf-8')
         rels = z.read('xl/_rels/workbook.xml.rels').decode('utf-8')
-    rid_target = dict(re.findall(r'Id="(rId\d+)"[^>]*Target="worksheets/([^"]+)"', rels))
+    rid_target = {}
+    for rel in re.finditer(r'<Relationship\b[^>]*/?>', rels):
+        tag = rel.group(0)
+        rid = re.search(r'\bId="([^"]+)"', tag)
+        target = re.search(r'\bTarget="([^"]+)"', tag)
+        if not rid or not target:
+            continue
+        ruta_rel = target.group(1).lstrip('/')
+        if not ruta_rel.startswith('xl/'):
+            ruta_rel = 'xl/' + ruta_rel
+        if ruta_rel.startswith('xl/worksheets/'):
+            rid_target[rid.group(1)] = ruta_rel
     out = {}
     for m in re.finditer(r'<sheet\b[^>]*>', wb):
         tag = m.group(0)
         nm = re.search(r'name="([^"]+)"', tag)
         rid = re.search(r'r:id="(rId\d+)"', tag)
         if nm and rid and rid.group(1) in rid_target:
-            out[nm.group(1)] = 'xl/worksheets/' + rid_target[rid.group(1)]
+            out[nm.group(1)] = rid_target[rid.group(1)]
     return out
 
 
@@ -390,6 +401,43 @@ def agregar_fila_xlsx(origen, destino, hoja, fila_num, valores, estilo_default):
 
     with open(sheet_path, 'w', encoding='utf-8') as f:
         f.write(x)
+
+    if os.path.exists(destino):
+        os.remove(destino)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(build_dir):
+            for fn in files:
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, build_dir))
+    shutil.rmtree(build_dir)
+
+
+def vaciar_fila_xlsx(origen, destino, hoja, fila_num):
+    """Vacía una fila de datos sin alterar el resto del libro.
+
+    Se conserva la estructura, los estilos, fórmulas y tablas dinámicas del
+    archivo; la fila queda en blanco y por eso deja de aparecer en el CRM.
+    """
+    build_dir = os.path.join(am.TMP_DIR, 'build_crm_delete')
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+    with zipfile.ZipFile(origen) as z:
+        z.extractall(build_dir)
+
+    hoja_file = _mapa_hojas(origen).get(hoja)
+    if not hoja_file:
+        raise ValueError(f'Hoja "{hoja}" no encontrada en el archivo')
+    sheet_path = os.path.join(build_dir, hoja_file)
+    with open(sheet_path, encoding='utf-8') as f:
+        x = f.read()
+
+    patron = r'(<row r="%d"[^>]*>)(?:(?!</row>).)*</row>' % fila_num
+    x_nuevo, cambios = re.subn(patron, r'\1</row>', x, count=1, flags=re.S)
+    if not cambios:
+        raise ValueError(f'Fila {fila_num} no encontrada en "{hoja}"')
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(x_nuevo)
 
     if os.path.exists(destino):
         os.remove(destino)
@@ -556,6 +604,29 @@ def _agregar_xlsx_seguro(nombre, fid, hoja, estilo, valores, adaptador=None):
     return fila, conflicto
 
 
+def _borrar_xlsx_seguro(nombre, fid, hoja, fila_num, mapas_header):
+    """Vacía una fila de un xlsx de Drive con la misma protección de concurrencia."""
+    destino = os.path.join(am.TMP_DIR, f'{nombre}_borrado.xlsx')
+    conflicto = False
+    for intento in range(MAX_REINTENTOS):
+        rev_antes = _revision_actual(fid)
+        ruta = descargar(nombre, fid, forzar=True)
+        encabezado, _, _ = _detectar_columnas(ruta, hoja, mapas_header)
+        if fila_num <= encabezado:
+            raise ValueError('No se puede borrar una fila de encabezados')
+        vaciar_fila_xlsx(ruta, destino, hoja, fila_num)
+        if _revision_actual(fid) != rev_antes:
+            if intento < MAX_REINTENTOS - 1:
+                continue
+            raise RuntimeError(
+                'El archivo de Drive cambió durante la eliminación; reintenta la operación')
+        subir_drive(fid, destino)
+        conflicto = _conflicto_post_subida(fid, rev_antes)
+        break
+    invalidar(nombre)
+    return conflicto
+
+
 def agregar_agendado(datos):
     valores = normalizar_agendado(datos)
     if not valores.get('G') and 'I' not in valores:
@@ -602,6 +673,33 @@ def agregar_venta(datos):
             'conflicto': conflicto}
 
 
+def _borrar_fila(fid, nombre, hoja, fila_num, mapas_header):
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    with _lock:
+        if _es_sheets(fid):
+            _sheets().spreadsheets().values().clear(
+                spreadsheetId=fid,
+                range=f"'{hoja}'!A{fila_num}:ZZ{fila_num}",
+                body={}).execute()
+            invalidar(nombre)
+            return {'ok': True, 'conflicto': False}
+        conflicto = _borrar_xlsx_seguro(nombre, fid, hoja, fila_num, mapas_header)
+    return {'ok': True, 'conflicto': conflicto}
+
+
+def borrar_agendado(fila_num):
+    return _borrar_fila(am.AGENDADOS_FID, 'AGENDADOS', 'AGENDADOS', fila_num,
+                         _HEADERS_AGENDADOS)
+
+
+def borrar_venta(hoja, fila_num):
+    if hoja not in ('VENTA 2026', 'VENTA 2025'):
+        raise ValueError('Hoja de venta no válida')
+    return _borrar_fila(am.VENTA_FID, 'VENTA_DIARIA', hoja, fila_num,
+                         _HEADERS_VENTA)
+
+
 # ============================================================
 # LECTURA PARA MOSTRAR
 # ============================================================
@@ -633,7 +731,8 @@ def leer_agendados():
             if isinstance(v, float) and v == int(v):
                 v = int(v)
             fila[cl] = v
-        if fila:
+        if any(v is not None and v != '' for v in fila.values()):
+            fila['_fila'] = r
             filas.append(fila)
     wb.close()
     return {'filas': filas, 'total': len(filas),
@@ -670,7 +769,8 @@ def leer_venta():
                 if isinstance(v, float) and v == int(v):
                     v = int(v)
                 fila[cl] = v
-            if fila:
+            if any(v is not None and v != '' for v in fila.values()):
+                fila['_fila'] = r
                 filas.append(fila)
         out[hoja] = {'filas': filas, 'columnas': columnas}
     wb.close()
