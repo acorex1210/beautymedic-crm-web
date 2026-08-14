@@ -18,14 +18,17 @@ Uso:
 
 Configuración vía variables de entorno (útiles para despliegue web):
   CREDENCIALES           ruta al JSON de la cuenta de servicio (default ~/credenciales-bm.json)
-  GDRIVE_CREDENTIALS_JSON contenido del JSON (se escribe en CREDENCIALES si el archivo no existe)
+  GDRIVE_CREDENTIALS_JSON contenido del JSON (JSON crudo o base64; se escribe en CREDENCIALES)
+  GOOGLE_APPLICATION_CREDENTIALS ruta a un archivo JSON, contenido crudo o base64 (alternativa)
   AGENDADOS_FID          id de archivo AGENDADOS en Drive
   VENTA_FID              id de archivo VENTA DIARIA en Drive
   MAESTRO_PATH           ruta al maestro BD DATA.xlsx
   TMP_DIR                directorio temporal para descargas y simulaciones
 """
 import argparse
+import base64
 import io
+import json
 import os
 import re
 import shutil
@@ -55,16 +58,61 @@ TMP_DIR = os.environ.get('TMP_DIR', _TMP_DEFAULT)
 os.makedirs(TMP_DIR, exist_ok=True)
 
 
+def _normalizar_json_credenciales(v):
+    """Devuelve el JSON crudo de la cuenta de servicio, aceptando JSON o base64."""
+    if v is None:
+        return ''
+    v = str(v).strip()
+    if not v:
+        return ''
+    try:
+        json.loads(v)
+        return v
+    except (ValueError, TypeError):
+        pass
+    try:
+        dec = base64.b64decode(v, validate=True).decode('utf-8')
+        json.loads(dec)
+        return dec
+    except (ValueError, TypeError, Exception):  # noqa: BLE001
+        return v
+
+
+def _contenido_credenciales():
+    """Busca el JSON de credenciales en el orden: GDRIVE_CREDENTIALS_JSON,
+    GOOGLE_APPLICATION_CREDENTIALS (ruta o contenido), CREDENCIALES (archivo)."""
+    for var in ('GDRIVE_CREDENTIALS_JSON', 'GOOGLE_APPLICATION_CREDENTIALS'):
+        v = os.environ.get(var, '')
+        if not v:
+            continue
+        if os.path.isfile(v):
+            try:
+                with open(v, encoding='utf-8') as f:
+                    return f.read()
+            except OSError:
+                continue
+        return _normalizar_json_credenciales(v)
+    if os.path.exists(CREDENCIALES):
+        try:
+            with open(CREDENCIALES, encoding='utf-8') as f:
+                return f.read()
+        except OSError:
+            return ''
+    return ''
+
+
 def garantizar_credenciales():
-    """Escribe las credenciales desde GDRIVE_CREDENTIALS_JSON si el archivo no existe."""
-    if not os.path.exists(CREDENCIALES) and GDRIVE_CREDENTIALS_JSON:
-        os.makedirs(os.path.dirname(CREDENCIALES) or '.', exist_ok=True)
-        with open(CREDENCIALES, 'w', encoding='utf-8') as f:
-            f.write(GDRIVE_CREDENTIALS_JSON)
+    """Escribe las credenciales en CREDENCIALES si no existen y hay fuente."""
+    if not os.path.exists(CREDENCIALES):
+        contenido = _contenido_credenciales()
+        if contenido:
+            os.makedirs(os.path.dirname(CREDENCIALES) or '.', exist_ok=True)
+            with open(CREDENCIALES, 'w', encoding='utf-8') as f:
+                f.write(contenido)
 
 
 def credenciales_disponibles():
-    return os.path.exists(CREDENCIALES) or bool(GDRIVE_CREDENTIALS_JSON)
+    return os.path.exists(CREDENCIALES) or bool(_contenido_credenciales())
 
 MESES = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
          'JUL', 'AGO', 'SET', 'SEP', 'OCT', 'NOV', 'DIC'}
