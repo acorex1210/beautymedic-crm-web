@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{BRAND_NOMBRE}} &middot; CRM y Reportes</title>
+<script src="/static/chart.umd.min.js"></script>
 <style>
 :root {
    --azul: #2c5aa0; --azul2: #3a7bd5; --azul3: #5aa0e8;
@@ -212,8 +213,7 @@
 
   /* ---------- Barras (dashboard) ---------- */
   .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  @media (max-width: 980px) { .dos { grid-template-columns: 1fr; } }
-  .hbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+  @media (max-width: 980px) { .dos { grid-template-columns: 1fr; } }  .hbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
   .hbar .etiqueta { flex: 0 0 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hbar .barra { flex: 1; height: 16px; background: #eef2f8; border-radius: 8px; overflow: hidden; }
   .hbar .relleno { height: 100%; background: linear-gradient(90deg, var(--azul3), #7aa6e0); border-radius: 8px; }
@@ -230,6 +230,27 @@
   .dtab .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
   .dtab tfoot td { font-weight: 800; color: var(--azul); border-bottom: 0; border-top: 2px solid var(--borde); }
   .dtab .mini { display: inline-block; min-width: 34px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--azul3), #7aa6e0); vertical-align: middle; margin-left: 8px; }
+
+  /* ---------- Analítica / gráficos ---------- */
+  .charts-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 1100px) { .charts-wrap { grid-template-columns: 1fr; } }
+  .chart-caja { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 14px 16px; }
+  .chart-caja h3 { margin: 0 0 10px; font-size: 13.5px; color: var(--azul); }
+  .chart-caja .canvas { position: relative; height: 280px; }
+  .chart-caja .canvas.c-200 { height: 200px; }
+  .kpis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+  .kpi-mini { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+  .kpi-mini .et { font-size: 11px; color: var(--gris); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .kpi-mini .num { font-size: 20px; font-weight: 800; color: var(--azul); margin-top: 3px; }
+  .kpi-mini .sub { font-size: 11.5px; color: var(--gris); margin-top: 2px; }
+  .cmp-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .cmp-tabla th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--gris); padding: 6px 8px; border-bottom: 2px solid var(--borde); }
+  .cmp-tabla td { padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+  .cmp-tabla td.der { text-align: right; font-variant-numeric: tabular-nums; }
+  .cmp-tabla td.up { color: var(--verde); font-weight: 700; }
+  .cmp-tabla td.down { color: var(--rojo); font-weight: 700; }
+  .filtros-analitica { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
+  .filtros-analitica .campo { min-width: 130px; }
 
   /* ---------- Listas de actividades (Hoy) ---------- */
   .caja-hoy h3 { margin: 0 0 10px; font-size: 14px; color: var(--azul); display: flex; align-items: center; gap: 8px; }
@@ -250,6 +271,110 @@
     .nav .sub, .side-pies { display: none; }
     .contenido { padding: 14px; }
     .topbar { padding: 12px 16px; }
+  }
+
+  /* ---------- Tema CRM corporativo ---------- */
+  :root {
+    --azul: #172b4d;
+    --azul2: #1f5fbf;
+    --azul3: #4c8df6;
+    --crema: #f5f7fb;
+    --fondo: #f5f7fb;
+    --gris: #5e6c84;
+    --borde: #dfe5ee;
+    --celeste: #dbe8ff;
+    --verde: #16835d;
+    --naranja: #bd7212;
+    --rojo: #c9374a;
+  }
+  body {
+    color: #344563;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(76, 141, 246, .08), transparent 28rem),
+      var(--fondo);
+    line-height: 1.45;
+  }
+  .sidebar {
+    width: 252px; flex-basis: 252px;
+    background: linear-gradient(180deg, #0e1f3d 0%, #13294b 58%, #0d1b33 100%);
+    box-shadow: 4px 0 20px rgba(15, 35, 67, .10);
+  }
+  .logo { padding: 24px 20px 19px; }
+  .logo .badge {
+    border-radius: 11px;
+    background: linear-gradient(145deg, #3178df, #1b4f9e);
+    box-shadow: 0 7px 16px rgba(2, 18, 44, .33), inset 0 1px rgba(255,255,255,.22);
+  }
+  .logo h1 { font-size: 16px; letter-spacing: .1px; }
+  .logo p { color: #9eb2d3; }
+  .nav { padding: 16px 12px; }
+  .nav a {
+    color: #b8c8e3; border: 1px solid transparent; border-radius: 8px;
+    padding: 10px 11px; margin-bottom: 3px; transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+  }
+  .nav a:hover { background: rgba(122, 162, 221, .13); color: #fff; transform: translateX(2px); }
+  .nav a.activo {
+    background: linear-gradient(90deg, rgba(55, 119, 215, .92), rgba(45, 102, 190, .82));
+    border-color: rgba(167, 203, 255, .24); box-shadow: 0 5px 14px rgba(1, 19, 48, .22);
+  }
+  .nav .sub { color: #7188ad; font-weight: 700; padding-top: 17px; }
+  .topbar {
+    min-height: 71px; background: rgba(255,255,255,.94); border-bottom-color: #e4e9f1;
+    padding: 15px 30px; box-shadow: 0 1px 3px rgba(23, 43, 77, .025);
+  }
+  .topbar h2 { color: #172b4d; font-size: 20px; font-weight: 750; letter-spacing: -.2px; }
+  .topbar .ruta { color: #6b778c; }
+  .contenido { padding: 26px 30px 38px; }
+  .tarjeta, .kpi, .kpi-mini, .chart-caja {
+    border-color: #e1e7f0; border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(23, 43, 77, .035), 0 8px 20px rgba(23, 43, 77, .025);
+  }
+  .tarjeta { padding: 20px 22px; transition: box-shadow .18s ease, border-color .18s ease; }
+  .tarjeta:hover { border-color: #d1dbe9; box-shadow: 0 6px 18px rgba(23, 43, 77, .07); }
+  .tarjeta h3, .chart-caja h3, .caja-hoy h3 { color: #172b4d; font-weight: 750; }
+  .kpi { position: relative; overflow: hidden; padding: 16px 18px; }
+  .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--azul3); }
+  .kpi.verde::before { background: var(--verde); } .kpi.naranja::before { background: var(--naranja); } .kpi.rojo::before { background: var(--rojo); }
+  .kpi .eti, .kpi-mini .et { color: #6b778c; letter-spacing: .55px; }
+  .kpi .num, .kpi-mini .num { color: #172b4d; letter-spacing: -.35px; }
+  .btn {
+    border-radius: 7px; background: #1f5fbf; padding: 9px 15px;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, .15); transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
+  }
+  .btn:hover { filter: none; background: #174d9e; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(9, 30, 66, .17); }
+  .btn:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(9, 30, 66, .15); }
+  .btn.verde { background: #16835d; } .btn.verde:hover { background: #106c4c; }
+  .btn.naranja { background: #bd7212; } .btn.naranja:hover { background: #965907; }
+  .btn.rojo { background: #c9374a; } .btn.rojo:hover { background: #a9293b; }
+  .btn.gris { background: #6b778c; } .btn.gris:hover { background: #505d73; }
+  .btn.borde { color: #1f5fbf; border-color: #b8cff3; box-shadow: none; }
+  .btn.borde:hover { background: #edf4ff; color: #174d9e; }
+  .toolbar input[type=text], .toolbar input[type=search], .toolbar select, .campo input, .campo select {
+    border-color: #cfd8e6; border-radius: 7px; color: #172b4d; transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .toolbar input:focus, .toolbar select:focus, .campo input:focus, .campo select:focus {
+    outline: none; border-color: #4c8df6; box-shadow: 0 0 0 3px rgba(76, 141, 246, .16);
+  }
+  .tabla-wrap { border-color: #dfe5ee; border-radius: 8px; }
+  table.drive th { background: #f1f4f8; color: #42526e; border-bottom: 1px solid #d9e1eb; }
+  table.drive td { color: #344563; border-color: #edf0f4; }
+  table.drive tbody tr:nth-child(even) td { background: #fafbfc; }
+  table.drive tbody tr:hover td { background: #edf4ff; }
+  .chip { padding: 3px 9px; font-weight: 750; }
+  .chip.ok { background: #e3f5ed; color: #0d6b4c; } .chip.info { background: #e9f1ff; color: #1b56a6; }
+  .chip.warn, .chip.ambar { background: #fff4de; color: #8a5408; } .chip.bad { background: #ffeaed; color: #a9283a; }
+  .pill { border-color: rgba(161, 185, 221, .32); background: rgba(255,255,255,.06); color: #d5e1f5; }
+  .kcol { background: #f3f6fa; border-color: #dfe5ee; border-radius: 9px; }
+  .kcol h4 { color: #344563; } .kcol h4 .cuen { background: #e4ecf8; color: #275a9f; }
+  .kcard { border-color: #e0e6ee; border-radius: 8px; box-shadow: 0 1px 2px rgba(9, 30, 66, .06); transition: transform .16s ease, box-shadow .16s ease; }
+  .kcard:hover { transform: translateY(-2px); box-shadow: 0 6px 13px rgba(9, 30, 66, .12); }
+  .modal-fondo { background: rgba(9, 30, 66, .58); backdrop-filter: blur(3px); }
+  .modal { border-radius: 11px; box-shadow: 0 20px 55px rgba(9, 30, 66, .30); animation: modal-entrada .20s cubic-bezier(.2,.8,.2,1); }
+  @keyframes modal-entrada { from { transform: translateY(12px) scale(.985); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+  .toast { background: #172b4d; border-radius: 8px; box-shadow: 0 10px 28px rgba(9,30,66,.24); animation: toast-entrada .2s ease; }
+  @keyframes toast-entrada { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   }
 </style>
 </head>
@@ -294,9 +419,18 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 12 3 3 5-6"/></svg>
         <span class="lab">Tareas</span>
       </a>
+      <a data-pagina="cuotas">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="lab">Cuotas</span>
+      </a>
       <a data-pagina="dashboard">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-6"/></svg>
         <span class="lab">Dashboard</span>
+      </a>
+      <div class="sub">Analítica</div>
+      <a data-pagina="analitica">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <span class="lab">Analítica</span>
       </a>
     </nav>
     <div class="side-pies" id="estadoPie"></div>
@@ -350,8 +484,10 @@
           <div class="toolbar">
             <button class="btn verde" id="btnSyncAplicar">Actualizar datos del archivo</button>
           </div>
-          <div class="resumen" id="kpisSync"></div>
-          <pre class="salida oculto" id="salidaSync"></pre>
+          <div class="carga oculto" id="syncCargando">
+            <span class="spinner"></span>Actualizando datos&hellip;
+          </div>
+          <div class="mensaje okm oculto" id="msgSyncOk">DATOS ACTUALIZADOS</div>
           <div class="mensaje err oculto" id="msgSync"></div>
         </div>
 
@@ -452,7 +588,22 @@
           <div class="kpi verde"><div class="eti">Con compras</div><div class="num" id="paCompras">-</div></div>
           <div class="kpi naranja"><div class="eti">Monto total</div><div class="num" id="paMonto">-</div></div>
         </div>
-        <div class="tarjeta">
+        <div class="dos">
+          <div class="tarjeta">
+            <h3>Buscar historial por teléfono o DNI</h3>
+            <div class="toolbar">
+              <div class="buscar"><input type="search" id="paBuscarHist" placeholder="Ej. 999 999 999 o DNI&hellip;"></div>
+              <button class="btn gris" id="btnPaBuscarHist">Buscar</button>
+            </div>
+            <div id="paHistorial"><div class="nota">Escribe un teléfono o DNI para ver el historial del paciente (citas, tratamientos y notas).</div></div>
+          </div>
+          <div class="tarjeta">
+            <h3>Pacientes para reactivar</h3>
+            <div class="nota" style="margin:0 0 8px;">Asistieron hace más de <select id="paReactivarMeses" style="width:auto;padding:4px 8px;"><option value="3" selected>3</option><option value="6">6</option><option value="12">12</option></select> meses y no han vuelto.</div>
+            <div id="paReactivar"><div class="carga"><span class="spinner"></span>Cargando&hellip;</div></div>
+          </div>
+        </div>
+        <div class="tarjeta" style="margin-top:18px;">
           <div class="toolbar">
             <div class="buscar"><input type="search" id="paBuscar" placeholder="Buscar por nombre o teléfono&hellip;"></div>
             <button class="btn gris" id="btnPaRecargar">Actualizar</button>
@@ -483,6 +634,26 @@
         </div>
       </section>
 
+      <!-- ============ CUOTAS ============ -->
+      <section id="pag-cuotas" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Cuotas vigentes</div><div class="num" id="cuVigentes">-</div></div>
+          <div class="kpi naranja"><div class="eti">Por cobrar</div><div class="num" id="cuPorCobrar">-</div></div>
+          <div class="kpi rojo"><div class="eti">Atrasadas</div><div class="num" id="cuAtrasadas">-</div></div>
+          <div class="kpi verde"><div class="eti">Pagadas</div><div class="num" id="cuPagadas">-</div></div>
+        </div>
+        <div class="tarjeta">
+          <div class="toolbar">
+            <div class="buscar"><input type="search" id="cuBuscar" placeholder="Buscar por paciente o teléfono&hellip;"></div>
+            <select id="cuFiltroEstado"><option value="">Estado: todos</option><option>PENDIENTE</option><option>ATRASADO</option><option>PAGADO</option></select>
+            <button class="btn gris" id="btnCuRecargar">Actualizar</button>
+            <a class="btn borde pequeno" href="/api/exportar/cuotas">Exportar CSV</a>
+            <button class="btn verde" id="btnCuNueva">+ Nueva cuota</button>
+          </div>
+          <div class="tabla-wrap"><table class="drive" id="tablaCuotas"></table></div>
+        </div>
+      </section>
+
       <!-- ============ DASHBOARD ============ -->
       <section id="pag-dashboard" class="oculto">
         <div class="kpis">
@@ -499,6 +670,34 @@
           <div class="tarjeta"><h3>Ventas por mes</h3><div id="dbMes"></div></div>
           <div class="tarjeta"><h3>Agendados por CRM</h3><div id="dbCrm"></div></div>
           <div class="tarjeta" style="grid-column:1 / -1;"><h3>Agendados por campaña</h3><div id="dbCampana"></div></div>
+        </div>
+      </section>
+
+      <section id="pag-analitica" class="oculto">
+        <div class="filtros-analitica">
+          <div class="campo"><label>Mes</label><select id="anaMes"></select></div>
+          <div class="campo"><label>Año</label><select id="anaAnio"></select></div>
+          <div class="campo"><label>Desde</label><input type="number" id="anaDesde" min="1" max="31" value="1"></div>
+          <div class="campo"><label>Hasta</label><input type="number" id="anaHasta" min="1" max="31" value="31"></div>
+          <div class="campo"><label>Datos de</label><select id="anaFuente">
+            <option value="maestro" selected>Maestro BD DATA</option>
+            <option value="auto">Integrado (AGENDADOS+VENTA)</option>
+          </select></div>
+          <button class="btn" id="btnAnaActualizar">Actualizar</button>
+          <a class="btn borde pequeno" href="/api/exportar/analitica">Exportar KPIs CSV</a>
+        </div>
+        <div class="kpis-grid" id="anaKpis"></div>
+        <div class="charts-wrap">
+          <div class="chart-caja"><h3>Evolución diaria del periodo</h3><div class="canvas"><canvas id="grafSerie"></canvas></div></div>
+          <div class="chart-caja"><h3>Ventas por mes (histórico)</h3><div class="canvas"><canvas id="grafHistorico"></canvas></div></div>
+          <div class="chart-caja"><h3>Tratamientos más solicitados</h3><div class="canvas"><canvas id="grafTrat"></canvas></div></div>
+          <div class="chart-caja"><h3>Perfil por edad</h3><div class="canvas c-200"><canvas id="grafEdad"></canvas></div></div>
+          <div class="chart-caja"><h3>Sexo de los pacientes</h3><div class="canvas c-200"><canvas id="grafSexo"></canvas></div></div>
+          <div class="chart-caja"><h3>Distritos (top)</h3><div class="canvas"><canvas id="grafDist"></canvas></div></div>
+        </div>
+        <div class="dos">
+          <div class="tarjeta"><h3>Comparativo de periodos</h3><div id="anaComparativo"></div></div>
+          <div class="tarjeta"><h3>Pacientes recurrentes</h3><div id="anaRecurrentes"></div></div>
         </div>
       </section>
     </div>
@@ -650,6 +849,32 @@
   </div>
 </div>
 
+<!-- ============ MODAL CUOTA ============ -->
+<div class="modal-fondo" id="modalCuota">
+  <div class="modal">
+    <div class="cab"><h3 id="cuotaTitulo">Nueva cuota</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formCuota">
+      <div class="form-grid">
+        <div class="campo"><label>Paciente</label><input type="text" id="cuPaciente" required></div>
+        <div class="campo"><label>Teléfono</label><input type="text" id="cuTelefono" placeholder="9 dígitos"></div>
+        <div class="campo ancho"><label>Tratamiento / paquete</label><input type="text" id="cuTratamiento"></div>
+        <div class="campo"><label>Monto total (S/)</label><input type="number" id="cuMontoTotal" step="0.01" min="1" required></div>
+        <div class="campo"><label>N° de cuotas</label><input type="number" id="cuNCuotas" min="1" value="1"></div>
+        <div class="campo"><label>Cuotas pagadas</label><input type="number" id="cuFormPagadas" min="0" value="0"></div>
+        <div class="campo"><label>Monto por cuota (S/)</label><input type="number" id="cuMontoCuota" step="0.01" min="0"></div>
+        <div class="campo"><label>Próximo pago (dd/mm/aaaa)</label><input type="text" id="cuProxFecha" placeholder="ej. 30/08/2026"></div>
+        <div class="campo ancho"><label>Nota</label><input type="text" id="cuNota"></div>
+      </div>
+      <div class="mensaje err oculto" id="msgCuotaForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnCuotaBorrar" style="margin-right:auto;">Borrar</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnCuotaGuardar">Guardar cuota</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -706,7 +931,9 @@ const TITULOS = {
   pipeline: ['Pipeline', 'Tablero de ventas estilo kanban'],
   pacientes: ['Pacientes', 'Directorio de pacientes e historial'],
   tareas: ['Tareas', 'Tareas y recordatorios'],
+  cuotas: ['Cuotas', 'Pagos a plazos y deudas'],
   dashboard: ['Dashboard', 'Métricas del negocio'],
+  analitica: ['Analítica', 'KPIs y métricas del maestro'],
 };
 function pagina(nombre) {
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('activo', a.dataset.pagina === nombre));
@@ -721,7 +948,9 @@ function pagina(nombre) {
   if (nombre === 'pipeline') cargarPipeline();
   if (nombre === 'pacientes') cargarPacientes();
   if (nombre === 'tareas') cargarTareas();
+  if (nombre === 'cuotas') cargarCuotas();
   if (nombre === 'dashboard') cargarDashboard();
+  if (nombre === 'analitica') cargarAnalitica();
 }
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', () => pagina(a.dataset.pagina)));
 
@@ -767,8 +996,10 @@ $('btnReporte').addEventListener('click', async () => {
     $('kpisReporte').innerHTML = `
       <div class="kpi"><div class="num">${t.ag}</div><div class="eti">Agendados</div></div>
       <div class="kpi"><div class="num">${t.as_}</div><div class="eti">Asistieron</div></div>
-      <div class="kpi verde"><div class="num">${t.co}</div><div class="eti">Compraron</div></div>
-      <div class="kpi naranja"><div class="num">${fmtMon(t.mon)}</div><div class="eti">Monto</div></div>`;
+      <div class="kpi rojo"><div class="num">${t.no_fueron ?? 0}</div><div class="eti">No fueron</div></div>
+      <div class="kpi"><div class="num">${t.co}</div><div class="eti">Compraron</div></div>
+      <div class="kpi naranja"><div class="num">${t.fueron_sin_compra ?? 0}</div><div class="eti">Fueron sin comprar</div></div>
+      <div class="kpi verde"><div class="num">${fmtMon(t.mon)}</div><div class="eti">Monto</div></div>`;
     const crms = Object.entries(res.por_crm);
     $('tablaCrm').innerHTML = crms.length ? `<div class="tabla-wrap" style="max-height:300px;"><table class="drive">
       <tr><th>CRM</th><th>Agendados</th><th>Asistieron</th><th>Compraron</th><th>Monto</th></tr>
@@ -794,27 +1025,25 @@ $('btnReporte').addEventListener('click', async () => {
 
 async function sync() {
   const btn = $('btnSyncAplicar');
+  const loading = $('syncCargando');
+  const okMsg = $('msgSyncOk');
+  const errMsg = $('msgSync');
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Procesando…';
-  $('msgSync').classList.add('oculto'); $('kpisSync').innerHTML = '';
+  loading.classList.remove('oculto');
+  okMsg.classList.add('oculto');
+  errMsg.classList.add('oculto');
   try {
     const res = await api('/api/sync', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ aplicar: true }),
     });
-    const r = res.resumen || {};
-    $('kpisSync').innerHTML = `
-      <div class="kpi"><div class="num">${r.filas_nuevas ?? '-'}</div><div class="eti">Agendados nuevos</div></div>
-      <div class="kpi"><div class="num">${r.matches ?? '-'}</div><div class="eti">Ventas con match</div></div>
-      <div class="kpi"><div class="num">${r.pendientes ?? '-'}</div><div class="eti">Pendientes</div></div>
-      <div class="kpi"><div class="num">${r.filas_a_actualizar ?? '-'}</div><div class="eti">Filas a actualizar</div></div>`;
-    $('salidaSync').textContent = res.reporte || 'Sin reporte.';
-    if (res.ok && res.aplicar) $('salidaSync').textContent += `\n\nMAESTRO ACTUALIZADO. Backup: ${res.backup}`;
-    if (res.ok && !res.aplicar) $('salidaSync').textContent += '\n\n[DRY RUN] No se modificó el maestro.';
-    $('salidaSync').classList.remove('oculto');
     if (!res.ok) throw new Error(res.errores.join('; '));
-    toast(res.aplicar ? 'Maestro actualizado' : 'Revisión lista', 'okm');
+    loading.classList.add('oculto');
+    okMsg.classList.remove('oculto');
+    toast('Maestro actualizado', 'okm');
     cargarEstado();
   } catch (e) {
-    $('msgSync').textContent = e.message; $('msgSync').classList.remove('oculto');
+    loading.classList.add('oculto');
+    errMsg.textContent = e.message; errMsg.classList.remove('oculto');
   } finally { btn.disabled = false; btn.textContent = orig; }
 }
 $('btnSyncAplicar').addEventListener('click', sync);
@@ -1281,6 +1510,60 @@ async function cargarPacientes() {
   catch (e) { $('tablaPacientes').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
   $('paNota').textContent = `${PACIENTES.pacientes.length} pacientes consolidados desde AGENDADOS, VENTA DIARIA, pipeline y notas.`;
   pintarPacientes();
+  cargarReactivar();
+}
+async function buscarHistorial() {
+  const q = $('paBuscarHist').value.trim();
+  if (!q) return;
+  $('paHistorial').innerHTML = '<div class="carga"><span class="spinner"></span>Buscando historial&hellip;</div>';
+  try {
+    const esDni = /^\d{8}$/.test(q);
+    const r = await api('/api/analitica/paciente' + (esDni ? `?dni=${encodeURIComponent(q)}` : `?telefono=${encodeURIComponent(q)}`));
+    if (!r.citas.length && !r.notas.length) {
+      $('paHistorial').innerHTML = '<div class="nota">No se encontraron citas ni notas para ese paciente.</div>';
+      return;
+    }
+    const nom = r.nombre ? `<b style="font-size:15px;">${esc(r.nombre)}</b> · ` : '';
+    const citas = r.citas.slice(0, 15).map(c => `
+      <div class="item-hoy" style="align-items:flex-start;">
+        <div class="hora">${esc(c.fecha_cita)}</div>
+        <div class="info"><b>${esc(c.campana || 'Sin campaña')} · ${esc(c.canal || '')}</b>
+          <small>${esc((c.tratamientos || []).join(', ') || 'Sin tratamiento')} · ${fmtMon(c.pago_total)} · ${esc(c.asistencia || '')}</small></div>
+      </div>`).join('');
+    const notas = r.notas.slice(0, 10).map(n => `
+      <div class="item-hoy" style="align-items:flex-start;">
+        <div class="hora">${esc(n.fecha || '')}</div>
+        <div class="info"><b>${esc(n.tipo || 'NOTA')}</b><small>${esc(n.texto || '')}</small></div>
+      </div>`).join('');
+    $('paHistorial').innerHTML = `
+      <div class="nota" style="margin-bottom:8px;">${nom}${r.citas.length} citas · ${r.notas.length} notas</div>
+      ${citas || '<div class="nota">Sin citas en el maestro.</div>'}
+      ${notas ? '<div class="nota" style="margin:10px 0 6px;"><b>Notas de seguimiento</b></div>' + notas : ''}`;
+  } catch (e) {
+    $('paHistorial').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
+  }
+}
+async function cargarReactivar() {
+  const meses = $('paReactivarMeses').value;
+  $('paReactivar').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
+  try {
+    const r = await api('/api/analitica/reactivar?meses=' + meses);
+    if (!r.pacientes.length) {
+      $('paReactivar').innerHTML = '<div class="nota">Sin pacientes por reactivar en ese rango.</div>';
+      return;
+    }
+    $('paReactivar').innerHTML = r.pacientes.slice(0, 20).map(p =>
+      `<div class="item-hoy"><div class="hora">${p.meses_sin_volver}m</div>
+       <div class="info"><b>${esc(p.nombre)}</b><small>Última cita ${esc(p.ultima_cita)} · ${esc(p.telefono || '')}</small></div>
+       <button class="btn gris pequeno" onclick="paRecargarHist('${esc(p.telefono || '')}')">Ver</button></div>`).join('')
+      + `<div class="nota" style="margin-top:6px;">${r.pacientes.length} pacientes sin volver hace más de ${meses} meses.</div>`;
+  } catch (e) {
+    $('paReactivar').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
+  }
+}
+function paRecargarHist(tel) {
+  $('paBuscarHist').value = tel;
+  buscarHistorial();
 }
 function paFiltrados() {
   const q = $('paBuscar').value.trim().toLowerCase();
@@ -1505,6 +1788,283 @@ async function cargarDashboard() {
   $('dbCampana').innerHTML = tablaDatos(d.ag_por_campana, '', 'agendados');
 }
 
+/* ---------------- Analítica ---------------- */
+let ANA_GRAFICOS = {};
+function destroyChart(id) {
+  if (ANA_GRAFICOS[id]) { ANA_GRAFICOS[id].destroy(); delete ANA_GRAFICOS[id]; }
+}
+function crearChart(id, config) {
+  const el = $(id);
+  if (!el) return;
+  destroyChart(id);
+  ANA_GRAFICOS[id] = new Chart(el, config);
+}
+const COL_AZUL = '#2f5597', COL_VERDE = '#70ad47', COL_NARANJA = '#ed7d31';
+const COL_PALETA = ['#2f5597', '#70ad47', '#ed7d31', '#9dc3e6', '#7a5bb8', '#e0a020', '#d64545', '#5b6472'];
+
+function anaFiltros() {
+  return `?mes=${encodeURIComponent($('anaMes').value)}&anio=${$('anaAnio').value}` +
+    `&desde=${$('anaDesde').value}&hasta=${$('anaHasta').value}`;
+}
+function anaKpi(eti, num, sub = '') {
+  return `<div class="kpi-mini"><div class="et">${eti}</div><div class="num">${num}</div>` +
+    (sub ? `<div class="sub">${sub}</div>` : '') + `</div>`;
+}
+async function cargarAnalitica() {
+  const q = anaFiltros();
+  $('anaKpis').innerHTML = '<div class="carga">Cargando KPIs&hellip;</div>';
+  try {
+    const kpis = await api('/api/analitica/kpis' + q);
+    pintarAnaKpis(kpis);
+  } catch (e) {
+    $('anaKpis').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
+  }
+  const tareas = [
+    ['serie', '/api/analitica/serie' + q, pintarAnaSerie],
+    ['perfil', '/api/analitica/perfil' + q, pintarAnaPerfil],
+    ['comp', '/api/analitica/comparativo' + q, pintarAnaComparativo],
+    ['rec', '/api/analitica/recurrentes' + q, pintarAnaRecurrentes],
+    ['hist', '/api/analitica/historico', pintarAnaHistorico],
+  ];
+  for (const [, url, fn] of tareas) {
+    try { fn(await api(url)); } catch (e) { console.warn('Analítica:', e.message); }
+  }
+}
+function pintarAnaKpis(k) {
+  $('anaKpis').innerHTML =
+    anaKpi('Agendados', k.agendados) +
+    anaKpi('Asistieron', k.asistidos, k.asistencia_pct + '% de asistencia') +
+    anaKpi('No fueron', k.no_fueron ?? 0, 'agendaron pero no asistieron') +
+    anaKpi('Compraron', k.compraron, k.conversion_pct + '% de conversión') +
+    anaKpi('Fueron sin comprar', k.fueron_sin_compra ?? 0, 'asistieron pero no compraron') +
+    anaKpi('Monto total', fmtMon(k.monto)) +
+    anaKpi('Ticket prom.', fmtMon(k.ticket_promedio)) +
+    anaKpi('Recompra', k.recompra, 'pacientes que repitieron');
+}
+function pintarAnaSerie(s) {
+  crearChart('grafSerie', {
+    type: 'bar',
+    data: {
+      labels: s.dias,
+      datasets: [
+        { label: 'Agendados', data: s.agendados, backgroundColor: '#9dc3e6', yAxisID: 'y' },
+        { label: 'Asistidos', data: s.asistidos, backgroundColor: COL_VERDE, yAxisID: 'y' },
+        { label: 'Compraron', data: s.compraron, backgroundColor: COL_NARANJA, yAxisID: 'y' },
+        { label: 'Monto S/', type: 'line', data: s.monto, borderColor: COL_AZUL, backgroundColor: COL_AZUL, yAxisID: 'y1', tension: .3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Cantidad' } },
+                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+    },
+  });
+}
+function pintarAnaHistorico(h) {
+  const meses = h.meses.map(m => `${m.mes} ${m.anio}`);
+  crearChart('grafHistorico', {
+    type: 'bar',
+    data: {
+      labels: meses,
+      datasets: [{ label: 'Ventas', data: h.meses.map(m => m.ventas), backgroundColor: COL_AZUL },
+                 { label: 'Monto S/', type: 'line', data: h.meses.map(m => m.monto), borderColor: COL_NARANJA, yAxisID: 'y1', tension: .3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true }, y1: { position: 'right', grid: { drawOnChartArea: false } } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+    },
+  });
+}
+function pintarAnaPerfil(p) {
+  const t = Object.entries(p.tratamientos || {});
+  crearChart('grafTrat', {
+    type: 'bar',
+    data: { labels: t.map(([k]) => k), datasets: [{ label: 'Veces', data: t.map(([, v]) => v), backgroundColor: COL_PALETA }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+               plugins: { legend: { display: false } } },
+  });
+  const ed = Object.entries(p.edad_bandas || {});
+  crearChart('grafEdad', {
+    type: 'bar',
+    data: { labels: ed.map(([k]) => k), datasets: [{ label: 'Pacientes', data: ed.map(([, v]) => v), backgroundColor: COL_PALETA }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+  });
+  const sx = Object.entries(p.sexo || {});
+  crearChart('grafSexo', {
+    type: 'doughnut',
+    data: { labels: sx.map(([k]) => k), datasets: [{ data: sx.map(([, v]) => v), backgroundColor: [COL_VERDE, COL_AZUL, COL_NARANJA] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
+  });
+  const d = Object.entries(p.distritos || {});
+  crearChart('grafDist', {
+    type: 'bar',
+    data: { labels: d.map(([k]) => k), datasets: [{ label: 'Pacientes', data: d.map(([, v]) => v), backgroundColor: COL_AZUL }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+               plugins: { legend: { display: false } } },
+  });
+}
+function cmpFila(concepto, actual, anterior, fmt, suf = '') {
+  const diff = actual - anterior;
+  const pct = anterior ? Math.round(diff / anterior * 100) : 0;
+  const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+  const flecha = diff > 0 ? '▲' : diff < 0 ? '▼' : '—';
+  return `<tr><td>${concepto}</td><td class="der">${fmt(actual)}${suf}</td>` +
+    `<td class="der">${fmt(anterior)}${suf}</td>` +
+    `<td class="der ${cls}">${flecha} ${Math.abs(pct)}%</td></tr>`;
+}
+function pintarAnaComparativo(c) {
+  const a = c.actual, ant = c.anterior_mes, aa = c.mismo_mes_anio_anterior;
+  $('anaComparativo').innerHTML = `
+    <table class="cmp-tabla">
+      <thead><tr><th>Métrica</th><th class="der">Actual</th><th class="der">Mes anterior</th><th class="der">Δ</th></tr></thead>
+      <tbody>
+        ${cmpFila('Agendados', a.agendados, ant.agendados, n => n)}
+        ${cmpFila('Asistidos', a.asistidos, ant.asistidos, n => n)}
+        ${cmpFila('Compraron', a.compraron, ant.compraron, n => n)}
+        ${cmpFila('Monto', a.monto, ant.monto, fmtMon)}
+      </tbody>
+    </table>
+    <p class="nota">Mismo mes del año anterior: ${fmtMon(aa.monto)} (${aa.compraron} compras).</p>`;
+}
+function pintarAnaRecurrentes(r) {
+  if (!r.pacientes.length) {
+    $('anaRecurrentes').innerHTML = '<div class="nota">Sin pacientes recurrentes en el periodo.</div>';
+    return;
+  }
+  const filas = r.pacientes.slice(0, 12).map(p =>
+    `<tr><td><b>${esc(p.nombre)}</b></td><td class="der">${p.compras}</td><td class="der">${fmtMon(p.monto)}</td></tr>`).join('');
+  $('anaRecurrentes').innerHTML = `
+    <div class="nota" style="margin-bottom:8px;">${r.total_recurrentes} recurrentes · LTV promedio ${fmtMon(r.ltv_promedio)}</div>
+    <table class="cmp-tabla">
+      <thead><tr><th>Paciente</th><th class="der">Compras</th><th class="der">Monto</th></tr></thead>
+      <tbody>${filas}</tbody></table>`;
+}
+
+/* ---------------- Cuotas ---------------- */
+let CUOTAS = null;
+let cuotaEditando = null;
+async function cargarCuotas() {
+  $('tablaCuotas').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando cuotas&hellip;</div></td></tr>';
+  const est = $('cuFiltroEstado').value;
+  try { CUOTAS = await api('/api/crm/cuotas' + (est ? '?estado=' + est : '')); }
+  catch (e) { $('tablaCuotas').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
+  pintarCuotas();
+}
+function cuFiltradas() {
+  const q = $('cuBuscar').value.trim().toLowerCase();
+  if (!q) return CUOTAS.cuotas;
+  return CUOTAS.cuotas.filter(c =>
+    String(c.paciente || '').toLowerCase().includes(q) || String(c.telefono || '').includes(q));
+}
+function cuEstadoBadge(estado) {
+  const cls = estado === 'PAGADO' ? 'okm' : estado === 'ATRASADO' ? 'err' : '';
+  return `<span class="verif ${cls === 'okm' ? 'verif-ok' : cls === 'err' ? 'verif-mal' : ''}" style="padding:2px 9px;font-size:11px;">${estado}</span>`;
+}
+function pintarCuotas() {
+  if (!CUOTAS) return;
+  const lista = cuFiltradas();
+  let porCobrar = 0, atrasadas = 0, pagadas = 0;
+  CUOTAS.cuotas.forEach(c => {
+    if (c.estado === 'PAGADO') pagadas++;
+    else { porCobrar += c.saldo || 0; if (c.estado === 'ATRASADO') atrasadas++; }
+  });
+  $('cuVigentes').textContent = CUOTAS.cuotas.filter(c => c.estado !== 'PAGADO').length;
+  $('cuPorCobrar').textContent = fmtMon(porCobrar);
+  $('cuAtrasadas').textContent = atrasadas;
+  $('cuPagadas').textContent = pagadas;
+  if (!lista.length) {
+    $('tablaCuotas').innerHTML = '<tr><td><div class="vacio">Sin cuotas.</div></td></tr>';
+    return;
+  }
+  $('tablaCuotas').innerHTML = `<thead><tr>
+      <th>Paciente</th><th>Teléfono</th><th>Tratamiento</th>
+      <th class="der">Total</th><th class="der">Cuotas</th><th class="der">Saldo</th>
+      <th>Próx. pago</th><th>Estado</th><th></th></tr></thead><tbody>` +
+    lista.map(c => `<tr>
+      <td><b>${esc(c.paciente || '')}</b></td>
+      <td>${esc(c.telefono || '')}</td>
+      <td>${esc(c.tratamiento || '')}</td>
+      <td class="der">${fmtMon(c.monto_total)}</td>
+      <td class="der">${c.pagadas}/${c.n_cuotas}</td>
+      <td class="der"><b>${fmtMon(c.saldo)}</b></td>
+      <td>${esc(c.prox_fecha || '')}</td>
+      <td>${cuEstadoBadge(c.estado)}</td>
+      <td style="white-space:nowrap;">
+        ${c.estado !== 'PAGADO' ? `<button class="btn verde pequeno" onclick="cuotaPagar(${c.id})">Pagar</button>` : ''}
+        <button class="btn gris pequeno" onclick="cuotaEditar(${c.id})">Editar</button>
+      </td></tr>`).join('') + '</tbody>';
+}
+async function cuotaPagar(id) {
+  try {
+    await api('/api/crm/cuotas/' + id + '/pago', { method: 'POST' });
+    toast('Pago registrado', 'okm');
+    cargarCuotas();
+  } catch (e) { toast(e.message, 'err'); }
+}
+function cuotaEditar(id) {
+  const c = CUOTAS.cuotas.find(x => x.id === id);
+  if (!c) return;
+  cuotaEditando = c.id;
+  $('cuotaTitulo').textContent = 'Editar cuota';
+  $('cuPaciente').value = c.paciente || '';
+  $('cuTelefono').value = c.telefono || '';
+  $('cuTratamiento').value = c.tratamiento || '';
+  $('cuMontoTotal').value = c.monto_total ?? '';
+  $('cuNCuotas').value = c.n_cuotas || 1;
+  $('cuFormPagadas').value = c.pagadas || 0;
+  $('cuMontoCuota').value = c.monto_cuota ?? '';
+  $('cuProxFecha').value = c.prox_fecha || '';
+  $('cuNota').value = c.nota || '';
+  $('btnCuotaBorrar').classList.remove('oculto');
+  $('modalCuota').classList.add('abierto');
+}
+function cuotaNueva() {
+  cuotaEditando = null;
+  $('cuotaTitulo').textContent = 'Nueva cuota';
+  ['cuPaciente', 'cuTelefono', 'cuTratamiento', 'cuMontoTotal', 'cuNCuotas',
+   'cuFormPagadas', 'cuMontoCuota', 'cuProxFecha', 'cuNota'].forEach(i => $(i).value = '');
+  $('cuNCuotas').value = 1; $('cuFormPagadas').value = 0;
+  $('btnCuotaBorrar').classList.add('oculto');
+  $('modalCuota').classList.add('abierto');
+}
+async function cuotaGuardar(e) {
+  e.preventDefault();
+  $('msgCuotaForm').classList.add('oculto');
+  const body = {
+    paciente: $('cuPaciente').value.trim(),
+    telefono: $('cuTelefono').value.trim(),
+    tratamiento: $('cuTratamiento').value.trim(),
+    monto_total: parseFloat($('cuMontoTotal').value) || null,
+    n_cuotas: parseInt($('cuNCuotas').value) || 1,
+    pagadas: parseInt($('cuFormPagadas').value) || 0,
+    monto_cuota: parseFloat($('cuMontoCuota').value) || null,
+    prox_fecha: $('cuProxFecha').value.trim(),
+    nota: $('cuNota').value.trim(),
+  };
+  try {
+    if (cuotaEditando) await api('/api/crm/cuotas/' + cuotaEditando, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    else await api('/api/crm/cuotas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Cuota guardada', 'okm');
+    cerrarModales();
+    cargarCuotas();
+  } catch (err) {
+    $('msgCuotaForm').textContent = err.message;
+    $('msgCuotaForm').classList.remove('oculto');
+  }
+}
+async function cuotaBorrar() {
+  if (!cuotaEditando) return;
+  if (!confirm('¿Eliminar esta cuota?')) return;
+  try {
+    await api('/api/crm/cuotas/' + cuotaEditando, { method: 'DELETE' });
+    toast('Cuota eliminada', 'okm');
+    cerrarModales();
+    cargarCuotas();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
 /* ---------------- Inicio ---------------- */
 llenarSelect($('tareaTipo'), TIPO_TAREA, null);
 llenarSelect($('tareaPrioridad'), PRIORIDADES, null);
@@ -1514,6 +2074,22 @@ llenarSelect($('tarCitaMes'), MESES, null);
 llenarSelect($('agMes'), MESES, null);
 llenarSelect($('agCitaMes'), MESES, null);
 llenarSelect($('veMes'), MESES, null);
+llenarSelect($('anaMes'), MESES, HOY_M);
+$('anaMes').value = HOY_M;
+llenarSelect($('anaAnio'), [String(HOY_A - 1), String(HOY_A), String(HOY_A + 1)], null);
+$('anaAnio').value = String(HOY_A);
+$('anaDesde').value = 1;
+$('anaHasta').value = 31;
+$('btnAnaActualizar').addEventListener('click', cargarAnalitica);
+$('btnPaBuscarHist').addEventListener('click', buscarHistorial);
+$('paBuscarHist').addEventListener('keydown', e => { if (e.key === 'Enter') buscarHistorial(); });
+$('paReactivarMeses').addEventListener('change', cargarReactivar);
+$('btnCuNueva').addEventListener('click', cuotaNueva);
+$('btnCuRecargar').addEventListener('click', cargarCuotas);
+$('cuFiltroEstado').addEventListener('change', cargarCuotas);
+$('cuBuscar').addEventListener('input', pintarCuotas);
+$('formCuota').addEventListener('submit', cuotaGuardar);
+$('btnCuotaBorrar').addEventListener('click', cuotaBorrar);
 pagina('panel');
 </script>
 </body>

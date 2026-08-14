@@ -18,6 +18,41 @@ uvicorn app:app --reload --port 8000
 
 Abrir http://localhost:8000
 
+### Web local con URL pública fija (sin hosting de pago)
+
+Para usar la web de Derma Essenza desde cualquier lugar sin pagar hosting, la
+app corre en esta Mac con uvicorn y se publica con Tailscale Funnel (gratis):
+
+```bash
+bash iniciar_derma.sh
+```
+
+Ese script levanta el servidor local (puerto 8011) y el túnel público, y
+muestra las URLs:
+
+| Acceso | URL |
+|--------|-----|
+| Local | http://127.0.0.1:8011 |
+| Pública (fija) | https://macbook-neo-de-andre.tailab4d2b.ts.net |
+
+Requisitos (una sola vez):
+- `run_derma_local.sh` usa las credenciales de Drive en `~/credenciales-derma.json`,
+  el maestro `BD DATA DERMA ESSENZA.xlsx` en `~/Downloads` y los `FID` de Derma
+  Essenza (AGENDADOS `1So_1Fh744c3K9kss2oA1twjBLJpgrSxZCu2lqhWpqJM`,
+  VENTA `1TDM7ZFV6Jdsqc6i4CadNkwPQNdrIBhu7`).
+- Tailscale app instalada, iniciada sesión y Funnel habilitado en
+  https://login.tailscale.com/f/funnel para el nodo.
+
+Detener la web pública:
+```bash
+tailscale funnel --https=443 off
+kill $(pgrep -f 'uvicorn app:app')
+```
+
+> La web pública depende de que la Mac esté encendida y con Tailscale activo.
+> Para una opción "siempre encendida" sin depender de la Mac, usar Cloud Run
+> (gratuito, sección "Desplegar en la nube").
+
 ## Desplegar en la nube
 
 La app es un solo contenedor (FastAPI + uvicorn) autocontenido en este
@@ -26,12 +61,17 @@ directorio. Requiere dos volúmenes/persistencia:
 | Variable            | Ejemplo                              | Uso |
 |---------------------|--------------------------------------|-----|
 | `DATA_DIR`          | `/data` (volumen persistente)        | Reportes PDF y backups |
-| `MAESTRO_PATH`      | `/data/BD DATA.xlsx`                 | Maestro (se sube/descarga por la web) |
+| `MAESTRO_PATH`      | `/data/BD DATA.xlsx`                 | Maestro local (se sube/descarga por la web) |
+| `MAESTRO_FID`       | `1aBc...` (ID en Drive)              | Maestro en Google Drive (host sin disco: Cloud Run) |
 | `TMP_DIR`           | `/data/tmp`                          | Descargas de Drive y simulaciones |
 | `CREDENCIALES`      | `/data/credenciales.json`            | JSON de cuenta de servicio de Drive |
 | `GDRIVE_CREDENTIALS_JSON` | (contenido del JSON)           | Alternativa: se escribe automáticamente |
 | `AGENDADOS_FID`     | `12fWJpIBpr3GH7Yj57iyyndm_m37rr7V2` | ID del archivo AGENDADOS en Drive |
 | `VENTA_FID`         | `1LHtZk0vAGgnyOsODwU6f4LvtUoQxWNis` | ID del archivo VENTA DIARIA en Drive |
+
+> `MAESTRO_FID` hace al maestro portable: si está definido, el maestro se lee y
+> escribe desde Google Drive (ideal para hosts sin disco persistente como Cloud
+> Run). Sin `MAESTRO_FID` se usa `MAESTRO_PATH` local, como siempre en Railway.
 
 Pasos típicos:
 
@@ -64,6 +104,27 @@ railway domain --service reportes
 Tras el primer deploy, sube el maestro una vez desde la pestaña "Maestro" de la
 web (o `curl -F "file=@BD DATA.xlsx" <url>/api/maestro/upload`). Los cambios
 posteriores de código se despliegan con `railway up` desde este directorio.
+
+### Despliegue en Google Cloud Run (gratuito, sin disco)
+
+Cloud Run no tiene disco persistente, por eso el maestro y las credenciales van
+en Drive: basta definir `MAESTRO_FID` (además de `AGENDADOS_FID` y `VENTA_FID`).
+
+1. Crea un proyecto en https://console.cloud.google.com (requiere vincular una
+   tarjeta; el free tier no cobra nada). Anota el **ID** del proyecto.
+2. Abre **Cloud Shell** (ícono `>_` arriba a la derecha) y sube este directorio
+   `reportes_web` (botón "Subir archivos" / arrastrar un `.zip` y descomprimir):
+   ```bash
+   unzip reportes_web_cloudrun.zip && cd reportes_web
+   ```
+3. Ejecuta (el script te pedirá el ID del proyecto):
+   ```bash
+   bash deploy_cloudrun.sh
+   ```
+   Al final muestra la URL de la página (terminada en `run.app`).
+
+La app se escala a cero cuando nadie la usa, así que no genera costo; se
+"despierta" sola con el primer clic (unos segundos).
 
 Los archivos `alimentar_maestro.py` y `reporte_ventas_pdf.py` viven aquí; en la
 raíz del repo quedan wrappers que ejecutan el mismo código (CLI sin cambios).

@@ -26,6 +26,7 @@ import argparse
 import os
 import sys
 from collections import Counter, defaultdict
+from datetime import datetime
 
 import matplotlib
 matplotlib.use('Agg')
@@ -56,16 +57,58 @@ FONDO_CLARO = '#eaf1f8'
 CRM_ORDEN = ['KOMMO', 'WHATSAPP', 'ORGANICO', 'SIN CRM']
 CANALES = ['KOMMO', 'WHATSAPP', 'ORGANICO']
 COLOR_CANAL = {'KOMMO': AZUL, 'WHATSAPP': VERDE, 'ORGANICO': NARANJA}
+PALETA = [AZUL, VERDE, NARANJA, CELESTE]
 
-COL_C = 3   # DIA (fecha de agendado)
-COL_D = 4   # MES
-COL_E = 5   # ANO
-COL_L = 12  # DIA2 (fecha de cita)
-COL_M = 13  # MES3
-COL_N = 14  # ANO4
-COL_O = 15  # CAMPANA
-COL_P = 16  # ASISTENCIA
-COL_AB = 28  # PAGO TOTAL
+
+def canales_desde_datos(agg):
+    """Canales reales presentes en los datos (top 3 por agendados), sin SIN CRM."""
+    totales = Counter()
+    for (_, crm), d in agg.items():
+        totales[crm] += d['ag']
+    top = [c for c, _ in totales.most_common(3) if str(c).strip().upper() != 'SIN CRM']
+    return top or ['WHATSAPP']
+
+COL_BM = {
+    'CRM': 2, 'RED_SOCIAL': 7, 'DIA': 3, 'MES': 4, 'ANIO': 5, 'TELEFONO': 9,
+    'DIA2': 12, 'MES3': 13, 'ANIO4': 14, 'CAMPANA': 15, 'ASISTENCIA': 16,
+    'DISTRITO': 17, 'EDAD': 18, 'SEXO': 19,
+    'TRAT': [20, 22, 24, 26], 'PAGO': [21, 23, 25, 27], 'PAGO_TOTAL': 28,
+}
+_CABECERA = {
+    'DIA': 'DIA', 'MES': 'MES', 'AÑO': 'ANIO', 'TELEFONO': 'TELEFONO',
+    'DIA2': 'DIA2', 'MES3': 'MES3', 'AÑO4': 'ANIO4', 'CAMPAÑA': 'CAMPANA',
+    'ASISTENCIA': 'ASISTENCIA', 'DISTRITO': 'DISTRITO', 'EDAD': 'EDAD',
+    'SEXO': 'SEXO', 'CRM': 'CRM', 'RED SOCIAL': 'RED_SOCIAL',
+    'PAGO TOTAL': 'PAGO_TOTAL', 'DNI': 'DNI', 'NOMBRE': 'NOMBRE',
+    'CORREO': 'CORREO',
+}
+
+
+def detectar_columnas(ws):
+    """Ubica las columnas del maestro por su cabecera (fila 4), tolerando el
+    formato BM (con columna CRM) y el Derma Essenza (sin CRM). Si una columna
+    no se detecta, usa la posición del formato BM."""
+    col = dict(COL_BM)
+    hdr = next(ws.iter_rows(min_row=4, max_row=4, values_only=True))
+    pos = {}
+    for i, h in enumerate(hdr, 1):
+        if h is None:
+            continue
+        hh = str(h).strip().upper()
+        if hh in _CABECERA:
+            pos[_CABECERA[hh]] = i
+        elif hh.startswith('TRAT '):
+            pos.setdefault('TRAT', []).append((int(hh[5:]), i))
+        elif hh.startswith('PAGO '):
+            pos.setdefault('PAGO', []).append((int(hh[5:]), i))
+    for k, v in pos.items():
+        col[k] = [i for _, i in sorted(v)] if isinstance(v, list) else v
+    col['ES_BM'] = 'CRM' in pos
+    col['CANAL'] = pos.get('CRM') or pos.get('RED_SOCIAL') or COL_BM['CRM']
+    return col
+
+
+COL = dict(COL_BM)
 
 NOMBRES_MES = {'ENE': 'Enero', 'FEB': 'Febrero', 'MAR': 'Marzo', 'ABR': 'Abril',
                'MAY': 'Mayo', 'JUN': 'Junio', 'JUL': 'Julio', 'AGO': 'Agosto',
@@ -77,12 +120,32 @@ def en_periodo(dia):
 
 
 def pago_total(ws, r):
-    p = ws.cell(row=r, column=COL_AB).value
-    s = sum(x for x in (ws.cell(row=r, column=c).value for c in (21, 23, 25, 27))
+    p = ws.cell(row=r, column=COL['PAGO_TOTAL']).value
+    s = sum(x for x in (ws.cell(row=r, column=c).value for c in COL['PAGO'])
             if isinstance(x, (int, float)))
     if isinstance(p, (int, float)) and p > 0:
         return p
     return s
+
+
+def _cita_pasada(ws, r):
+    """True si la fecha de cita de la fila ya ocurrió (comparada con hoy)."""
+    try:
+        anio = int(ws.cell(row=r, column=COL['ANIO4']).value)
+        mes = ws.cell(row=r, column=COL['MES3']).value
+        dia = int(ws.cell(row=r, column=COL['DIA2']).value)
+        if not mes:
+            return False
+        mes = str(mes).strip().upper()
+        if mes == 'SEP':
+            mes = 'SET'
+        if mes not in NOMBRES_MES:
+            return False
+        hoy = datetime.now()
+        mi = list(NOMBRES_MES).index(mes) + 1
+        return (anio, mi, dia) < (hoy.year, hoy.month, hoy.day)
+    except (TypeError, ValueError):
+        return False
 
 
 def monto(sol):
@@ -90,61 +153,72 @@ def monto(sol):
 
 
 def build_data():
+    global COL
     if FUENTE == 'auto':
-        maestro_ws = am.leer_maestro(am.MAESTRO)
+        maestro_ws = am.leer_maestro(am.ruta_maestro_local())
+        COL = detectar_columnas(maestro_ws)
         agendados = am.leer_agendados(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx'))
         venta = am.leer_venta(os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx'))
         calc = am.Calculo(maestro_ws, agendados, venta)
         tmp = os.path.join(am.TMP_DIR, 'simulado_reporte.xlsx')
-        am.aplicar_xml(am.MAESTRO, tmp, calc.new_rows, calc.updates)
+        am.aplicar_xml(am.ruta_maestro_local(), tmp, calc.new_rows, calc.updates)
         ws = openpyxl.load_workbook(tmp, data_only=True)['BD DATA']
     else:
-        ws = am.leer_maestro(am.MAESTRO)
-    agg = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0))
+        ws = am.leer_maestro(am.ruta_maestro_local())
+        COL = detectar_columnas(ws)
+    agg = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0,
+                                   no_fueron=0, fueron_sin_compra=0))
     for r in range(5, ws.max_row + 1):
-        camp = str(ws.cell(row=r, column=COL_O).value or '').strip() or '(SIN CAMPANA)'
-        crm = ws.cell(row=r, column=2).value or 'SIN CRM'
+        camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN CAMPANA)'
+        crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
         d = agg[(camp, crm)]
-        if (ws.cell(row=r, column=COL_E).value == ANIO
-                and ws.cell(row=r, column=COL_D).value == MES
-                and en_periodo(ws.cell(row=r, column=COL_C).value)
-                and ws.cell(row=r, column=9).value):
+        if (ws.cell(row=r, column=COL['ANIO']).value == ANIO
+                and ws.cell(row=r, column=COL['MES']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA']).value)
+                and ws.cell(row=r, column=COL['TELEFONO']).value):
             d['ag'] += 1
-        if (ws.cell(row=r, column=COL_N).value == ANIO
-                and ws.cell(row=r, column=COL_M).value == MES
-                and en_periodo(ws.cell(row=r, column=COL_L).value)
-                and ws.cell(row=r, column=COL_P).value == 'ASISTIO'):
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist != 'ASISTIO' and _cita_pasada(ws, r):
+                d['no_fueron'] += 1
+        if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                and ws.cell(row=r, column=COL['MES3']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)
+                and ws.cell(row=r, column=COL['ASISTENCIA']).value == 'ASISTIO'):
             d['as_'] += 1
             p = pago_total(ws, r)
             d['mon'] += p
             if p > 0:
                 d['co'] += 1
+            else:
+                d['fueron_sin_compra'] += 1
     return agg
 
 
 def datos_analiticos():
     """Metricas de perfil de los asistentes del periodo."""
-    ws = am.leer_maestro(am.MAESTRO)
+    global COL
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    COL = detectar_columnas(ws)
     trat = Counter(); dist = Counter(); sexo = Counter()
     edades = []; montos = []; crm = Counter(); camp = Counter()
     for r in range(5, ws.max_row + 1):
-        if (ws.cell(row=r, column=COL_N).value == ANIO
-                and ws.cell(row=r, column=COL_M).value == MES
-                and en_periodo(ws.cell(row=r, column=COL_L).value)
-                and ws.cell(row=r, column=COL_P).value == 'ASISTIO'):
-            crm[str(ws.cell(row=r, column=2).value or 'SIN CRM')] += 1
-            camp[str(ws.cell(row=r, column=COL_O).value or '').strip() or '(SIN)'] += 1
-            for cc in (20, 22, 24, 26):
+        if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                and ws.cell(row=r, column=COL['MES3']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)
+                and ws.cell(row=r, column=COL['ASISTENCIA']).value == 'ASISTIO'):
+            crm[str(ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM')] += 1
+            camp[str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN)'] += 1
+            for cc in COL['TRAT']:
                 t = ws.cell(row=r, column=cc).value
                 if t:
                     trat[str(t).strip().upper()] += 1
-            d = ws.cell(row=r, column=17).value
+            d = ws.cell(row=r, column=COL['DISTRITO']).value
             if d:
                 dist[str(d).strip().title()] += 1
-            e = ws.cell(row=r, column=18).value
+            e = ws.cell(row=r, column=COL['EDAD']).value
             if isinstance(e, (int, float)):
                 edades.append(e)
-            s = ws.cell(row=r, column=19).value
+            s = ws.cell(row=r, column=COL['SEXO']).value
             if s:
                 sexo[str(s).strip().upper()] += 1
             p = pago_total(ws, r)
@@ -224,13 +298,17 @@ def pagina_resumen(pdf, tot, agg):
                 color=FONDO_TITULO, transform=fig.transFigure)
         lineas = [
             f"Ticket promedio: S/ {ticket:,.0f} por compra  |  Asistencia: {pct(tot['as_'], tot['ag']):.0f}%  |  Conversion a compra: {pct(tot['co'], tot['as_']):.0f}%",
+            f"Agendaron pero no fueron: {tot['no_fueron']}  |  Fueron pero no compraron: {tot['fueron_sin_compra']}.",
             f"Cada {tot['ag']} agendados generan {tot['co']} ventas por S/ {tot['mon']:,.0f}.",
         ]
     else:
-        lineas = ['No se registraron ventas en el periodo.']
+        lineas = ['No se registraron ventas en el periodo.',
+                  f"Agendaron pero no fueron: {tot['no_fueron']}  |  Fueron pero no compraron: {tot['fueron_sin_compra']}."]
     ax.text(0.09, 0.545, lineas[0], fontsize=9.5, color=GRIS, transform=fig.transFigure)
     if len(lineas) > 1:
         ax.text(0.09, 0.512, lineas[1], fontsize=9.5, color=GRIS, transform=fig.transFigure)
+    if len(lineas) > 2:
+        ax.text(0.09, 0.479, lineas[2], fontsize=9.5, color=GRIS, transform=fig.transFigure)
 
     ax.text(0.08, 0.415, 'Resumen por CRM', fontsize=12, fontweight='bold',
             color=FONDO_TITULO, transform=fig.transFigure)
@@ -430,19 +508,19 @@ def pagina_campana_canal(pdf, agg):
     if resto:
         ot = [suma_por_canal(resto, k) for k in ('ag', 'as_', 'co', 'mon')]
         fila = ['Otras campanas']
-        for i in range(3):
+        for i in range(len(CANALES)):
             fila += [str(ot[0][i]), str(ot[1][i]), str(ot[2][i]), f"{ot[3][i]:,.0f}"]
         filas.append(fila)
     tc = [suma_por_canal(camp_list, k) for k in ('ag', 'as_', 'co', 'mon')]
     fila = ['TOTAL']
-    for i in range(3):
+    for i in range(len(CANALES)):
         fila += [str(tc[0][i]), str(tc[1][i]), str(tc[2][i]), f"{tc[3][i]:,.0f}"]
     filas.append(fila)
 
     bx, by, bw, bh = 0.08, 0.06, 0.84, 0.40
     nrows = 2 + len(filas)
     row_h = bh / nrows
-    widths = [0.19] + [0.0675] * 12
+    widths = [0.19] + [0.0675] * (len(CANALES) * 4)
     xs = [bx]
     for w in widths:
         xs.append(xs[-1] + w * bw)
@@ -464,7 +542,7 @@ def pagina_campana_canal(pdf, agg):
         x1 = xs[1 + i * 4 + 4]
         celda(x0, ytop - row_h, x1 - x0, row_h, crm,
               FONDO_TITULO, 'white', 8, 'bold')
-    etiquetas = ['Ag', 'As', 'Co', 'S/'] * 3
+    etiquetas = ['Ag', 'As', 'Co', 'S/'] * len(CANALES)
     for j, lab in enumerate(etiquetas):
         celda(xs[1 + j], ytop - 2 * row_h, widths[1 + j] * bw, row_h, lab,
               CELESTE, FONDO_TITULO, 7, 'bold')
@@ -477,7 +555,7 @@ def pagina_campana_canal(pdf, agg):
         fw = 'bold' if es_total else 'normal'
         celda(bx, y, widths[0] * bw, row_h, fila[0], fc, tc, 7, fw,
               'left', 0.008)
-        for j in range(12):
+        for j in range(len(CANALES) * 4):
             celda(xs[1 + j], y, widths[1 + j] * bw, row_h, fila[1 + j],
                   fc, tc, 7, fw)
     pdf.savefig(fig); plt.close(fig)
@@ -553,6 +631,14 @@ def pagina_hallazgos(pdf, tot, analitica):
     conv = pct(tot['co'], tot['as_'])
     hallazgos.append(f"La asistencia fue del {asis:.0f}% ({tot['as_']} de {tot['ag']} "
                      f"agendados) y la conversion a compra del {conv:.0f}%.")
+    if tot['no_fueron']:
+        hallazgos.append(f"{tot['no_fueron']} pacientes agendaron pero no fueron a "
+                         f"su cita ({pct(tot['no_fueron'], tot['ag']):.0f}% de los "
+                         'agendados).')
+    if tot['fueron_sin_compra']:
+        hallazgos.append(f"{tot['fueron_sin_compra']} pacientes fueron a su cita pero "
+                         f"no compraron ({pct(tot['fueron_sin_compra'], tot['as_']):.0f}"
+                         '% de los asistentes).')
     top_camp = analitica['camp'].most_common(1)
     if top_camp:
         c, n = top_camp[0]
@@ -614,22 +700,34 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
                     salida=None):
     """Genera el PDF del reporte y devuelve dict con resumen (reutilizable CLI/web)."""
     global MES, ANIO, D1, D2, FUENTE, SALIDA, tot_ag, tot_as, tot_co, tot_mon
+    global CRM_ORDEN, CANALES, COLOR_CANAL
     MES, ANIO, D1, D2, FUENTE = mes, int(anio), int(desde), int(hasta), fuente
     if salida:
         SALIDA = salida if os.path.isabs(salida) else os.path.join(BASE_DIR, salida)
     agg_tot_crm.clear()
     agg = build_data()
-    tot = dict(ag=0, as_=0, co=0, mon=0.0)
+    if COL.get('ES_BM'):
+        CRM_ORDEN = ['KOMMO', 'WHATSAPP', 'ORGANICO', 'SIN CRM']
+        CANALES = ['KOMMO', 'WHATSAPP', 'ORGANICO']
+    else:
+        CANALES = canales_desde_datos(agg)
+        CRM_ORDEN = CANALES + ['SIN CRM']
+    COLOR_CANAL = {c: PALETA[i % len(PALETA)] for i, c in enumerate(CANALES)}
+    tot = dict(ag=0, as_=0, co=0, mon=0.0, no_fueron=0, fueron_sin_compra=0)
     for d in agg.values():
         tot['ag'] += d['ag']; tot['as_'] += d['as_']
         tot['co'] += d['co']; tot['mon'] += d['mon']
+        tot['no_fueron'] += d['no_fueron']
+        tot['fueron_sin_compra'] += d['fueron_sin_compra']
     for c in CRM_ORDEN:
         sel = {k: v for k, v in agg.items() if k[1] == c}
         if sel:
             agg_tot_crm[c] = dict(ag=sum(v['ag'] for v in sel.values()),
                                   as_=sum(v['as_'] for v in sel.values()),
                                   co=sum(v['co'] for v in sel.values()),
-                                  mon=sum(v['mon'] for v in sel.values()))
+                                  mon=sum(v['mon'] for v in sel.values()),
+                                  no_fueron=sum(v['no_fueron'] for v in sel.values()),
+                                  fueron_sin_compra=sum(v['fueron_sin_compra'] for v in sel.values()))
     tot_ag, tot_as, tot_co, tot_mon = tot['ag'], tot['as_'], tot['co'], tot['mon']
     analitica = datos_analiticos()
     with PdfPages(SALIDA) as pdf:

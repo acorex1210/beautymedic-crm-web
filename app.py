@@ -20,7 +20,7 @@ from typing import Optional
 import openpyxl
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -29,13 +29,38 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import alimentar_maestro as am          # noqa: E402
+import analitica as ana                 # noqa: E402
 import crm_drive as crm                 # noqa: E402
 import crm_plus as cp                   # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
 
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
 REPORTES_DIR = os.environ.get('REPORTES_DIR', os.path.join(DATA_DIR, 'reportes'))
+BACKUP_DIR = os.environ.get('BACKUP_DIR', os.path.join(DATA_DIR, 'backups'))
+MAX_BACKUPS = int(os.environ.get('MAX_BACKUPS', '12'))
 os.makedirs(REPORTES_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def _crear_backup():
+    """Copia maestro y CRM.xlsx a la carpeta de backups, conservando los últimos N."""
+    hecha = []
+    hoy = datetime.now().strftime('%Y%m%d_%H%M%S')
+    for origen, nombre in ((am.ruta_maestro_local(), 'BD DATA.xlsx'),
+                           (os.path.join(am.TMP_DIR, 'CRM.xlsx'), 'CRM.xlsx')):
+        if not os.path.exists(origen):
+            continue
+        destino = os.path.join(BACKUP_DIR, f'{hoy}_{nombre}')
+        shutil.copy2(origen, destino)
+        hecha.append(destino)
+    for f in sorted(os.listdir(BACKUP_DIR)):
+        if not f.lower().endswith('.xlsx'):
+            continue
+        versiones = sorted(g for g in os.listdir(BACKUP_DIR)
+                           if g.endswith(f[f.find('_'):]))
+        while len(versiones) > MAX_BACKUPS:
+            os.remove(os.path.join(BACKUP_DIR, versiones.pop(0)))
+    return hecha
 
 _bloqueo = threading.Lock()
 
@@ -56,6 +81,10 @@ def _html_index():
     for k, v in BRAND.items():
         html = html.replace('{{' + k + '}}', v)
     return html
+
+
+app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'static')),
+          name='static')
 
 
 def _nombre_reporte(mes, anio, desde, hasta):
@@ -168,6 +197,19 @@ class NotaReq(BaseModel):
     texto: str = ''
 
 
+class CuotaReq(BaseModel):
+    paciente: str = ''
+    telefono: str = ''
+    tratamiento: str = ''
+    monto_total: Optional[float] = None
+    n_cuotas: Optional[int] = None
+    pagadas: Optional[int] = None
+    monto_cuota: Optional[float] = None
+    prox_fecha: str = ''
+    estado: str = ''
+    nota: str = ''
+
+
 MESES_VALIDOS = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
                  'SET', 'SEP', 'OCT', 'NOV', 'DIC'}
 
@@ -193,14 +235,13 @@ async def index():
 
 @app.get('/api/estado')
 async def estado():
-    m_ok = os.path.exists(am.MAESTRO)
+    maestro_ok = am.MAESTRO_FID or os.path.exists(am.ruta_maestro_local())
     return {
         'credenciales_ok': am.credenciales_disponibles(),
         'credenciales': am.CREDENCIALES,
-        'maestro_ok': m_ok,
-        'maestro': am.MAESTRO,
-        'maestro_modificado': (datetime.fromtimestamp(os.path.getmtime(am.MAESTRO))
-                               .strftime('%d/%m/%Y %H:%M') if m_ok else None),
+        'maestro_ok': maestro_ok,
+        'maestro': am.MAESTRO_FID or am.MAESTRO,
+        'maestro_modificado': None,
         'agendados_ok': os.path.exists(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')),
         'venta_ok': os.path.exists(os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx')),
         'meses': list(rv.NOMBRES_MES.keys()),
@@ -220,7 +261,7 @@ async def generar_reporte(data: ReporteReq):
         raise HTTPException(400, 'Rango de días inválido')
     if data.fuente not in ('maestro', 'auto'):
         raise HTTPException(400, 'Fuente inválida')
-    if not os.path.exists(am.MAESTRO):
+    if not (am.MAESTRO_FID or os.path.exists(am.ruta_maestro_local())):
         raise HTTPException(400, 'No hay maestro BD DATA.xlsx. Súbelo primero.')
     with _bloqueo:
         if data.fuente == 'auto':
@@ -254,6 +295,10 @@ async def generar_reporte(data: ReporteReq):
                     verificacion['coincide'] = False
         except Exception:  # noqa: BLE001
             verificacion = None
+    try:
+        _crear_backup()
+    except Exception:  # noqa: BLE001
+        pass
     return {'ok': True, 'archivo': os.path.basename(res['archivo']),
             'url': f'/api/reporte/download/{os.path.basename(res["archivo"])}',
             'totales': res['totales'], 'por_crm': res['por_crm'],
@@ -305,20 +350,214 @@ async def subir_maestro(file: UploadFile = File(...)):
         wb.close()
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f'Archivo inválido: {e}')
-    os.makedirs(os.path.dirname(am.MAESTRO) or '.', exist_ok=True)
-    if os.path.exists(am.MAESTRO):
-        backup = am.MAESTRO.replace('.xlsx', f'_pre_upload_{datetime.now():%Y%m%d_%H%M%S}.xlsx')
-        shutil.copy2(am.MAESTRO, backup)
-    with open(am.MAESTRO, 'wb') as f:
+    ruta = os.path.join(am.TMP_DIR, 'BD DATA_upload.xlsx')
+    with open(ruta, 'wb') as f:
         f.write(contenido)
-    return {'ok': True, 'backup': backup if 'backup' in dir() else None}
+    am.subir_maestro(ruta)
+    return {'ok': True, 'maestro': am.MAESTRO_FID or am.MAESTRO}
 
 
 @app.get('/api/maestro/download')
 async def descargar_maestro():
-    if not os.path.exists(am.MAESTRO):
+    ruta = am.ruta_maestro_local()
+    if not os.path.exists(ruta):
         raise HTTPException(404, 'No hay maestro subido')
-    return FileResponse(am.MAESTRO, filename='BD DATA.xlsx')
+    return FileResponse(ruta, filename='BD DATA.xlsx')
+
+
+# ============================================================
+# Analítica interactiva (maestro BD DATA)
+# ============================================================
+def _filtros(mes: str = '', anio: str = '', desde: str = '', hasta: str = ''):
+    m = (mes or 'AGO').upper().replace('SEP', 'SET')
+    if m not in rv.NOMBRES_MES:
+        raise HTTPException(400, f'Mes inválido: {m}')
+    try:
+        a = int(anio) if anio not in (None, '') else datetime.now().year
+        d = int(desde) if desde not in (None, '') else 1
+        h = int(hasta) if hasta not in (None, '') else 31
+    except (TypeError, ValueError):
+        raise HTTPException(400, 'Parámetros numéricos inválidos')
+    if not (1 <= d <= 31 and 1 <= h <= 31 and d <= h):
+        raise HTTPException(400, 'Rango de días inválido')
+    return m, a, d, h
+
+
+@app.get('/api/analitica/kpis')
+async def analitica_kpis(mes: str = '', anio: str = '',
+                         desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.kpis(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular KPIs: {e}')
+
+
+@app.get('/api/analitica/serie')
+async def analitica_serie(mes: str = '', anio: str = '',
+                          desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.serie_diaria(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular la serie: {e}')
+
+
+@app.get('/api/analitica/perfil')
+async def analitica_perfil(mes: str = '', anio: str = '',
+                           desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.perfil(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular el perfil: {e}')
+
+
+@app.get('/api/analitica/comparativo')
+async def analitica_comparativo(mes: str = '', anio: str = '',
+                                desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.comparativo(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular el comparativo: {e}')
+
+
+@app.get('/api/analitica/recurrentes')
+async def analitica_recurrentes(mes: str = '', anio: str = '',
+                                desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.recurrentes(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudieron calcular recurrentes: {e}')
+
+
+@app.get('/api/analitica/historico')
+async def analitica_historico():
+    try:
+        return {'ok': True, 'meses': ana.ventas_por_mes()}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular el histórico: {e}')
+
+
+@app.get('/api/analitica/paciente')
+async def analitica_paciente(telefono: str = '', dni: str = ''):
+    if not telefono and not dni:
+        raise HTTPException(400, 'Indica teléfono o DNI del paciente')
+    try:
+        citas = ana.historial_paciente(telefono, dni or None)
+        notas = cp.leer_notas(telefono=telefono) if telefono else []
+        nombre = citas[0].get('nombre') if citas else ''
+        return {'ok': True, 'telefono': telefono, 'nombre': nombre,
+                'citas': citas, 'notas': notas}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el historial del paciente: {e}')
+
+
+@app.get('/api/analitica/reactivar')
+async def analitica_reactivar(meses: int = 3):
+    try:
+        return {'ok': True, 'pacientes': ana.pacientes_a_reactivar(meses)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular pacientes a reactivar: {e}')
+
+
+# ============================================================
+# Backups y exportaciones
+# ============================================================
+@app.post('/api/backup')
+async def hacer_backup():
+    try:
+        hechas = _crear_backup()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo hacer el backup: {e}')
+    return {'ok': True, 'backups': [os.path.basename(h) for h in hechas]}
+
+
+@app.get('/api/backups')
+async def listar_backups():
+    out = []
+    for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        if f.lower().endswith('.xlsx'):
+            p = os.path.join(BACKUP_DIR, f)
+            out.append({'archivo': f, 'modificado': datetime.fromtimestamp(
+                os.path.getmtime(p)).strftime('%d/%m/%Y %H:%M'),
+                'tamano_kb': round(os.path.getsize(p) / 1024, 1)})
+    return {'ok': True, 'backups': out}
+
+
+@app.get('/api/backup/download/{archivo}')
+async def descargar_backup(archivo: str):
+    p = os.path.join(BACKUP_DIR, os.path.basename(archivo))
+    if not os.path.isfile(p):
+        raise HTTPException(404, 'Backup no encontrado')
+    return FileResponse(p, filename=os.path.basename(p))
+
+
+def _csv_response(columnas, filas, nombre):
+    import csv
+    import io as _io
+    buf = _io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(columnas)
+    for f in filas:
+        w.writerow([f.get(c) if not isinstance(f.get(c), (int, float)) or
+                    isinstance(f.get(c), float) and f.get(c) == int(f.get(c))
+                    else f.get(c) for c in columnas])
+    return Response(buf.getvalue().encode('utf-8-sig'),
+                    media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition':
+                             f'attachment; filename="{nombre}.csv"'})
+
+
+@app.get('/api/exportar/{tipo}')
+async def exportar_csv(tipo: str):
+    tipo = tipo.lower()
+    try:
+        if tipo == 'agendados':
+            d = crm.leer_agendados()
+            mapa = {'C': 'DIA', 'D': 'MES', 'E': 'AÑO', 'G': 'NOMBRE',
+                    'H': 'RED SOCIAL', 'I': 'TELEFONO', 'K': 'AGENDADO POR',
+                    'L': 'DIA2', 'M': 'MES3', 'N': 'AÑO4', 'O': 'CAMPAÑA',
+                    'P': 'HORA', 'Q': 'ASISTENCIA'}
+            filas = [{mapa.get(k, k): v for k, v in f.items()}
+                     for f in d['filas']]
+            cols = list(mapa.values())
+            return _csv_response(cols, filas, 'agendados')
+        if tipo == 'venta':
+            d = crm.leer_venta()
+            filas = [f for v in d['hojas'].values() for f in v['filas']]
+            cols = sorted(filas[0].keys()) if filas else ['A']
+            return _csv_response(cols, filas, 'venta_diaria')
+        if tipo == 'cuotas':
+            return _csv_response(
+                ['ID', 'Paciente', 'Telefono', 'Tratamiento', 'Monto total',
+                 'Cuotas', 'Pagadas', 'Saldo', 'Prox fecha', 'Estado'],
+                [{'ID': c['id'], 'Paciente': c['paciente'], 'Telefono': c['telefono'],
+                  'Tratamiento': c['tratamiento'], 'Monto total': c['monto_total'],
+                  'Cuotas': c['n_cuotas'], 'Pagadas': c['pagadas'],
+                  'Saldo': c['saldo'], 'Prox fecha': c['prox_fecha'],
+                  'Estado': c['estado']} for c in cp.leer_cuotas()],
+                'cuotas')
+        if tipo == 'pacientes':
+            filas = cp.leer_pacientes()
+            cols = ['nombre', 'telefono', 'correo', 'crm', 'campana', 'citas',
+                    'compras', 'total', 'proxima_cita', 'ultima_actividad', 'notas']
+            return _csv_response(cols, filas, 'pacientes')
+        if tipo == 'analitica':
+            return _csv_response(
+                ['Metrica', 'Actual', 'Mes anterior'],
+                [{'Metrica': m, 'Actual': v, 'Mes anterior': ' '}
+                 for m, v in ana.kpis('AGO', datetime.now().year, 1, 31).items()],
+                'analitica')
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo exportar: {e}')
+    raise HTTPException(404, f'Tipo no soportado: {tipo}')
 
 
 # ============================================================
@@ -506,6 +745,66 @@ async def crm_notas_nueva(data: NotaReq):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo guardar la nota (Drive): {e}')
     return {'ok': True, 'nota': res}
+
+
+# ============================================================
+# CRM Plus: Cuotas / pagos a plazos
+# ============================================================
+@app.get('/api/crm/cuotas')
+async def crm_cuotas(estado: str = '', telefono: str = ''):
+    try:
+        return {'ok': True, 'cuotas': cp.leer_cuotas(
+            estado=estado or None, telefono=telefono or None)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudieron leer las cuotas (Drive): {e}')
+
+
+@app.post('/api/crm/cuotas')
+async def crm_cuotas_nueva(data: CuotaReq):
+    if not data.paciente and not data.telefono:
+        raise HTTPException(400, 'Indica el paciente o teléfono')
+    if data.monto_total is not None and data.monto_total <= 0:
+        raise HTTPException(400, 'El monto total debe ser mayor a 0')
+    try:
+        res = cp.crear_cuota(data.model_dump(exclude_unset=True))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo guardar la cuota (Drive): {e}')
+    return {'ok': True, 'cuota': res}
+
+
+@app.patch('/api/crm/cuotas/{cid}')
+async def crm_cuotas_actualizar(cid: int, data: CuotaReq):
+    try:
+        res = cp.actualizar_cuota(cid, data.model_dump(exclude_unset=True))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo actualizar la cuota (Drive): {e}')
+    if not res:
+        raise HTTPException(404, 'Cuota no encontrada')
+    return {'ok': True, 'cuota': res}
+
+
+@app.post('/api/crm/cuotas/{cid}/pago')
+async def crm_cuotas_pago(cid: int):
+    try:
+        res = cp.registrar_pago_cuota(cid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo registrar el pago (Drive): {e}')
+    if not res:
+        raise HTTPException(404, 'Cuota no encontrada')
+    if res.get('error'):
+        raise HTTPException(400, res['error'])
+    return {'ok': True, 'cuota': res}
+
+
+@app.delete('/api/crm/cuotas/{cid}')
+async def crm_cuotas_borrar(cid: int):
+    try:
+        ok = cp.borrar_cuota(cid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar la cuota (Drive): {e}')
+    if not ok:
+        raise HTTPException(404, 'Cuota no encontrada')
+    return {'ok': True}
 
 
 # ============================================================

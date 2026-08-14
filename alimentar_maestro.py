@@ -20,10 +20,11 @@ Configuración vía variables de entorno (útiles para despliegue web):
   CREDENCIALES           ruta al JSON de la cuenta de servicio (default ~/credenciales-bm.json)
   GDRIVE_CREDENTIALS_JSON contenido del JSON (JSON crudo o base64; se escribe en CREDENCIALES)
   GOOGLE_APPLICATION_CREDENTIALS ruta a un archivo JSON, contenido crudo o base64 (alternativa)
-  AGENDADOS_FID          id de archivo AGENDADOS en Drive
-  VENTA_FID              id de archivo VENTA DIARIA en Drive
-  MAESTRO_PATH           ruta al maestro BD DATA.xlsx
-  TMP_DIR                directorio temporal para descargas y simulaciones
+   AGENDADOS_FID          id de archivo AGENDADOS en Drive
+   VENTA_FID              id de archivo VENTA DIARIA en Drive
+   MAESTRO_PATH           ruta local al maestro BD DATA.xlsx (sin MAESTRO_FID)
+   MAESTRO_FID            id del maestro BD DATA.xlsx en Drive (lo hace portable)
+   TMP_DIR                directorio temporal para descargas y simulaciones
 """
 import argparse
 import base64
@@ -40,7 +41,7 @@ from datetime import datetime
 import openpyxl
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # ============================================================
 # CONFIGURACIÓN
@@ -54,6 +55,9 @@ AGENDADOS_FID = os.environ.get('AGENDADOS_FID', '12fWJpIBpr3GH7Yj57iyyndm_m37rr7
 VENTA_FID = os.environ.get('VENTA_FID', '1LHtZk0vAGgnyOsODwU6f4LvtUoQxWNis')
 MAESTRO = os.environ.get('MAESTRO_PATH',
                          os.path.expanduser('~/Downloads/BD DATA.xlsx'))
+MAESTRO_FID = os.environ.get('MAESTRO_FID', '').strip()
+MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+SCOPE_RW = 'https://www.googleapis.com/auth/drive'
 TMP_DIR = os.environ.get('TMP_DIR', _TMP_DEFAULT)
 os.makedirs(TMP_DIR, exist_ok=True)
 
@@ -182,7 +186,10 @@ def txt(x):
 # DESCARGA DESDE DRIVE
 # ============================================================
 def descargar(fid, nombre, forzar=False):
-    """Descarga de Drive a TMP_DIR (o reutiliza la copia local si existe)."""
+    """Descarga de Drive a TMP_DIR (o reutiliza la copia local si existe).
+
+    Si el archivo es un Google Sheets (Docs Editors), lo exporta a .xlsx.
+    """
     ruta = os.path.join(TMP_DIR, f'{nombre}.xlsx')
     if os.path.exists(ruta) and not forzar:
         return ruta
@@ -194,7 +201,11 @@ def descargar(fid, nombre, forzar=False):
     creds = service_account.Credentials.from_service_account_file(
         CREDENCIALES, scopes=['https://www.googleapis.com/auth/drive.readonly'])
     drive = build('drive', 'v3', credentials=creds)
-    req = drive.files().get_media(fileId=fid)
+    meta = drive.files().get(fileId=fid, fields='mimeType').execute()
+    if meta.get('mimeType') == MIME_XLSX:
+        req = drive.files().get_media(fileId=fid)
+    else:
+        req = drive.files().export(fileId=fid, mimeType=MIME_XLSX)
     with open(ruta, 'wb') as fh:
         dl = MediaIoBaseDownload(fh, req)
         done = False
@@ -202,6 +213,55 @@ def descargar(fid, nombre, forzar=False):
             _, done = dl.next_chunk()
     print(f'  Descargado {nombre} -> {os.path.basename(ruta)}')
     return ruta
+
+
+def _drive_rw():
+    """Cliente Drive con scope de escritura (subidas)."""
+    garantizar_credenciales()
+    if not os.path.exists(CREDENCIALES):
+        raise FileNotFoundError(
+            f'No hay credenciales en {CREDENCIALES}. Configura CREDENCIALES o '
+            'GDRIVE_CREDENTIALS_JSON.')
+    creds = service_account.Credentials.from_service_account_file(
+        CREDENCIALES, scopes=[SCOPE_RW])
+    return build('drive', 'v3', credentials=creds)
+
+
+def subir_archivo(fid, ruta):
+    """Sube el contenido de ruta a Drive conservando el mismo file id."""
+    drv = _drive_rw()
+    with open(ruta, 'rb') as fh:
+        data = fh.read()
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=MIME_XLSX,
+                              resumable=False)
+    drv.files().update(fileId=fid, media_body=media).execute()
+
+
+# ============================================================
+# MAESTRO PORTABLE (Drive o archivo local)
+# ============================================================
+def ruta_maestro_local(forzar=False):
+    """Devuelve una ruta local válida al maestro BD DATA.xlsx.
+
+    Si MAESTRO_FID está configurado, descarga de Drive a TMP_DIR
+    (fuente de verdad en Drive; compatible con hosts sin disco
+    persistente como Cloud Run). Si no, usa MAESTRO_PATH como siempre.
+    """
+    if MAESTRO_FID:
+        return descargar(MAESTRO_FID, 'BD DATA', forzar=forzar)
+    return MAESTRO
+
+
+def subir_maestro(ruta):
+    """Persiste el maestro: sube a Drive si hay MAESTRO_FID, si no lo copia
+    localmente a MAESTRO_PATH."""
+    if MAESTRO_FID:
+        subir_archivo(MAESTRO_FID, ruta)
+    else:
+        if os.path.abspath(ruta) == os.path.abspath(MAESTRO):
+            return
+        os.makedirs(os.path.dirname(MAESTRO) or '.', exist_ok=True)
+        shutil.copy2(ruta, MAESTRO)
 
 
 # ============================================================
@@ -259,6 +319,15 @@ def leer_maestro(path):
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb['BD DATA']
     return ws
+
+
+def _maestro_formato_bm(ws):
+    """True si el maestro usa el formato BM (tiene cabecera CRM en fila 4)."""
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=4, column=c).value
+        if isinstance(v, str) and v.strip().upper() == 'CRM':
+            return True
+    return False
 
 
 def _rango_pivot(path, nombre_pivot):
@@ -712,7 +781,7 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
     Si aplicar=True, respalda y escribe los cambios en el maestro.
     """
     resultado = {'ok': True, 'aplicar': aplicar, 'errores': [],
-                 'backup': None, 'maestro': MAESTRO,
+                 'backup': None, 'maestro': None,
                  'agendados': None, 'venta_diaria': None}
     try:
         if sin_descarga:
@@ -722,7 +791,9 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
             ag = descargar(AGENDADOS_FID, 'AGENDADOS', forzar=True)
             ve = descargar(VENTA_FID, 'VENTA_DIARIA', forzar=True)
 
-        maestro_ws = leer_maestro(MAESTRO)
+        maestro = ruta_maestro_local(forzar=True)
+        resultado['maestro'] = maestro
+        maestro_ws = leer_maestro(maestro)
         agendados = leer_agendados(ag)
         venta = leer_venta(ve)
 
@@ -734,11 +805,19 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
         resultado['venta_diaria'] = ve
 
         if aplicar:
-            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup = MAESTRO.replace('.xlsx', f'_backup_{ts}.xlsx')
-            shutil.copy2(MAESTRO, backup)
-            resultado['backup'] = backup
-            aplicar_xml(MAESTRO, MAESTRO, calc.new_rows, calc.updates)
+            es_bm = _maestro_formato_bm(maestro_ws)
+            if not es_bm:
+                resultado['aviso'] = (
+                    'Formato maestro sin columna CRM (Derma Essenza): el sync '
+                    'escribe columnas del formato BM, así que NO se aplicaron '
+                    'cambios al maestro.')
+            else:
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                backup = maestro.replace('.xlsx', f'_backup_{ts}.xlsx')
+                shutil.copy2(maestro, backup)
+                resultado['backup'] = backup
+                aplicar_xml(maestro, maestro, calc.new_rows, calc.updates)
+                subir_maestro(maestro)
     except Exception as e:  # noqa: BLE001
         resultado['ok'] = False
         resultado['errores'].append(str(e))
@@ -768,7 +847,7 @@ def main():
     else:
         print('4) Aplicando cambios (con backup)...')
         print(f'  Backup: {resultado["backup"]}')
-        print(f'  Maestro actualizado: {MAESTRO}')
+        print(f'  Maestro actualizado: {resultado.get("maestro") or MAESTRO}')
 
 
 if __name__ == '__main__':

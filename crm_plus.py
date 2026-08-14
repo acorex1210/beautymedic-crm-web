@@ -41,6 +41,9 @@ HOJAS = {
     'TAREAS': ['ID', 'TITULO', 'TIPO', 'FECHA', 'HORA', 'ESTADO', 'PRIORIDAD',
                'CONTACTO', 'NOTA'],
     'NOTAS': ['ID', 'TELEFONO', 'CONTACTO', 'FECHA', 'TIPO', 'TEXTO'],
+    'CUOTAS': ['ID', 'PACIENTE', 'TELEFONO', 'TRATAMIENTO', 'MONTO_TOTAL',
+               'N_CUOTAS', 'PAGADAS', 'MONTO_CUOTA', 'PROX_FECHA', 'ESTADO',
+               'NOTA'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -51,6 +54,9 @@ TAREA_COLS = {'id': 'A', 'titulo': 'B', 'tipo': 'C', 'fecha': 'D', 'hora': 'E',
               'estado': 'F', 'prioridad': 'G', 'contacto': 'H', 'nota': 'I'}
 NOTA_COLS = {'id': 'A', 'telefono': 'B', 'contacto': 'C', 'fecha': 'D',
              'tipo': 'E', 'texto': 'F'}
+CUOTA_COLS = {'id': 'A', 'paciente': 'B', 'telefono': 'C', 'tratamiento': 'D',
+              'monto_total': 'E', 'n_cuotas': 'F', 'pagadas': 'G',
+              'monto_cuota': 'H', 'prox_fecha': 'I', 'estado': 'J', 'nota': 'K'}
 
 _lock = threading.RLock()
 
@@ -588,3 +594,136 @@ def leer_hoy():
         'tareas_hoy': tareas_hoy,
         'tareas_vencidas': tareas_vencidas,
     }
+
+
+# ============================================================
+# CRM Plus: Cuotas / pagos a plazos
+# ============================================================
+def _cuota_named(f):
+    return {
+        'id': am.num(f.get('A')),
+        'paciente': f.get('B'),
+        'telefono': f.get('C'),
+        'tratamiento': f.get('D'),
+        'monto_total': am.num(f.get('E')),
+        'n_cuotas': am.num(f.get('F')),
+        'pagadas': am.num(f.get('G')),
+        'monto_cuota': am.num(f.get('H')),
+        'prox_fecha': f.get('I'),
+        'estado': f.get('J') or 'PENDIENTE',
+        'nota': f.get('K'),
+    }
+
+
+def _aplicar_cuota(f, d):
+    for campo, letra in (('paciente', 'B'), ('telefono', 'C'),
+                         ('tratamiento', 'D'), ('prox_fecha', 'I'),
+                         ('nota', 'K')):
+        if campo in d and d[campo] not in (None, ''):
+            f[letra] = str(d[campo]).strip()
+    for campo, letra in (('monto_total', 'E'), ('n_cuotas', 'F'),
+                         ('pagadas', 'G'), ('monto_cuota', 'H')):
+        if campo in d and d[campo] not in (None, ''):
+            try:
+                f[letra] = float(d[campo])
+            except (TypeError, ValueError):
+                pass
+    if 'estado' in d:
+        e = str(d.get('estado') or '').upper().strip()
+        if e in ('PENDIENTE', 'PAGADO', 'ATRASADO'):
+            f['J'] = e
+
+
+def _estado_cuota(cuota):
+    """Recalcula estado según cuotas pagadas y fecha de pago."""
+    n = cuota['n_cuotas'] or 0
+    pag = cuota['pagadas'] or 0
+    if n and pag >= n:
+        return 'PAGADO'
+    try:
+        prox = datetime.strptime(cuota['prox_fecha'], '%d/%m/%Y').date()
+    except (TypeError, ValueError):
+        prox = None
+    if prox is not None and prox < datetime.now(TZ).date():
+        return 'ATRASADO'
+    return 'PENDIENTE'
+
+
+def leer_cuotas(estado=None, telefono=None):
+    filas = _leer_hoja('CUOTAS')
+    out = []
+    for f in filas:
+        c = _cuota_named(f)
+        if not c['pagadas']:
+            c['pagadas'] = 0
+        if not c['n_cuotas']:
+            c['n_cuotas'] = 0
+        c['saldo'] = (c['monto_total'] or 0) - (c['monto_cuota'] or 0) * c['pagadas']
+        c['estado'] = _estado_cuota(c)
+        out.append(c)
+    if estado:
+        e = str(estado).upper().strip()
+        out = [c for c in out if c['estado'] == e]
+    if telefono:
+        tel = re.sub(r'\D', '', str(telefono))
+        out = [c for c in out if c['telefono'] and tel in str(c['telefono'])]
+    out.sort(key=lambda c: c['estado'] != 'ATRASADO')  # atrasados primero
+    return out
+
+
+def crear_cuota(datos):
+    with _lock:
+        filas = _leer_hoja('CUOTAS')
+        f = {'A': _siguiente_id(filas)}
+        _aplicar_cuota(f, datos)
+        f['F'] = f.get('F') or 1
+        f['G'] = f.get('G') or 0
+        if not f.get('H') and f.get('E') and f['F']:
+            f['H'] = float(f['E']) / float(f['F'])
+        f['J'] = f.get('J') or 'PENDIENTE'
+        filas.append(f)
+        _reescribir('CUOTAS', filas)
+        c = _cuota_named(f)
+        c['saldo'] = (c['monto_total'] or 0) - (c['monto_cuota'] or 0) * (c['pagadas'] or 0)
+        c['estado'] = _estado_cuota(c)
+        return c
+
+
+def registrar_pago_cuota(cid):
+    """Marca una cuota adicional como pagada."""
+    with _lock:
+        filas = _leer_hoja('CUOTAS')
+        for f in filas:
+            if am.num(f.get('A')) == cid:
+                pagadas = am.num(f.get('G')) or 0
+                n = am.num(f.get('F')) or 0
+                if pagadas >= n:
+                    return {'error': 'La cuota ya está pagada'}
+                f['G'] = pagadas + 1
+                c = _cuota_named(f)
+                c['saldo'] = (c['monto_total'] or 0) - (c['monto_cuota'] or 0) * (pagadas + 1)
+                c['estado'] = _estado_cuota(c)
+                _reescribir('CUOTAS', filas)
+                return c
+    return None
+
+
+def actualizar_cuota(cid, cambios):
+    with _lock:
+        filas = _leer_hoja('CUOTAS')
+        for f in filas:
+            if am.num(f.get('A')) == cid:
+                _aplicar_cuota(f, cambios)
+                _reescribir('CUOTAS', filas)
+                return _cuota_named(f)
+    return None
+
+
+def borrar_cuota(cid):
+    with _lock:
+        filas = _leer_hoja('CUOTAS')
+        nuevas = [f for f in filas if am.num(f.get('A')) != cid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('CUOTAS', nuevas)
+        return True
