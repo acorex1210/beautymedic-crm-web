@@ -570,13 +570,20 @@ def _col_order(filas):
     return sorted(cols, key=lambda c: openpyxl.utils.column_index_from_string(c))
 
 
-def _valores_maestro():
-    """Valores únicos de CAMPAÑA y RED SOCIAL desde la pestaña 'DATA' del
-    archivo AGENDADOS (la fuente de los dropdowns en Drive). La cabecera
-    está en la fila 3, con RED SOCIAL y CAMPAÑAS; los valores van desde
-    la fila 4 en adelante."""
+def _normalizar_cabecera(v):
+    return (str(v or '').strip().upper()
+            .replace('Ñ', 'N').replace('Á', 'A').replace('É', 'E')
+            .replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U'))
+
+
+def _valores_data(ruta, mapa):
+    """Valores únicos desde la pestaña 'DATA' de un archivo de Drive.
+
+    ``mapa`` asocia cabecera normalizada -> clave. Detecta la fila de
+    cabecera (la que contiene las columnas buscadas) y lee los valores
+    de las filas siguientes, igual que los dropdowns de la hoja en Drive.
+    """
     try:
-        ruta = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
         if not os.path.exists(ruta):
             return {}
         wb = openpyxl.load_workbook(ruta, data_only=True, read_only=True)
@@ -585,31 +592,25 @@ def _valores_maestro():
             return {}
         filas_ws = list(ws.iter_rows(min_row=1, max_row=8, values_only=True))
         cab = None
-        cols_campana = cols_red = None
+        cols = {}
         for r, fila in enumerate(filas_ws, start=1):
-            cabeceras = {str(v or '').strip().upper()
-                         .replace('Ñ', 'N').replace('Á', 'A').replace('É', 'E')
-                         .replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U'): c
+            cabeceras = {_normalizar_cabecera(v): c
                          for c, v in enumerate(fila, start=1)}
-            if 'CAMPAÑAS'.replace('Ñ', 'N') in cabeceras:
+            encontradas = {k: cabeceras[k] for k in mapa if k in cabeceras}
+            if encontradas:
                 cab = r
-                cols_campana = cabeceras['CAMPAÑAS'.replace('Ñ', 'N')]
-                cols_red = cabeceras.get('RED SOCIAL')
+                cols = encontradas
                 break
         if cab is None:
             return {}
-        campanas = set()
-        redes = set()
-        for r, fila in enumerate(ws.iter_rows(min_row=cab + 1, values_only=True),
-                                 start=cab + 1):
-            c = fila[cols_campana - 1] if cols_campana <= len(fila) else None
-            if isinstance(c, str) and c.strip():
-                campanas.add(c.strip())
-            if cols_red and cols_red <= len(fila):
-                h = fila[cols_red - 1]
-                if isinstance(h, str) and h.strip():
-                    redes.add(h.strip())
-        return {'campana': sorted(campanas), 'red_social': sorted(redes)}
+        unicos = {k: set() for k in cols}
+        for fila in ws.iter_rows(min_row=cab + 1, values_only=True):
+            for k, c in cols.items():
+                if c <= len(fila):
+                    v = fila[c - 1]
+                    if isinstance(v, str) and v.strip():
+                        unicos[k].add(v.strip())
+        return {mapa[k]: sorted(vals) for k, vals in unicos.items()}
     except Exception:  # noqa: BLE001
         return {}
     finally:
@@ -619,6 +620,27 @@ def _valores_maestro():
             pass
 
 
+def _valores_agendados():
+    """Valores de CAMPAÑA y RED SOCIAL desde la pestaña 'DATA' del archivo
+    AGENDADOS (la fuente de los dropdowns de la hoja en Drive)."""
+    return _valores_data(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx'),
+                         {'CAMPAÑAS'.replace('Ñ', 'N'): 'campana',
+                          'RED SOCIAL': 'red_social'})
+
+
+def _valores_venta():
+    """Valores de los selects de VENTA DIARIA desde la pestaña 'DATA' del
+    archivo VENTA_DIARIA (la fuente de los dropdowns de la hoja en Drive)."""
+    return _valores_data(os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx'),
+                         {'NUEVO/RECURRENTE': 'nuevo',
+                          'DISTRITO/DEPARTAMENTO': 'distrito',
+                          'SEXO': 'sexo',
+                          'TRATAMIENTO': 'tratamiento',
+                          'DOCTOR': 'doctor',
+                          'STATUS': 'status',
+                          'PAGO': 'pago'})
+
+
 @app.get('/api/crm/agendados')
 async def crm_agendados():
     try:
@@ -626,12 +648,10 @@ async def crm_agendados():
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo leer AGENDADOS de Drive: {e}')
     valores = crm.valores_unicos_agendados(data['filas'])
-    maestro = _valores_maestro()
+    extra = _valores_agendados()
     for campo in ('campana', 'red_social'):
-        extra = maestro.get(campo, [])
-        if extra:
-            actuales = set(valores.get(campo, []))
-            valores[campo] = sorted(actuales | set(extra))
+        if extra.get(campo):
+            valores[campo] = sorted(set(valores.get(campo, [])) | set(extra[campo]))
     return {
         'ok': True,
         'filas': data['filas'],
@@ -681,11 +701,16 @@ async def crm_venta():
                  'columnas': v['columnas']}
              for h, v in data['hojas'].items()}
     todas = [f for v in data['hojas'].values() for f in v['filas']]
+    valores = crm.valores_unicos_venta(todas)
+    extra = _valores_venta()
+    for campo in extra:
+        if extra[campo]:
+            valores[campo] = sorted(set(valores.get(campo, [])) | set(extra[campo]))
     return {
         'ok': True,
         'hojas': hojas,
         'descargado': data['descargado'],
-        'valores': crm.valores_unicos_venta(todas),
+        'valores': valores,
     }
 
 

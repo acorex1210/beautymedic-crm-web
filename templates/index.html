@@ -1310,8 +1310,8 @@ async function cargarVenta() {
   const v = VE.valores;
   llenarSelect($('veFiltroDoctor'), v.doctor, 'Doctor: todos');
   llenarSelect($('veFiltroStatus'), limpiarStatus(v.status), 'Status: todos');
-  llenarSelect($('veNuevo'), ['NUEVO', 'RECURRENTE']);
-  llenarSelect($('veSexo'), ['F', 'M']);
+  llenarSelect($('veNuevo'), v.nuevo || ['NUEVO', 'RECURRENTE']);
+  llenarSelect($('veSexo'), v.sexo || ['F', 'M']);
   llenarSelect($('veDistrito'), limpiar(v.distrito));
   llenarSelect($('veTratamiento'), v.tratamiento);
   llenarSelect($('veDoctor'), v.doctor);
