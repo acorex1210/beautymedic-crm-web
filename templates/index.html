@@ -373,6 +373,66 @@
   @keyframes modal-entrada { from { transform: translateY(12px) scale(.985); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
   .toast { background: #172b4d; border-radius: 8px; box-shadow: 0 10px 28px rgba(9,30,66,.24); animation: toast-entrada .2s ease; }
   @keyframes toast-entrada { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* ---------- Móvil ---------- */
+  @media (max-width: 860px) {
+    html { -webkit-text-size-adjust: 100%; }
+    body { overflow-x: hidden; }
+    .app { display: block; min-height: 100dvh; }
+    .sidebar {
+      width: 100%; min-width: 0; height: 64px; min-height: 64px; flex: none;
+      position: sticky; top: 0; z-index: 40; display: flex; align-items: center;
+      padding: 6px 10px; gap: 8px; overflow: hidden;
+    }
+    .logo { flex: 0 0 auto; padding: 0; border: 0; }
+    .logo h1, .logo p { display: none; }
+    .nav {
+      display: flex; flex: 1 1 auto; min-width: 0; gap: 6px; padding: 0;
+      overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav::-webkit-scrollbar { display: none; }
+    .nav a { flex: 0 0 auto; width: auto; margin: 0; padding: 8px 10px; gap: 6px; }
+    .nav a span.lab { display: inline; font-size: 12px; }
+    .nav a .ico { width: 18px; height: 18px; flex-basis: 18px; }
+    .nav .sub, .side-pies { display: none; }
+    .main { min-width: 0; }
+    .topbar { min-height: auto; padding: 13px 16px; align-items: flex-start; }
+    .topbar h2 { font-size: 18px; }
+    .topbar .derecha { width: 100%; gap: 6px; }
+    .contenido { padding: 14px 12px 30px; }
+    .tarjeta { padding: 16px; margin-bottom: 14px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .kpi { padding: 12px 13px; }
+    .kpi .num { font-size: 21px; }
+    .toolbar { gap: 8px; align-items: stretch; }
+    .toolbar .buscar { flex: 1 0 100%; min-width: 0; }
+    .toolbar select { flex: 1 1 140px; width: auto; min-width: 0; }
+    .toolbar .btn { flex: 1 1 auto; justify-content: center; }
+    .tabla-wrap { max-height: 68dvh; border-radius: 8px; }
+    table.drive { font-size: 12px; }
+    table.drive th, table.drive td { padding: 8px 10px; }
+    .tab-horas { overflow-x: auto; padding-bottom: 2px; }
+    .tab-horas button { flex: 0 0 auto; }
+    .charts-wrap { gap: 12px; }
+    .chart-caja { padding: 13px; }
+    .chart-caja .canvas { height: 230px; }
+    .modal-fondo { padding: 10px; align-items: flex-start; }
+    .modal { width: 100%; max-width: none; max-height: calc(100dvh - 20px); margin: 0; padding: 18px 16px; overflow: auto; }
+    .form-grid { grid-template-columns: 1fr; gap: 10px; }
+    .modal .pies { position: sticky; bottom: -18px; padding: 14px 0 2px; margin-top: 14px; background: #fff; flex-wrap: wrap; }
+    .modal .pies .btn { flex: 1 1 130px; justify-content: center; }
+    .lista li { align-items: flex-start; flex-wrap: wrap; }
+    .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
+  }
+
+  @media (max-width: 380px) {
+    .contenido { padding-left: 10px; padding-right: 10px; }
+    .tarjeta { padding: 14px; }
+    .kpis { grid-template-columns: 1fr; }
+    .topbar { padding-left: 14px; padding-right: 14px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   }
@@ -468,7 +528,7 @@
           <div id="resultadoReporte" class="oculto">
             <div class="resumen" id="kpisReporte"></div>
             <div id="tablaCrm"></div>
-            <p><a id="enlacePdf" target="_blank" rel="noopener" class="btn borde pequeno">Descargar PDF del reporte</a></p>
+            <p><a id="enlacePdf" download class="btn borde pequeno">Descargar PDF del reporte</a></p>
             <div id="verificacionReporte"></div>
             <div id="detalleCampañas"></div>
           </div>
@@ -524,6 +584,7 @@
           <div class="kpi verde"><div class="eti">Monto total</div><div class="num" id="kpiVeMonto">-</div></div>
           <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="kpiVeHoy">-</div></div>
           <div class="kpi"><div class="eti">Se realizaron</div><div class="num" id="kpiVeOk">-</div></div>
+          <div class="kpi"><div class="eti">Dejaron pagado</div><div class="num" id="kpiVePagado">-</div></div>
         </div>
 
         <div class="tarjeta">
@@ -1133,7 +1194,7 @@ function pintarAgendados() {
   $('kpiAgConf').textContent = filt.filter(f => /CONFIRMADO/.test(String(f.Q || ''))).length;
 
   const vis = filt.slice(0, agLimite);
-  $('tablaAgendados').innerHTML = '<thead><tr>' + orden.map(c => `<th${col[c] === 'TELEFONO' ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '</tr></thead><tbody>' +
+  $('tablaAgendados').innerHTML = '<thead><tr>' + orden.map(c => `<th${col[c] === 'TELEFONO' ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
     vis.map(f => {
       const esHoy = f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy;
       const style = esHoy ? ' style="background:#fff8e8 !important;"' : '';
@@ -1143,7 +1204,9 @@ function pintarAgendados() {
         if (c === 'Q' || c === 'S') return `<td>${chipAgendado(v)}</td>`;
         if (c === 'I') return `<td class="num">${esc(v)}</td>`;
         return `<td>${esc(v)}</td>`;
-      }).join('') + '</tr>';
+      }).join('') + (Number.isInteger(f._fila)
+        ? `<td><button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></td>`
+        : '<td></td>') + '</tr>';
     }).join('') + '</tbody>';
   $('agMas').innerHTML = filt.length > agLimite
     ? `<button onclick="agLimite+=400;pintarAgendados()">Mostrar más (${filt.length - agLimite} restantes)</button>`
@@ -1156,6 +1219,15 @@ $('agFiltroCampana').addEventListener('change', pintarAgendados);
 $('agFiltroMes').addEventListener('change', pintarAgendados);
 $('btnAgRecargar').addEventListener('click', () => { agLimite = 400; cargarAgendados(); });
 $('btnAgNuevo').addEventListener('click', abrirModalAgendado);
+
+async function borrarAgendado(fila) {
+  if (!confirm('¿Borrar este agendado? Esta acción no se puede deshacer.')) return;
+  try {
+    await api('/api/crm/agendados/' + fila, { method: 'DELETE' });
+    toast('Agendado borrado.', 'okm');
+    agLimite = 400; cargarAgendados();
+  } catch (e) { toast(e.message, 'err'); }
+}
 
 function abrirModalAgendado() {
   $('agDia').value = HOY_D; $('agMes').value = HOY_M; $('agAnio').value = HOY_A;
@@ -1197,12 +1269,26 @@ $('formAgendado').addEventListener('submit', async (e) => {
 });
 
 /* ---------------- VENTA DIARIA ---------------- */
+function statusNormalizado(v) {
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+}
+function esNoRealizado(v) {
+  const s = statusNormalizado(v);
+  return s.includes('NO SE REALIZO') || s.includes('NO ASISTIO');
+}
+function esDejoPagado(v) { return statusNormalizado(v).includes('DEJO PAGADO'); }
+function esRealizado(v) {
+  const s = statusNormalizado(v);
+  return !esNoRealizado(s) && (s.includes('REALIZO') || s.includes('COMPRO') || s.includes('COMPLETA') || s.includes('SESION'));
+}
+function esVentaRegistrada(v) { return esRealizado(v) || esDejoPagado(v); }
+
 function chipStatus(v) {
-  const s = String(v || '').trim().toUpperCase();
+  const s = statusNormalizado(v);
   if (!s) return '';
-  if (s.includes('REALIZO') || s.includes('COMPRO') || s.includes('COMPLETA') || s.includes('SESION')) return `<span class="chip ok">${esc(v)}</span>`;
-  if (s.includes('DEJO PAGADO')) return `<span class="chip ambar">${esc(v)}</span>`;
-  if (s.includes('NO SE REALIZO') || s.includes('NO ASISTIO')) return `<span class="chip bad">${esc(v)}</span>`;
+  if (esNoRealizado(s)) return `<span class="chip bad">${esc(v)}</span>`;
+  if (esRealizado(s)) return `<span class="chip ok">${esc(v)}</span>`;
+  if (esDejoPagado(s)) return `<span class="chip ambar">${esc(v)}</span>`;
   return `<span class="chip gris">${esc(v)}</span>`;
 }
 function chipSexo(v) {
@@ -1259,15 +1345,17 @@ function pintarVenta() {
     return `<button class="${h === veAnioActivo ? 'activo' : ''}" onclick="cambiarAnioVenta('${h}')">Venta ${anio}</button>`;
   }).join('');
   const filt = veFilasActivas();
-  const totalHoy = filt.filter(f => f.B && f.C && f.D && `${f.B}/${f.C}/${f.D}` === `${HOY_D}/${HOY_M}/${HOY_A}`);
-  $('kpiVeTotal').textContent = filt.length;
-  $('kpiVeMonto').textContent = fmtMon(filt.reduce((s, f) => s + (Number(f.O) || 0), 0));
-  $('kpiVeHoy').textContent = totalHoy.length;
-  $('kpiVeOk').textContent = filt.filter(f => /(REALIZO|COMPRO|COMPLETA|SESION)/.test(String(f.N || '').toUpperCase())).length;
+  const ventasRegistradas = filt.filter(f => esVentaRegistrada(f.N));
+  const ventasHoy = ventasRegistradas.filter(f => f.B && f.C && f.D && `${f.B}/${f.C}/${f.D}` === `${HOY_D}/${HOY_M}/${HOY_A}`);
+  $('kpiVeTotal').textContent = ventasRegistradas.length;
+  $('kpiVeMonto').textContent = fmtMon(ventasRegistradas.reduce((s, f) => s + (Number(f.O) || 0), 0));
+  $('kpiVeHoy').textContent = ventasHoy.length;
+  $('kpiVeOk').textContent = ventasRegistradas.filter(f => esRealizado(f.N)).length;
+  $('kpiVePagado').textContent = ventasRegistradas.filter(f => esDejoPagado(f.N)).length;
   $('veNota').textContent = `VENTA DIARIA (Drive) · último refresco ${VE.descargado || '—'}`;
 
   const vis = filt.slice(0, veLimite);
-  $('tablaVenta').innerHTML = '<thead><tr>' + orden.map(c => `<th${(c === 'O' || c === 'Q' || c === 'J') ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '</tr></thead><tbody>' +
+  $('tablaVenta').innerHTML = '<thead><tr>' + orden.map(c => `<th${(c === 'O' || c === 'Q' || c === 'J') ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
     vis.map(f => `<tr>` + orden.map(c => {
       const v = f[c];
       if (v === undefined || v === null || v === '') return '<td></td>';
@@ -1276,7 +1364,9 @@ function pintarVenta() {
       if (c === 'O' || c === 'Q') return `<td class="num mon">${fmtMon(v)}</td>`;
       if (c === 'J') return `<td class="num">${esc(v)}</td>`;
       return `<td>${esc(v)}</td>`;
-    }).join('') + '</tr>').join('') + '</tbody>';
+    }).join('') + (Number.isInteger(f._fila)
+      ? `<td><button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
+      : '<td></td>') + '</tr>').join('') + '</tbody>';
   $('veMas').innerHTML = filt.length > veLimite
     ? `<button onclick="veLimite+=400;pintarVenta()">Mostrar más (${filt.length - veLimite} restantes)</button>`
     : (filt.length === 0 ? '<div class="vacio">Sin resultados con los filtros aplicados.</div>' : '');
@@ -1288,6 +1378,15 @@ $('veFiltroDoctor').addEventListener('change', pintarVenta);
 $('veFiltroStatus').addEventListener('change', pintarVenta);
 $('btnVeRecargar').addEventListener('click', () => { veLimite = 400; cargarVenta(); });
 $('btnVeNuevo').addEventListener('click', abrirModalVenta);
+
+async function borrarVenta(fila, hoja) {
+  if (!confirm('¿Borrar esta venta? Esta acción no se puede deshacer.')) return;
+  try {
+    await api('/api/crm/venta/' + fila + '?hoja=' + encodeURIComponent(hoja), { method: 'DELETE' });
+    toast('Venta borrada.', 'okm');
+    veLimite = 400; cargarVenta();
+  } catch (e) { toast(e.message, 'err'); }
+}
 
 function abrirModalVenta() {
   $('veDia').value = HOY_D; $('veMes').value = HOY_M; $('veAnio').value = HOY_A;
