@@ -328,7 +328,8 @@ async def generar_reporte(data: ReporteReq):
     return {'ok': True, 'archivo': os.path.basename(res['archivo']),
             'url': f'/api/reporte/download/{os.path.basename(res["archivo"])}',
             'totales': res['totales'], 'por_crm': res['por_crm'],
-            'detalle': res['detalle'], 'verificacion': verificacion}
+            'detalle': res['detalle'], 'por_campana_meta': res.get('por_campana_meta', []),
+            'verificacion': verificacion}
 
 
 @app.get('/api/reportes')
