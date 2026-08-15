@@ -60,12 +60,16 @@ MAPA = {
     'ESTADO': 'estado',
     'ENTREGA': 'entrega',
     'ENTREGA DE LA CAMPANA': 'entrega',
+    'CONTACTOS DE MENSAJES TOTALES': 'contactos',
+    'NUEVOS CONTACTOS DE MENSAJES': 'nuevos_contactos',
+    'MENSAJES INICIADOS': 'nuevos_contactos',
+    'MENSAJES INICIADOS (TODO)': 'contactos',
 }
 
 MON = {'presupuesto', 'gasto', 'cpc', 'cpm', 'costo_resultado',
        'costo_conversion', 'valor_conversion'}
 NUM = {'impresiones', 'alcance', 'clics', 'resultados', 'conversiones',
-       'frecuencia', 'roas'}
+       'frecuencia', 'roas', 'contactos', 'nuevos_contactos'}
 TXT = {'campania', 'conjunto', 'anuncio', 'estado', 'entrega'}
 NUMERIC = MON | NUM
 
@@ -241,34 +245,83 @@ def _por_campania(filas):
     agrup = {}
     for f in filas:
         c = f.get('campania') or '—'
+        est = (f.get('entrega') or f.get('estado') or '').strip()
         g = agrup.setdefault(c, {'gasto': 0.0, 'presupuesto': 0.0,
-                                 'impresiones': 0, 'clics': 0,
+                                 'impresiones': 0, 'alcance': 0, 'clics': 0,
                                  'conversiones': 0, 'valor': 0.0,
-                                 'resultados': 0})
+                                 'resultados': 0, 'contactos': 0,
+                                 'nuevos_contactos': 0, 'estado': est})
+        if est:
+            g['estado'] = est
         for k, src in (('gasto', 'gasto'), ('presupuesto', 'presupuesto'),
-                       ('impresiones', 'impresiones'), ('clics', 'clics'),
-                       ('conversiones', 'conversiones'),
+                       ('impresiones', 'impresiones'), ('alcance', 'alcance'),
+                       ('clics', 'clics'), ('conversiones', 'conversiones'),
                        ('valor', 'valor_conversion'),
-                       ('resultados', 'resultados')):
+                       ('resultados', 'resultados'),
+                       ('contactos', 'contactos'),
+                       ('nuevos_contactos', 'nuevos_contactos')):
             v = f.get(src)
             if isinstance(v, (int, float)):
                 g[k] += v
     out = []
     for c, g in agrup.items():
+        gasto = round(g['gasto'], 2)
+        resultados = int(g['resultados'])
+        contactos = int(g['contactos'])
+        nuevos = int(g['nuevos_contactos'])
+        imp = int(g['impresiones'])
+        alc = int(g['alcance'])
+        conv = int(g['conversiones'])
+        valor = round(g['valor'], 2)
+        clics = int(g['clics'])
+        mensajes = nuevos or contactos or 0
         out.append({
             'campania': c,
-            'gasto': round(g['gasto'], 2),
+            'estado': _estado(g['estado']),
+            'gasto': gasto,
             'presupuesto': round(g['presupuesto'], 2),
-            'impresiones': int(g['impresiones']),
-            'clics': int(g['clics']),
-            'conversiones': int(g['conversiones']),
-            'resultados': int(g['resultados']),
-            'valor': round(g['valor'], 2),
-            'cpc': round(g['clics'] and g['gasto'] / g['clics'], 2),
-            'roas': round(g['gasto'] and g['valor'] / g['gasto'], 2),
+            'impresiones': imp,
+            'alcance': alc,
+            'clics': clics,
+            'conversiones': conv,
+            'resultados': resultados,
+            'contactos': contactos,
+            'nuevos_contactos': nuevos,
+            'valor': valor,
+            'costo_resultado': round(resultados and gasto / resultados, 2),
+            'costo_mensaje': round(mensajes and gasto / mensajes, 2),
+            'costo_conversion': round(conv and gasto / conv, 2),
+            'frecuencia': round(alc and imp / alc, 2),
+            'cpm': round(imp and gasto / imp * 1000, 2),
+            'cpc': round(clics and gasto / clics, 2),
+            'roas': round(gasto and valor / gasto, 2),
         })
     out.sort(key=lambda x: x['gasto'], reverse=True)
     return out
+
+
+def _estado(est):
+    s = str(est or '').lower()
+    if s in ('active', 'activa', 'activo', 'entregando', 'entregada', 'on', 'true', '1', 'en entrega'):
+        return 'activa'
+    if s in ('inactive', 'paused', 'en pausa', 'terminada', 'terminado',
+             'archivada', 'archivado', 'off', 'false', '0', 'desactivada'):
+        return 'inactiva'
+    return 'inactiva' if not s else s
+
+
+def _resumen(pc):
+    res = {'activas': {'gasto': 0.0, 'resultados': 0, 'campanas': 0},
+           'inactivas': {'gasto': 0.0, 'resultados': 0, 'campanas': 0}}
+    for c in pc:
+        d = res['activas'] if c['estado'] == 'activa' else res['inactivas']
+        d['gasto'] += c['gasto']
+        d['resultados'] += c['resultados']
+        d['campanas'] += 1
+    for d in res.values():
+        d['gasto'] = round(d['gasto'], 2)
+        d['costo_resultado'] = round(d['resultados'] and d['gasto'] / d['resultados'], 2)
+    return res
 
 
 def parsear(contenido, nombre):
@@ -288,11 +341,13 @@ def parsear(contenido, nombre):
             except Exception:
                 raise ValueError('El archivo no es un CSV ni un Excel de Meta Ads válido')
     filas = _filas_a_dicts(cabeceras, datos)
+    por_campania = _por_campania(filas)
     return {
         'columnas': _columnas(cabeceras),
         'filas': filas,
         'kpis': _kpis(filas),
-        'por_campania': _por_campania(filas),
+        'por_campania': por_campania,
+        'resumen': _resumen(por_campania),
     }
 
 
@@ -332,6 +387,7 @@ def guardar(dir, contenido, nombre):
         'filas': parsed['filas'],
         'kpis': parsed['kpis'],
         'por_campania': parsed['por_campania'],
+        'resumen': parsed['resumen'],
     }
     with open(os.path.join(dir, 'cargas', f'{carga_id}.json'),
               'w', encoding='utf-8') as f:

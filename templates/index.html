@@ -267,6 +267,12 @@
   .me-barra { display: inline-block; width: 64px; height: 8px; background: #e4eaf3; border-radius: 5px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
   .me-barra span { display: block; height: 100%; background: var(--azul3); }
   .me-barra span.full { background: var(--rojo); }
+  .badge-est, .badge-ef { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+  .badge-est.activa, .badge-ef.bueno { background: #e2f7e6; color: #1f9d55; }
+  .badge-est.inactiva { background: #eef0f4; color: #8a93a6; }
+  .badge-ef.malo { background: #fde8e8; color: #d64545; }
+  .badge-ef.medio { background: #fff4d6; color: #b7791f; }
+  .badge-ef.neutro { background: #eef0f4; color: #8a93a6; }
 
   @media (max-width: 860px) {
     .app { flex-direction: column; }
@@ -785,6 +791,8 @@
           <div class="kpi"><div class="eti">CPM</div><div class="num" id="meCpm">-</div></div>
           <div class="kpi verde"><div class="eti">Conversiones</div><div class="num" id="meConversiones">-</div></div>
           <div class="kpi rojo"><div class="eti">Valor conv.</div><div class="num" id="meValor">-</div></div>
+          <div class="kpi verde"><div class="eti">Gasto activas</div><div class="num" id="meGastoActivas">-</div></div>
+          <div class="kpi rojo"><div class="eti">Gasto inactivas</div><div class="num" id="meGastoInactivas">-</div></div>
         </div>
         <div class="tarjeta">
           <div class="toolbar">
@@ -2468,7 +2476,7 @@ function pintarMeSelect() {
   if (meActual && ME.cargas.some(c => c.id === meActual)) $('meSelect').value = meActual;
 }
 function limpiarMeKpis() {
-  ['meGasto', 'mePresupuesto', 'meRoas', 'meResultados', 'meCpc', 'meCpm', 'meConversiones', 'meValor'].forEach(id => { $(id).textContent = '-'; });
+  ['meGasto', 'mePresupuesto', 'meRoas', 'meResultados', 'meCpc', 'meCpm', 'meConversiones', 'meValor', 'meGastoActivas', 'meGastoInactivas'].forEach(id => { $(id).textContent = '-'; });
 }
 async function mostrarMeta() {
   meActual = $('meSelect').value || meActual;
@@ -2489,6 +2497,9 @@ async function mostrarMeta() {
   kpi('meCpm', fmtMon(c.cpm));
   kpi('meConversiones', nf(c.conversiones), 'conversiones');
   kpi('meValor', fmtMon(c.valor_conversion), 'valor_conversion');
+  const resumen = det.resumen || { activas: {}, inactivas: {} };
+  $('meGastoActivas').textContent = fmtMon(resumen.activas.gasto);
+  $('meGastoInactivas').textContent = fmtMon(resumen.inactivas.gasto);
   pintarMeDetalle(det);
 }
 function pintarMeDetalle(det) {
@@ -2497,28 +2508,38 @@ function pintarMeDetalle(det) {
   $('meNota').innerHTML = nota.map(n => `<div>⚠ ${esc(n)}</div>`).join('');
   if (!pc.length) { $('meCuerpo').innerHTML = '<div class="vacio">Este reporte no tiene filas por campaña.</div>'; return; }
   const conDatos = k => pc.some(c => Number(c[k] || 0) !== 0);
+  const estadoBadge = c => c.estado === 'activa'
+    ? '<span class="badge-est activa">Activa</span>'
+    : (c.estado === 'inactiva' ? '<span class="badge-est inactiva">Inactiva</span>' : esc(c.estado));
+  const activas = pc.filter(c => c.estado === 'activa' && Number(c.costo_resultado || 0) > 0);
+  const promCRes = activas.length ? activas.reduce((s, c) => s + c.costo_resultado, 0) / activas.length : 0;
+  const efBadge = c => {
+    const cr = Number(c.costo_resultado || 0);
+    if (!cr || !promCRes) return '<span class="badge-ef neutro">—</span>';
+    if (cr <= promCRes * 0.85) return '<span class="badge-ef bueno">Eficiente</span>';
+    if (cr >= promCRes * 1.15) return '<span class="badge-ef malo">Alto costo</span>';
+    return '<span class="badge-ef medio">Promedio</span>';
+  };
   const cols = [];
-  if (conDatos('presupuesto')) {
-    cols.push({ k: 'presupuesto', tit: 'Presupuesto', mon: true });
-    cols.push({ k: 'pct', tit: '% usado', celda: c => {
-      const pct = c.presupuesto ? Math.min(100, c.gasto / c.presupuesto * 100) : 0;
-      return `<span class="me-barra"><span style="width:${pct}%"${pct >= 100 ? ' class="full"' : ''}></span></span>${pct.toFixed(0)}%`;
-    } });
-  }
-  cols.push({ k: 'gasto', tit: 'Gasto', mon: true });
+  cols.push({ tit: 'Estado', celda: estadoBadge, siempre: true });
+  cols.push({ k: 'gasto', tit: 'Gasto', mon: true, siempre: true });
+  if (conDatos('resultados')) cols.push({ k: 'resultados', tit: 'Leads (resultados)' });
+  if (conDatos('costo_resultado')) cols.push({ k: 'costo_resultado', tit: 'Costo / resultado', mon: true });
+  if (conDatos('contactos')) cols.push({ k: 'contactos', tit: 'Mensajes recibidos' });
+  if (conDatos('costo_mensaje')) cols.push({ k: 'costo_mensaje', tit: 'Costo / mensaje', mon: true });
   if (conDatos('impresiones')) cols.push({ k: 'impresiones', tit: 'Impresiones' });
-  if (conDatos('resultados')) cols.push({ k: 'resultados', tit: 'Resultados' });
-  if (conDatos('conversiones')) cols.push({ k: 'conversiones', tit: 'Conversiones' });
-  if (conDatos('valor')) cols.push({ k: 'valor', tit: 'Valor conv.', mon: true });
-  if (conDatos('cpc')) cols.push({ k: 'cpc', tit: 'CPC', mon: true });
-  if (conDatos('roas')) cols.push({ k: 'roas', tit: 'ROAS', dec: true });
+  if (conDatos('alcance')) cols.push({ k: 'alcance', tit: 'Alcance' });
+  if (conDatos('frecuencia')) cols.push({ k: 'frecuencia', tit: 'Frecuencia', dec: true });
+  if (conDatos('cpm')) cols.push({ k: 'cpm', tit: 'CPM', mon: true });
+  if (conDatos('conversiones')) cols.push({ k: 'conversiones', tit: 'Compras' });
+  if (conDatos('costo_resultado')) cols.push({ tit: 'Efectividad', celda: efBadge });
   const th = cols.map(x => `<th class="${x.mon ? 'num mon' : 'num'}">${x.tit}</th>`).join('');
   const filas = pc.map(row => `<tr><td>${esc(row.campania)}</td>` + cols.map(x => {
     if (x.celda) return `<td class="num">${x.celda(row)}</td>`;
     if (x.mon) return `<td class="num mon">${fmtMon(row[x.k])}</td>`;
     return `<td class="num">${x.dec ? nfD(row[x.k]) : nf(row[x.k])}</td>`;
   }).join('') + '</tr>').join('');
-  $('meCuerpo').innerHTML = `<table class="drive"><thead><tr><th>Campaña</th>${th}</tr></thead><tbody>${filas}</tbody></table>`;
+  $('meCuerpo').innerHTML = `<div style="overflow-x:auto"><table class="drive"><thead><tr><th>Campaña</th>${th}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 async function subirMeta(file) {
   const fd = new FormData();
