@@ -259,6 +259,14 @@
   .item-hoy .info { flex: 1; min-width: 0; }
   .item-hoy .info b { display: block; font-size: 13px; }
   .item-hoy .info small { color: var(--gris); }
+  .item-hoy .acciones-hoy { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .item-hoy .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
+  .co-linea { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .co-linea .co-trat { flex: 1; }
+  .co-linea .co-venta { width: 130px; }
+  .me-barra { display: inline-block; width: 64px; height: 8px; background: #e4eaf3; border-radius: 5px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .me-barra span { display: block; height: 100%; background: var(--azul3); }
+  .me-barra span.full { background: var(--rojo); }
 
   @media (max-width: 860px) {
     .app { flex-direction: column; }
@@ -491,6 +499,10 @@
       <a data-pagina="analitica">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
         <span class="lab">Analítica</span>
+      </a>
+      <a data-pagina="metaads">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span class="lab">Meta Ads</span>
       </a>
     </nav>
     <div class="side-pies" id="estadoPie"></div>
@@ -761,6 +773,33 @@
           <div class="tarjeta"><h3>Pacientes recurrentes</h3><div id="anaRecurrentes"></div></div>
         </div>
       </section>
+
+      <!-- ============ META ADS (import SIN API) ============ -->
+      <section id="pag-metaads" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Gasto total</div><div class="num" id="meGasto">-</div></div>
+          <div class="kpi naranja"><div class="eti">Presupuesto</div><div class="num" id="mePresupuesto">-</div></div>
+          <div class="kpi verde"><div class="eti">ROAS</div><div class="num" id="meRoas">-</div></div>
+          <div class="kpi"><div class="eti">CPC</div><div class="num" id="meCpc">-</div></div>
+          <div class="kpi"><div class="eti">CPM</div><div class="num" id="meCpm">-</div></div>
+          <div class="kpi verde"><div class="eti">Conversiones</div><div class="num" id="meConversiones">-</div></div>
+          <div class="kpi rojo"><div class="eti">Valor conv.</div><div class="num" id="meValor">-</div></div>
+        </div>
+        <div class="tarjeta">
+          <div class="toolbar">
+            <div class="buscar">
+              <label style="font-size:13px;color:var(--gris);">Reporte:</label>
+              <select id="meSelect" style="min-width:280px;"></select>
+            </div>
+            <button class="btn gris" id="btnMeRecargar">Actualizar</button>
+            <button class="btn rojo" id="btnMeBorrar">Borrar</button>
+            <button class="btn verde" id="btnMeSubir">+ Subir reporte</button>
+            <input type="file" id="meFile" accept=".csv,.xlsx" style="display:none;">
+          </div>
+          <div class="nota" id="meNota"></div>
+          <div id="meCuerpo"><div class="vacio">Sube un reporte exportado de Meta Ads Manager (CSV o Excel). No usa API: descargas el archivo desde Ads Manager y lo subes aquí.</div></div>
+        </div>
+      </section>
     </div>
   </div>
 </div>
@@ -938,6 +977,46 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ============ MODAL REPROGRAMAR CITA ============ -->
+<div class="modal-fondo" id="modalReprogramar">
+  <div class="modal">
+    <div class="cab"><h3>Reprogramar cita</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="form-grid">
+      <div class="campo"><label>Día</label><input type="number" id="rpDia" min="1" max="31"></div>
+      <div class="campo"><label>Mes</label><select id="rpMes"></select></div>
+      <div class="campo"><label>Año</label><input type="number" id="rpAnio" min="2020" max="2100"></div>
+    </div>
+    <div class="mensaje err oculto" id="msgRpForm"></div>
+    <div class="pies">
+      <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+      <button type="button" class="btn verde" id="btnRpGuardar" onclick="guardarReprogramar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL COMPRÓ ============ -->
+<div class="modal-fondo" id="modalCompro">
+  <div class="modal">
+    <div class="cab"><h3>Registrar compra</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="form-grid">
+      <div class="campo ancho"><label>Nombre</label><input type="text" id="coNombre"></div>
+      <div class="campo"><label>Teléfono</label><input type="text" id="coCel"></div>
+      <div class="campo"><label>Doctor</label><select id="coDoctor"></select></div>
+      <div class="campo"><label>Pago</label><select id="coPago"></select></div>
+    </div>
+    <datalist id="coTratList"></datalist>
+    <div class="grupo" style="margin:12px 0 6px;">Tratamientos</div>
+    <div id="coLineas"></div>
+    <div class="mensaje err oculto" id="msgCoForm"></div>
+    <div class="pies">
+      <button type="button" class="btn borde" onclick="coAgregarLinea()">+ Agregar tratamiento</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+      <button type="button" class="btn verde" id="btnCoGuardar" onclick="guardarCompro()">Registrar compra</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -956,6 +1035,8 @@ const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
 const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
 let TARJETAS = null, TAREAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
+let hoyFilaActiva = null;
+let HOY_ACCIONES = {};
 let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
 let paLimite = 200, taLimite = 200;
 
@@ -996,6 +1077,7 @@ const TITULOS = {
   cuotas: ['Cuotas', 'Pagos a plazos y deudas'],
   dashboard: ['Dashboard', 'Métricas del negocio'],
   analitica: ['Analítica', 'KPIs y métricas del maestro'],
+  metaads: ['Meta Ads', 'Presupuestos y rendimiento de publicidad (import manual)'],
 };
 function pagina(nombre) {
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('activo', a.dataset.pagina === nombre));
@@ -1013,6 +1095,7 @@ function pagina(nombre) {
   if (nombre === 'cuotas') cargarCuotas();
   if (nombre === 'dashboard') cargarDashboard();
   if (nombre === 'analitica') cargarAnalitica();
+  if (nombre === 'metaads') cargarMeta();
 }
 document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', () => pagina(a.dataset.pagina)));
 
@@ -1481,19 +1564,167 @@ async function cargarHoy() {
   $('hoyVentas').textContent = h.ventas.length;
   $('hoyTareas').textContent = h.tareas_hoy.length;
   $('hoyVencidas').textContent = h.tareas_vencidas.length;
-  $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
-    <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
-      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small></div>
-      ${c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : ''}
-    </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
-  $('hoyListaVentas').innerHTML = h.ventas.length ? h.ventas.map(v => `
-    <div class="item-hoy"><span class="hora">${fmtMon(v.monto)}</span>
-      <div class="info"><b>${esc(v.nombre || '—')}</b><small>${esc(v.doctor || '')} ${v.status ? '· ' + esc(v.status) : ''}</small></div>
-    </div>`).join('') : '<div class="vacio">Sin ventas hoy.</div>';
+  renderCitasHoy();
+  renderVentasHoy();
   $('hoyListaTareas').innerHTML = h.tareas_hoy.length
     ? h.tareas_hoy.map(t => tareaItemHoy(t)).join('') : '<div class="vacio">Sin tareas para hoy.</div>';
   $('hoyListaVencidas').innerHTML = h.tareas_vencidas.length
     ? h.tareas_vencidas.map(tareaItemHoy).join('') : '<div class="vacio">Sin tareas vencidas.</div>';
+}
+
+function chipHoyCita(c) {
+  const acc = HOY_ACCIONES[c.fila];
+  if (acc) return `<span class="chip ${acc.cls}">${esc(acc.txt)}</span>`;
+  return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
+}
+
+function renderCitasHoy() {
+  const h = HOY_DATA;
+  $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
+    <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+        ${HOY_ACCIONES[c.fila] ? '' : `
+        <div class="acciones-hoy">
+          <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
+          <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
+          <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
+          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">✓ COMPRÓ</button>
+          <button class="btn gris mini" onclick="noComproCita(${c.fila})">✕ NO COMPRÓ</button>
+        </div>`}
+      </div>
+      ${chipHoyCita(c)}
+    </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
+}
+
+function renderVentasHoy() {
+  const h = HOY_DATA;
+  $('hoyListaVentas').innerHTML = h.ventas.length ? h.ventas.map(v => `
+    <div class="item-hoy"><span class="hora">${fmtMon(v.monto)}</span>
+      <div class="info"><b>${esc(v.nombre || '—')}</b><small>${esc(v.doctor || '')} ${v.status ? '· ' + esc(v.status) : ''}</small></div>
+    </div>`).join('') : '<div class="vacio">Sin ventas hoy.</div>';
+}
+
+async function confirmarCita(fila) {
+  try {
+    await api(`/api/crm/agendados/${fila}/confirmar`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { cls: 'ok', txt: '✓ Cita confirmada' };
+    renderCitasHoy();
+    toast('Cita confirmada', 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function cancelarCita(fila) {
+  try {
+    await api(`/api/crm/agendados/${fila}/cancelar`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { cls: 'bad', txt: '✕ CITA CANCELADA' };
+    renderCitasHoy();
+    toast('Cita cancelada', 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function noComproCita(fila) {
+  try {
+    await api(`/api/crm/agendados/${fila}/nocompro`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { cls: 'gris', txt: '✕ NO COMPRÓ' };
+    renderCitasHoy();
+    toast('Registrado: no compró', 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+function abrirReprogramar(fila) {
+  const c = HOY_DATA.citas.find(x => x.fila === fila);
+  if (!c) return;
+  hoyFilaActiva = fila;
+  $('rpDia').value = c.dia || HOY_D;
+  $('rpMes').innerHTML = MESES.map(m => `<option value="${m}">${m}</option>`).join('');
+  $('rpMes').value = c.mes || HOY_M;
+  $('rpAnio').value = HOY_A;
+  $('msgRpForm').classList.add('oculto');
+  $('modalReprogramar').classList.add('abierto');
+}
+async function guardarReprogramar() {
+  const fila = hoyFilaActiva;
+  const b = $('btnRpGuardar'); b.disabled = true;
+  $('msgRpForm').classList.add('oculto');
+  const dia = +$('rpDia').value, mes = $('rpMes').value, anio = +$('rpAnio').value;
+  try {
+    await api(`/api/crm/agendados/${fila}/reprogramar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dia, mes, anio }),
+    });
+    cerrarModales();
+    HOY_ACCIONES[fila] = { cls: 'info', txt: `↻ Reprogramada: ${dia}/${mes}/${anio}` };
+    renderCitasHoy();
+    toast('Cita reprogramada', 'okm');
+  } catch (e) { $('msgRpForm').textContent = e.message; $('msgRpForm').classList.remove('oculto'); }
+  finally { b.disabled = false; }
+}
+
+async function asegurarValoresVenta() {
+  if (!VE) {
+    try { VE = await api('/api/crm/venta'); } catch (e) { VE = { valores: {} }; }
+  }
+  $('coTratList').innerHTML = (VE.valores?.tratamiento || []).map(t => `<option value="${esc(t)}">`).join('');
+}
+async function abrirCompro(fila) {
+  const c = HOY_DATA.citas.find(x => x.fila === fila);
+  if (!c) return;
+  hoyFilaActiva = fila;
+  $('coNombre').value = c.nombre || '';
+  $('coCel').value = c.telefono || '';
+  $('msgCoForm').classList.add('oculto');
+  $('coLineas').innerHTML = '';
+  coAgregarLinea();
+  await asegurarValoresVenta();
+  llenarSelect($('coPago'), unir(['YAPE', 'PLIN', 'EFECTIVO', 'TRANSF. BCA', 'T. CREDITO', 'T. DEBITO'], limpiar(VE.valores?.pago || [])));
+  llenarSelect($('coDoctor'), VE.valores?.doctor || []);
+  $('modalCompro').classList.add('abierto');
+}
+function coAgregarLinea() {
+  const d = document.createElement('div');
+  d.className = 'co-linea';
+  d.innerHTML = `<input type="text" class="co-trat" list="coTratList" placeholder="Tratamiento (ej. Ácido)">
+    <input type="number" class="co-venta" step="0.01" min="0" placeholder="S/ monto">
+    <button type="button" class="btn rojo pequeno" onclick="coQuitarLinea(this)" title="Quitar">✕</button>`;
+  $('coLineas').appendChild(d);
+  d.querySelector('.co-trat').focus();
+}
+function coQuitarLinea(btn) {
+  const filas = $('coLineas');
+  if (filas.children.length <= 1) { toast('Debe quedar al menos un tratamiento', 'err'); return; }
+  btn.closest('.co-linea').remove();
+}
+async function guardarCompro() {
+  const fila = hoyFilaActiva;
+  const b = $('btnCoGuardar'); b.disabled = true;
+  $('msgCoForm').classList.add('oculto');
+  const nombre = $('coNombre').value.trim();
+  const lineas = [...$('coLineas').querySelectorAll('.co-linea')].map(l => ({
+    tratamiento: l.querySelector('.co-trat').value.trim(),
+    venta: l.querySelector('.co-venta').value ? +l.querySelector('.co-venta').value : null,
+  })).filter(l => l.tratamiento);
+  if (!nombre) { $('msgCoForm').textContent = 'Indica el nombre del paciente'; $('msgCoForm').classList.remove('oculto'); b.disabled = false; return; }
+  if (!lineas.length) { $('msgCoForm').textContent = 'Indica al menos un tratamiento'; $('msgCoForm').classList.remove('oculto'); b.disabled = false; return; }
+  const total = lineas.reduce((s, l) => s + (l.venta || 0), 0);
+  const doctor = $('coDoctor').value;
+  try {
+    await api(`/api/crm/agendados/${fila}/compro`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dia: HOY_D, mes: HOY_M, anio: HOY_A,
+        cel: $('coCel').value.trim(), nombre,
+        doctor: $('coDoctor').value, status: 'SE REALIZO', pago: $('coPago').value,
+        lineas,
+      }),
+    });
+    cerrarModales();
+    HOY_ACCIONES[fila] = { cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
+    renderCitasHoy();
+    HOY_DATA.ventas = [...lineas.map(l => ({
+      nombre, doctor, status: 'SE REALIZO', monto: l.venta,
+    })), ...HOY_DATA.ventas].sort((a, b) => (b.monto || 0) - (a.monto || 0));
+    $('hoyVentas').textContent = HOY_DATA.ventas.length;
+    renderVentasHoy();
+    toast(`Compra registrada en VENTA (${fmtMon(total)})`, 'okm');
+  } catch (e) { $('msgCoForm').textContent = e.message; $('msgCoForm').classList.remove('oculto'); }
+  finally { b.disabled = false; }
 }
 function tareaItemHoy(t) {
   return `<div class="item-hoy"><span class="hora">${esc(t.hora || '—')}</span>
@@ -2207,6 +2438,113 @@ async function cuotaBorrar() {
   } catch (err) { toast(err.message, 'err'); }
 }
 
+/* ---------------- Meta Ads (import SIN API) ---------------- */
+let ME = null, meActual = null;
+function fmtFechaHora(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd} ${MESES[d.getMonth()]} ${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${mi}`;
+}
+function nf(x) { return Number(x || 0).toLocaleString('es-PE'); }
+function nfD(x) { return Number(x || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+async function cargarMeta() {
+  try { ME = await api('/api/meta'); }
+  catch (err) { $('meCuerpo').innerHTML = `<div class="vacio">${esc(err.message)}</div>`; return; }
+  if (!ME.cargas.length) {
+    $('meSelect').innerHTML = '<option value="">— sin cargas —</option>';
+    limpiarMeKpis();
+    $('meCuerpo').innerHTML = '<div class="vacio">Aún no hay reportes subidos. Haz clic en “+ Subir reporte”.</div>';
+    return;
+  }
+  meActual = meActual || ME.cargas[0].id;
+  pintarMeSelect();
+  await mostrarMeta();
+}
+function pintarMeSelect() {
+  $('meSelect').innerHTML = ME.cargas.map(c => `<option value="${c.id}">${fmtFechaHora(c.fecha)} · ${esc(c.archivo)}</option>`).join('');
+  if (meActual && ME.cargas.some(c => c.id === meActual)) $('meSelect').value = meActual;
+}
+function limpiarMeKpis() {
+  ['meGasto', 'mePresupuesto', 'meRoas', 'meCpc', 'meCpm', 'meConversiones', 'meValor'].forEach(id => { $(id).textContent = '-'; });
+}
+async function mostrarMeta() {
+  meActual = $('meSelect').value || meActual;
+  const c = ME.cargas.find(x => x.id === meActual);
+  if (!c) return;
+  $('meGasto').textContent = fmtMon(c.gasto);
+  $('mePresupuesto').textContent = fmtMon(c.presupuesto);
+  $('meRoas').textContent = nfD(c.roas);
+  $('meCpc').textContent = fmtMon(c.cpc);
+  $('meCpm').textContent = fmtMon(c.cpm);
+  $('meConversiones').textContent = nf(c.conversiones);
+  $('meValor').textContent = fmtMon(c.valor_conversion);
+  try {
+    const r = await api('/api/meta/' + c.id);
+    pintarMeDetalle(r.detalle);
+  } catch (err) { $('meCuerpo').innerHTML = `<div class="vacio">${esc(err.message)}</div>`; }
+}
+function pintarMeDetalle(det) {
+  const pc = det.por_campania || [];
+  const nota = det.notas || [];
+  $('meNota').innerHTML = nota.map(n => `<div>⚠ ${esc(n)}</div>`).join('');
+  if (!pc.length) { $('meCuerpo').innerHTML = '<div class="vacio">Este reporte no tiene filas por campaña.</div>'; return; }
+  const filas = pc.map(c => {
+    const pct = c.presupuesto ? Math.min(100, c.gasto / c.presupuesto * 100) : 0;
+    const barra = `<span class="me-barra"><span style="width:${pct}%"${pct >= 100 ? ' class="full"' : ''}></span></span>${pct.toFixed(0)}%`;
+    return `<tr>
+      <td>${esc(c.campania)}</td>
+      <td class="num mon">${fmtMon(c.presupuesto)}</td>
+      <td class="num mon">${fmtMon(c.gasto)}</td>
+      <td class="num">${barra}</td>
+      <td class="num">${nf(c.impresiones)}</td>
+      <td class="num">${nf(c.clics)}</td>
+      <td class="num">${nf(c.conversiones)}</td>
+      <td class="num mon">${fmtMon(c.valor)}</td>
+      <td class="num mon">${fmtMon(c.cpc)}</td>
+      <td class="num">${nfD(c.roas)}</td>
+    </tr>`;
+  }).join('');
+  $('meCuerpo').innerHTML = `<table class="drive"><thead><tr>
+      <th>Campaña</th>
+      <th class="num">Presupuesto</th>
+      <th class="num">Gasto</th>
+      <th class="num">% usado</th>
+      <th class="num">Impresiones</th>
+      <th class="num">Clics</th>
+      <th class="num">Conversiones</th>
+      <th class="num mon">Valor conv.</th>
+      <th class="num mon">CPC</th>
+      <th class="num">ROAS</th>
+    </tr></thead><tbody>${filas}</tbody></table>`;
+}
+async function subirMeta(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const b = $('btnMeSubir');
+  b.disabled = true; b.textContent = 'Subiendo…';
+  try {
+    const res = await fetch('/api/meta/upload', { method: 'POST', body: fd });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.detail || 'Error al subir el reporte');
+    toast('Reporte subido', 'okm');
+    meActual = j.carga.id;
+    await cargarMeta();
+  } catch (err) { toast(err.message, 'err'); }
+  finally { b.disabled = false; b.textContent = '+ Subir reporte'; }
+}
+async function borrarMeta() {
+  if (!meActual) return;
+  if (!confirm('¿Eliminar este reporte del historial?')) return;
+  try {
+    await api('/api/meta/' + meActual, { method: 'DELETE' });
+    toast('Reporte eliminado', 'okm');
+    meActual = null;
+    await cargarMeta();
+  } catch (err) { toast(err.message, 'err'); }
+}
+
 /* ---------------- Inicio ---------------- */
 llenarSelect($('tareaTipo'), TIPO_TAREA, null);
 llenarSelect($('tareaPrioridad'), PRIORIDADES, null);
@@ -2232,6 +2570,11 @@ $('cuFiltroEstado').addEventListener('change', cargarCuotas);
 $('cuBuscar').addEventListener('input', pintarCuotas);
 $('formCuota').addEventListener('submit', cuotaGuardar);
 $('btnCuotaBorrar').addEventListener('click', cuotaBorrar);
+$('btnMeSubir').addEventListener('click', () => $('meFile').click());
+$('meFile').addEventListener('change', e => { if (e.target.files[0]) subirMeta(e.target.files[0]); e.target.value = ''; });
+$('meSelect').addEventListener('change', mostrarMeta);
+$('btnMeRecargar').addEventListener('click', () => { meActual = null; cargarMeta(); });
+$('btnMeBorrar').addEventListener('click', borrarMeta);
 pagina('panel');
 </script>
 </body>

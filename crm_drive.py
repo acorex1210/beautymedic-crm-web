@@ -412,6 +412,64 @@ def agregar_fila_xlsx(origen, destino, hoja, fila_num, valores, estilo_default):
     shutil.rmtree(build_dir)
 
 
+def agregar_filas_xlsx(origen, destino, hoja, fila_inicial, lista_valores, estilo_default):
+    """Agrega varias filas nuevas consecutivas ({col: valor} por fila)."""
+    if not lista_valores:
+        raise ValueError('No hay filas para agregar')
+    build_dir = os.path.join(am.TMP_DIR, 'build_crm_multi')
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+    with zipfile.ZipFile(origen) as z:
+        z.extractall(build_dir)
+
+    hoja_file = _mapa_hojas(origen).get(hoja)
+    if not hoja_file:
+        raise ValueError(f'Hoja "{hoja}" no encontrada en el archivo')
+    sheet_path = os.path.join(build_dir, hoja_file)
+    with open(sheet_path, encoding='utf-8') as f:
+        x = f.read()
+
+    ultima = _ultima_fila_datos(x)
+    fila_inicial = max(fila_inicial, ultima + 1)
+    x = _recortar_trailing(x, ultima)
+
+    estilos = _estilos_fila(x, ultima)
+    filas_xml = []
+    for i, valores in enumerate(lista_valores):
+        fila_num = fila_inicial + i
+        celdas = []
+        for col in sorted(valores, key=lambda c: openpyxl.utils.column_index_from_string(c)):
+            v = valores[col]
+            if v is None or v == '':
+                continue
+            celdas.append(_celda_xml(col, fila_num, v, estilos.get(col, estilo_default)))
+        filas_xml.append(f'<row r="{fila_num}" ht="14.25" customHeight="1">'
+                         + ''.join(celdas) + '</row>')
+    fila_fin = fila_inicial + len(lista_valores) - 1
+    x = x.replace('</sheetData>', ''.join(filas_xml) + '</sheetData>', 1)
+
+    def _extender(m):
+        if int(m.group(4)) >= fila_fin:
+            return m.group(0)
+        return f'{m.group(1)}{m.group(2)}{m.group(3)}{fila_fin}{m.group(5)}'
+
+    x = re.sub(r'(<autoFilter ref="\$[A-Z]+\$\d+:\$)([A-Z]+)(\$)(\d+)(")',
+               _extender, x)
+
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(x)
+
+    if os.path.exists(destino):
+        os.remove(destino)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(build_dir):
+            for fn in files:
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, build_dir))
+    shutil.rmtree(build_dir)
+
+
 def vaciar_fila_xlsx(origen, destino, hoja, fila_num):
     """Vacía una fila de datos sin alterar el resto del libro.
 
@@ -639,6 +697,55 @@ def _append_sheets(fid, hoja, valores, ruta):
     return fila
 
 
+def _append_sheets_multi(fid, hoja, lista_valores, ruta):
+    """Escribe varias filas nuevas al final de una Google Sheet nativa (un solo update)."""
+    srv = _sheets()
+    fila = _siguiente_fila(ruta, hoja)
+    ncols = 1
+    for valores in lista_valores:
+        letras = sorted(valores, key=openpyxl.utils.column_index_from_string)
+        if letras:
+            ncols = max(ncols, openpyxl.utils.column_index_from_string(letras[-1]))
+    filas = []
+    for valores in lista_valores:
+        fila_row = [valores.get(openpyxl.utils.get_column_letter(c))
+                    for c in range(1, ncols + 1)]
+        fila_row = ['' if v is None else v for v in fila_row]
+        filas.append(fila_row)
+    ultima_letra = openpyxl.utils.get_column_letter(ncols)
+    srv.spreadsheets().values().update(
+        spreadsheetId=fid,
+        range=f"'{hoja}'!A{fila}:{ultima_letra}{fila + len(filas) - 1}",
+        valueInputOption='RAW',
+        body={'values': filas}).execute()
+    return fila
+
+
+def _agregar_xlsx_seguro_multi(nombre, fid, hoja, estilo, lista_valores, adaptador=None):
+    """Append de varias filas sobre .xlsx de Drive con control de concurrencia."""
+    destino = os.path.join(am.TMP_DIR, f'{nombre}_editado.xlsx')
+    fila = None
+    conflicto = False
+    for intento in range(MAX_REINTENTOS):
+        rev_antes = _revision_actual(fid)
+        ruta = descargar(nombre, fid, forzar=True)
+        valores_hoja = ([adaptador(ruta, v) for v in lista_valores]
+                        if adaptador else lista_valores)
+        fila = _siguiente_fila(ruta, hoja)
+        agregar_filas_xlsx(ruta, destino, hoja, fila, valores_hoja, estilo)
+        if _revision_actual(fid) != rev_antes:
+            if intento < MAX_REINTENTOS - 1:
+                continue
+            raise RuntimeError(
+                'El archivo de Drive cambió durante la escritura; '
+                'reintenta la operación')
+        subir_drive(fid, destino)
+        conflicto = _conflicto_post_subida(fid, rev_antes)
+        break
+    invalidar(nombre)
+    return fila, conflicto
+
+
 def _agregar_xlsx_seguro(nombre, fid, hoja, estilo, valores, adaptador=None):
     """Append sobre .xlsx de Drive con control de concurrencia best effort.
 
@@ -820,6 +927,90 @@ def agregar_venta(datos):
                                                DEFAULT_STYLE[hoja], valores,
                                                adaptador=adaptador)
     return {'ok': True, 'fila': fila, 'hoja': hoja, 'valores': valores,
+            'conflicto': conflicto}
+
+
+def actualizar_campos_agendado(fila_num, campos):
+    """Actualiza sólo los campos canónicos indicados de una fila de AGENDADOS.
+
+    Conserva los valores actuales de la fila; sólo sobrescribe las letras
+    presentes en ``campos`` (p. ej. {'Q': 'CONFIRMADO'} o
+    {'L': 15, 'M': 'AGO', 'N': 2026} para reprogramar).
+    """
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    campos = {cl: v for cl, v in (campos or {}).items()
+              if v is not None and v != ''}
+    if not campos:
+        raise ValueError('No hay campos para actualizar')
+    with _lock:
+        fid = am.AGENDADOS_FID
+        if _es_sheets(fid):
+            ruta = descargar('AGENDADOS', fid, forzar=True)
+            valores_hoja = _adaptador_edicion_agendados(ruta, fila_num, campos)
+            letras = sorted(valores_hoja,
+                            key=openpyxl.utils.column_index_from_string)
+            ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
+            fila_row = [valores_hoja.get(openpyxl.utils.get_column_letter(c))
+                        for c in range(1, ncols + 1)]
+            fila_row = ['' if v is None else v for v in fila_row]
+            _sheets().spreadsheets().values().update(
+                spreadsheetId=fid,
+                range=f"'AGENDADOS'!A{fila_num}",
+                valueInputOption='RAW',
+                body={'values': [fila_row]}).execute()
+            invalidar('AGENDADOS')
+            return {'ok': True, 'fila': fila_num, 'hoja': 'AGENDADOS',
+                    'campos': campos}
+        conflicto = _editar_xlsx_seguro('AGENDADOS', fid, 'AGENDADOS', fila_num,
+                                        campos,
+                                        adaptador=lambda ruta, v:
+                                        _adaptador_edicion_agendados(ruta, fila_num, v))
+    return {'ok': True, 'fila': fila_num, 'hoja': 'AGENDADOS',
+            'campos': campos, 'conflicto': conflicto}
+
+
+def agregar_ventas_multi(datos, lineas):
+    """Registra una venta con varios tratamientos: una fila por tratamiento.
+
+    ``datos`` son los campos compartidos de la venta (dia/mes/anio, nombre,
+    cel, doctor, status, pago, ...) y ``lineas`` una lista de
+    {'tratamiento': ..., 'venta': ...}. Devuelve la fila inicial escrita.
+    """
+    lineas = [ln for ln in (lineas or []) if ln.get('tratamiento')]
+    if not lineas:
+        raise ValueError('Indica al menos un tratamiento')
+    anio = am.num(datos.get('anio')) or 2026
+    hoja = 'VENTA 2026' if anio >= 2026 else 'VENTA 2025'
+    lista = []
+    for ln in lineas:
+        dd = dict(datos)
+        dd['tratamiento'] = ln.get('tratamiento')
+        dd['venta'] = ln.get('venta')
+        v = normalizar_venta(dd, hoja)
+        if not v.get('G'):
+            raise ValueError('Indica el nombre del paciente')
+        if not v.get('L'):
+            raise ValueError('Indica el tratamiento')
+        lista.append(v)
+    if not lista:
+        raise ValueError('No hay líneas de tratamiento válidas')
+
+    def adaptador(ruta, v):
+        return _adaptador_venta(ruta, hoja, v)
+
+    with _lock:
+        fid = am.VENTA_FID
+        if _es_sheets(fid):
+            ruta = descargar('VENTA_DIARIA', fid, forzar=True)
+            valores_hoja = [adaptador(ruta, v) for v in lista]
+            fila = _append_sheets_multi(fid, hoja, valores_hoja, ruta)
+            invalidar('VENTA_DIARIA')
+            return {'ok': True, 'fila': fila, 'hoja': hoja, 'n': len(lista)}
+        fila, conflicto = _agregar_xlsx_seguro_multi('VENTA_DIARIA', fid, hoja,
+                                                     DEFAULT_STYLE[hoja], lista,
+                                                     adaptador=adaptador)
+    return {'ok': True, 'fila': fila, 'hoja': hoja, 'n': len(lista),
             'conflicto': conflicto}
 
 

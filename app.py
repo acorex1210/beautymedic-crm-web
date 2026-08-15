@@ -32,11 +32,14 @@ import alimentar_maestro as am          # noqa: E402
 import analitica as ana                 # noqa: E402
 import crm_drive as crm                 # noqa: E402
 import crm_plus as cp                   # noqa: E402
+import meta_ads as mads                 # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
 
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
 REPORTES_DIR = os.environ.get('REPORTES_DIR', os.path.join(DATA_DIR, 'reportes'))
 BACKUP_DIR = os.environ.get('BACKUP_DIR', os.path.join(DATA_DIR, 'backups'))
+META_DIR = os.path.join(DATA_DIR, 'meta_ads')
+os.makedirs(META_DIR, exist_ok=True)
 MAX_BACKUPS = int(os.environ.get('MAX_BACKUPS', '12'))
 os.makedirs(REPORTES_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -163,6 +166,29 @@ class VentaReq(BaseModel):
     pago: str = ''
     comisiona: Optional[float] = None
     observacion: str = ''
+
+
+class ReprogramarReq(BaseModel):
+    dia: Optional[int] = None
+    mes: str = ''
+    anio: Optional[int] = None
+
+
+class LineaCompra(BaseModel):
+    tratamiento: str = ''
+    venta: Optional[float] = None
+
+
+class ComproReq(BaseModel):
+    dia: Optional[int] = None
+    mes: str = ''
+    anio: Optional[int] = None
+    cel: str = ''
+    nombre: str = ''
+    doctor: str = ''
+    status: str = 'SE REALIZO'
+    pago: str = ''
+    lineas: list[LineaCompra] = []
 
 
 class TarjetaReq(BaseModel):
@@ -711,6 +737,81 @@ async def crm_agendados_editar(fila: int, data: AgendadoReq):
     return res
 
 
+@app.post('/api/crm/agendados/{fila}/confirmar')
+async def crm_agendados_confirmar(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'CONFIRMADO'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo confirmar la cita en Drive: {e}')
+
+
+@app.post('/api/crm/agendados/{fila}/cancelar')
+async def crm_agendados_cancelar(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'CANCELA'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo cancelar la cita en Drive: {e}')
+
+
+@app.post('/api/crm/agendados/{fila}/reprogramar')
+async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
+    d = data.model_dump()
+    _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
+    if d.get('dia') is None and not d.get('mes') and d.get('anio') is None:
+        raise HTTPException(400, 'Indica la nueva fecha de la cita')
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(
+                fila, {'L': d.get('dia'), 'M': d.get('mes'), 'N': d.get('anio')})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo reprogramar la cita en Drive: {e}')
+
+
+@app.post('/api/crm/agendados/{fila}/compro')
+async def crm_agendados_compro(fila: int, data: ComproReq):
+    d = data.model_dump()
+    _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
+    if not d.get('nombre'):
+        raise HTTPException(400, 'Indica el nombre del paciente')
+    lineas = [ln for ln in d.get('lineas', []) if ln.get('tratamiento')]
+    if not lineas:
+        raise HTTPException(400, 'Indica al menos un tratamiento')
+    with _bloqueo:
+        try:
+            venta = crm.agregar_ventas_multi(
+                {'dia': d.get('dia'), 'mes': d.get('mes'), 'anio': d.get('anio'),
+                 'cel': d.get('cel'), 'nombre': d.get('nombre'),
+                 'doctor': d.get('doctor'), 'status': d.get('status'),
+                 'pago': d.get('pago')}, lineas)
+            estado = crm.actualizar_campos_agendado(fila, {'Q': 'ASISTIO'})
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar la compra en Drive: {e}')
+    return {'ok': True, 'venta': venta, 'agendado': estado}
+
+
+@app.post('/api/crm/agendados/{fila}/nocompro')
+async def crm_agendados_nocompro(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'ASISTIO SIN COMPRA'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar el no compró en Drive: {e}')
+
+
 @app.get('/api/crm/venta')
 async def crm_venta():
     try:
@@ -955,3 +1056,46 @@ async def crm_hoy():
         return {'ok': True, **cp.leer_hoy()}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo armar el panel de hoy (Drive): {e}')
+
+
+# ============================================================
+# Meta Ads (import de reportes SIN API)
+# ============================================================
+@app.get('/api/meta')
+async def meta_listar():
+    try:
+        return {'ok': True, 'cargas': mads.listar(META_DIR)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo listar el historial Meta Ads: {e}')
+
+
+@app.post('/api/meta/upload')
+async def meta_subir(file: UploadFile = File(...)):
+    contenido = await file.read()
+    try:
+        res = mads.guardar(META_DIR, contenido, file.filename or 'reporte.csv')
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo guardar el reporte: {e}')
+    return {'ok': True, 'carga': res}
+
+
+@app.get('/api/meta/{carga_id}')
+async def meta_detalle(carga_id: str):
+    try:
+        return {'ok': True, 'detalle': mads.detalle(META_DIR, carga_id)}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el reporte: {e}')
+
+
+@app.delete('/api/meta/{carga_id}')
+async def meta_borrar(carga_id: str):
+    try:
+        return mads.borrar(META_DIR, carga_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el reporte: {e}')
