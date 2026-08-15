@@ -25,6 +25,7 @@ Uso:
 import argparse
 import os
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -37,6 +38,7 @@ import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alimentar_maestro as am
+import meta_ads as mads
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SALIDA = os.path.join(BASE_DIR, 'Reporte_Ventas_1-10_Agosto_2026.pdf')
@@ -232,8 +234,100 @@ def pct(a, b):
     return 100.0 * a / b if b else 0.0
 
 
+# ============================================================
+# Integración Meta Ads + maestro (tabla por campaña)
+# ============================================================
+META_A_MAESTRO = {
+    'TOXINA 2026': 'TOXINA FULL FACE',
+    'CONSULTA GRATIS 2026': 'CONSULTA GRATUITA',
+    'ACIDO HIALURONICO': 'ACIDO HIALURONICO',
+}
+
+
+def _ruta_meta_dir():
+    base = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
+    return os.path.join(base, 'meta_ads')
+
+
+def _norm_tokens(s):
+    s = unicodedata.normalize('NFKD', str(s).upper())
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return set(t for t in s.split() if len(t) >= 3)
+
+
+def _fuzzy_maestro(meta_nombre, camp_maestros):
+    """Encuentra la campaña del maestro más parecida por tokens compartidos."""
+    mt = _norm_tokens(meta_nombre) - {'2026'}
+    if not mt:
+        return None
+    best, best_n = None, 0
+    for cm in camp_maestros:
+        n = len(mt & _norm_tokens(cm))
+        if n > best_n:
+            best, best_n = cm, n
+    return best if best_n > 0 else None
+
+
+def _cargar_meta_campanas():
+    """Por campaña de la carga de Meta Ads más reciente. None si no hay cargas."""
+    try:
+        idx = mads.listar(_ruta_meta_dir())
+    except Exception:
+        return None
+    if not idx:
+        return None
+    try:
+        det = mads.detalle(_ruta_meta_dir(), idx[0]['id'])
+    except Exception:
+        return None
+    return det.get('por_campania') or []
+
+
+def _fila_meta(nombre, mc, d):
+    gasto = mc.get('gasto') or 0
+    leads = mc.get('resultados') or 0
+    costo_res = mc.get('costo_resultado')
+    if costo_res is None:
+        costo_res = round(gasto / leads, 2) if leads else 0
+    ag, as_, co, mon = d['ag'], d['as_'], d['co'], d['mon']
+    return dict(campania=nombre, gasto=gasto, leads=leads, costo_res=costo_res,
+                ag=ag, pct_ag=pct(ag, leads), as_=as_, pct_as=pct(as_, ag),
+                co=co, mon=mon, ticket=mon / as_ if as_ else 0, organica=False)
+
+
+def build_campana_meta(agg):
+    """Une cada campaña de Meta Ads con su embudo del maestro (ag→as→co→monto)."""
+    camps = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0))
+    for (camp, crm), d in agg.items():
+        for k in ('ag', 'as_', 'co', 'mon'):
+            camps[camp][k] += d[k]
+    cero = dict(ag=0, as_=0, co=0, mon=0.0)
+    filas = []
+    usadas = set()
+    por_meta = _cargar_meta_campanas()
+    if por_meta is not None:
+        for mc in por_meta:
+            nombre = mc.get('campania') or '—'
+            maes = META_A_MAESTRO.get(nombre) or _fuzzy_maestro(nombre, list(camps))
+            d = camps.get(maes, cero) if maes else cero
+            if maes:
+                usadas.add(maes)
+            filas.append(_fila_meta(nombre, mc, d))
+        filas.sort(key=lambda x: -x['gasto'])
+    for camp, d in sorted(camps.items(), key=lambda kv: -kv[1]['ag']):
+        if camp in usadas or (not d['ag'] and not d['as_']):
+            continue
+        filas.append(dict(campania=camp + ' (sin Meta)', gasto=0, leads=0,
+                          costo_res=0, ag=d['ag'], pct_ag=0,
+                          as_=d['as_'], pct_as=pct(d['as_'], d['ag']),
+                          co=d['co'], mon=d['mon'],
+                          ticket=d['mon'] / d['as_'] if d['as_'] else 0,
+                          organica=True))
+    return filas
+
+
 def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
-                 fontsize=8.5, scale=1.7, alinear_izq_col0=True):
+                 fontsize=8.5, scale=1.7, alinear_izq_col0=True, altura_fila=None):
     ax.axis('off')
     tabla = ax.table(cellText=datos, colLabels=header, cellLoc='center',
                      loc='center', colWidths=col_w)
@@ -242,6 +336,8 @@ def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
     tabla.scale(1, scale)
     for (i, j), cel in tabla.get_celld().items():
         cel.set_edgecolor('#bfbfbf')
+        if altura_fila:
+            cel.set_height(altura_fila)
         if i == 0:
             cel.set_facecolor(color_titulo)
             cel.set_text_props(color='white', fontweight='bold')
@@ -439,6 +535,58 @@ def pagina_campanas(pdf, agg):
     estilo_tabla(axd, crm_filas, [0.30, 0.15, 0.15, 0.13, 0.12, 0.18],
                  header=['CRM', 'Agend.', 'Asist.', 'Compr.', 'Conv.', 'Monto'],
                  fontsize=9, scale=1.0)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_campanas_meta(pdf, filas):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Rendimiento por campana: Meta Ads + embudo', ha='center',
+            fontsize=15, fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.928, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO} | '
+                        'gasto y leads de la carga de Meta Ads', ha='center',
+            fontsize=10, color=GRIS)
+
+    total = dict(gasto=0, leads=0, ag=0, as_=0, co=0, mon=0.0)
+    datos = []
+    for f in filas:
+        fila = [f['campania'],
+                monto(f['gasto']) if f['gasto'] else '—',
+                str(f['leads']) if f['leads'] else '—',
+                f"S/ {f['costo_res']:.2f}" if f['leads'] else '—',
+                str(f['ag']),
+                f"{f['pct_ag']:.0f}%" if f['leads'] else '—',
+                str(f['as_']),
+                f"{f['pct_as']:.0f}%",
+                str(f['co']),
+                monto(f['mon']),
+                monto(f['ticket']) if f['as_'] else '—']
+        datos.append(fila)
+        if not f['organica']:
+            total['gasto'] += f['gasto']; total['leads'] += f['leads']
+        total['ag'] += f['ag']; total['as_'] += f['as_']
+        total['co'] += f['co']; total['mon'] += f['mon']
+    datos.append(['TOTAL',
+                  monto(total['gasto']), str(total['leads']),
+                  f"S/ {total['gasto'] / total['leads']:.2f}" if total['leads'] else '—',
+                  str(total['ag']),
+                  f"{pct(total['ag'], total['leads']):.0f}%" if total['leads'] else '—',
+                  str(total['as_']), f"{pct(total['as_'], total['ag']):.0f}%",
+                  str(total['co']), monto(total['mon']),
+                  monto(total['mon'] / total['as_']) if total['as_'] else '—'])
+
+    axc = fig.add_axes([0.045, 0.10, 0.91, 0.78])
+    estilo_tabla(axc, datos,
+                 [0.21, 0.075, 0.055, 0.08, 0.075, 0.07, 0.075, 0.07, 0.075, 0.09, 0.09],
+                 header=['Campana', 'Gasto Meta', 'Leads', 'Costo/lead', 'Agendados',
+                         'Agend/lead', 'Asistieron', 'Asistencia', 'Compraron',
+                         'Monto', 'Ticket/asist.'],
+                 fontsize=8, scale=6.0)
+    ax.text(0.045, 0.045, 'Agend/lead = % de agendados logrados por cada lead de Meta. '
+                          'Ticket/asist. = ventas entre los que asistieron. '
+                          'El gasto y los leads de Meta son del rango del reporte cargado.',
+            fontsize=7.5, color=GRIS, transform=fig.transFigure)
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -730,17 +878,21 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
                                   fueron_sin_compra=sum(v['fueron_sin_compra'] for v in sel.values()))
     tot_ag, tot_as, tot_co, tot_mon = tot['ag'], tot['as_'], tot['co'], tot['mon']
     analitica = datos_analiticos()
+    filas_meta = build_campana_meta(agg)
     with PdfPages(SALIDA) as pdf:
         pagina_resumen(pdf, tot, agg)
         pagina_flujo(pdf, tot)
         pagina_campanas(pdf, agg)
+        if filas_meta:
+            pagina_campanas_meta(pdf, filas_meta)
         pagina_campana_canal(pdf, agg)
         pagina_metricas(pdf, analitica)
         pagina_hallazgos(pdf, tot, analitica)
     return {'archivo': SALIDA, 'totales': tot,
             'por_crm': {c: dict(v) for c, v in agg_tot_crm.items()},
             'detalle': {f'{k[0]} | {k[1]}': dict(v) for k, v in sorted(
-                agg.items(), key=lambda kv: -kv[1]['ag'])}}
+                agg.items(), key=lambda kv: -kv[1]['ag'])},
+            'por_campana_meta': filas_meta}
 
 
 def main(argv=None):
