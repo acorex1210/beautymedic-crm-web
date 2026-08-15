@@ -2474,52 +2474,51 @@ async function mostrarMeta() {
   meActual = $('meSelect').value || meActual;
   const c = ME.cargas.find(x => x.id === meActual);
   if (!c) return;
-  $('meGasto').textContent = fmtMon(c.gasto);
-  $('mePresupuesto').textContent = fmtMon(c.presupuesto);
-  $('meRoas').textContent = nfD(c.roas);
-  $('meResultados').textContent = nf(c.resultados);
-  $('meCpc').textContent = fmtMon(c.cpc);
-  $('meCpm').textContent = fmtMon(c.cpm);
-  $('meConversiones').textContent = nf(c.conversiones);
-  $('meValor').textContent = fmtMon(c.valor_conversion);
+  let det = null;
   try {
     const r = await api('/api/meta/' + c.id);
-    pintarMeDetalle(r.detalle);
-  } catch (err) { $('meCuerpo').innerHTML = `<div class="vacio">${esc(err.message)}</div>`; }
+    det = r.detalle;
+  } catch (err) { $('meCuerpo').innerHTML = `<div class="vacio">${esc(err.message)}</div>`; return; }
+  const presentes = new Set((det.columnas || []).map(x => x.key));
+  const kpi = (id, valor, key) => { $(id).textContent = (key && !presentes.has(key)) ? '—' : valor; };
+  kpi('meGasto', fmtMon(c.gasto), 'gasto');
+  kpi('mePresupuesto', fmtMon(c.presupuesto), 'presupuesto');
+  kpi('meRoas', nfD(c.roas), 'roas');
+  kpi('meResultados', nf(c.resultados), 'resultados');
+  kpi('meCpc', fmtMon(c.cpc), 'cpc');
+  kpi('meCpm', fmtMon(c.cpm));
+  kpi('meConversiones', nf(c.conversiones), 'conversiones');
+  kpi('meValor', fmtMon(c.valor_conversion), 'valor_conversion');
+  pintarMeDetalle(det);
 }
 function pintarMeDetalle(det) {
   const pc = det.por_campania || [];
   const nota = det.notas || [];
   $('meNota').innerHTML = nota.map(n => `<div>⚠ ${esc(n)}</div>`).join('');
   if (!pc.length) { $('meCuerpo').innerHTML = '<div class="vacio">Este reporte no tiene filas por campaña.</div>'; return; }
-  const filas = pc.map(c => {
-    const pct = c.presupuesto ? Math.min(100, c.gasto / c.presupuesto * 100) : 0;
-    const barra = `<span class="me-barra"><span style="width:${pct}%"${pct >= 100 ? ' class="full"' : ''}></span></span>${pct.toFixed(0)}%`;
-    return `<tr>
-      <td>${esc(c.campania)}</td>
-      <td class="num mon">${fmtMon(c.presupuesto)}</td>
-      <td class="num mon">${fmtMon(c.gasto)}</td>
-      <td class="num">${barra}</td>
-      <td class="num">${nf(c.impresiones)}</td>
-      <td class="num">${nf(c.resultados)}</td>
-      <td class="num">${nf(c.conversiones)}</td>
-      <td class="num mon">${fmtMon(c.valor)}</td>
-      <td class="num mon">${fmtMon(c.cpc)}</td>
-      <td class="num">${nfD(c.roas)}</td>
-    </tr>`;
-  }).join('');
-  $('meCuerpo').innerHTML = `<table class="drive"><thead><tr>
-      <th>Campaña</th>
-      <th class="num">Presupuesto</th>
-      <th class="num">Gasto</th>
-      <th class="num">% usado</th>
-      <th class="num">Impresiones</th>
-      <th class="num">Resultados</th>
-      <th class="num">Conversiones</th>
-      <th class="num mon">Valor conv.</th>
-      <th class="num mon">CPC</th>
-      <th class="num">ROAS</th>
-    </tr></thead><tbody>${filas}</tbody></table>`;
+  const conDatos = k => pc.some(c => Number(c[k] || 0) !== 0);
+  const cols = [];
+  if (conDatos('presupuesto')) {
+    cols.push({ k: 'presupuesto', tit: 'Presupuesto', mon: true });
+    cols.push({ k: 'pct', tit: '% usado', celda: c => {
+      const pct = c.presupuesto ? Math.min(100, c.gasto / c.presupuesto * 100) : 0;
+      return `<span class="me-barra"><span style="width:${pct}%"${pct >= 100 ? ' class="full"' : ''}></span></span>${pct.toFixed(0)}%`;
+    } });
+  }
+  cols.push({ k: 'gasto', tit: 'Gasto', mon: true });
+  if (conDatos('impresiones')) cols.push({ k: 'impresiones', tit: 'Impresiones' });
+  if (conDatos('resultados')) cols.push({ k: 'resultados', tit: 'Resultados' });
+  if (conDatos('conversiones')) cols.push({ k: 'conversiones', tit: 'Conversiones' });
+  if (conDatos('valor')) cols.push({ k: 'valor', tit: 'Valor conv.', mon: true });
+  if (conDatos('cpc')) cols.push({ k: 'cpc', tit: 'CPC', mon: true });
+  if (conDatos('roas')) cols.push({ k: 'roas', tit: 'ROAS', dec: true });
+  const th = cols.map(x => `<th class="${x.mon ? 'num mon' : 'num'}">${x.tit}</th>`).join('');
+  const filas = pc.map(row => `<tr><td>${esc(row.campania)}</td>` + cols.map(x => {
+    if (x.celda) return `<td class="num">${x.celda(row)}</td>`;
+    if (x.mon) return `<td class="num mon">${fmtMon(row[x.k])}</td>`;
+    return `<td class="num">${x.dec ? nfD(row[x.k]) : nf(row[x.k])}</td>`;
+  }).join('') + '</tr>').join('');
+  $('meCuerpo').innerHTML = `<table class="drive"><thead><tr><th>Campaña</th>${th}</tr></thead><tbody>${filas}</tbody></table>`;
 }
 async function subirMeta(file) {
   const fd = new FormData();
