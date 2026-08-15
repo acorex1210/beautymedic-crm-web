@@ -159,11 +159,13 @@ def build_data():
     if FUENTE == 'auto':
         maestro_ws = am.leer_maestro(am.ruta_maestro_local())
         COL = detectar_columnas(maestro_ws)
-        agendados = am.leer_agendados(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx'))
+        agendados, ag_col = am.leer_agendados(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx'))
         venta = am.leer_venta(os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx'))
-        calc = am.Calculo(maestro_ws, agendados, venta)
+        col = am.detectar_maestro(maestro_ws)
+        calc = am.Calculo(maestro_ws, agendados, venta, col=col, ag_col=ag_col)
         tmp = os.path.join(am.TMP_DIR, 'simulado_reporte.xlsx')
-        am.aplicar_xml(am.ruta_maestro_local(), tmp, calc.new_rows, calc.updates)
+        am.aplicar_xml(am.ruta_maestro_local(), tmp, calc.new_rows, calc.updates,
+                       col=col, ag_col=ag_col)
         ws = openpyxl.load_workbook(tmp, data_only=True)['BD DATA']
     else:
         ws = am.leer_maestro(am.ruta_maestro_local())

@@ -122,8 +122,8 @@ MESES = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
          'JUL', 'AGO', 'SET', 'SEP', 'OCT', 'NOV', 'DIC'}
 
 # STATUS de VENTA DIARIA que indican que el tratamiento SÍ se realizó
-ASISTE_POR_TEXTO = ('SE REALIZO', 'COMPRO', 'COMPLETA', 'SESION')
-REVISAR_STATUS = ('DEJO PAGADO',)
+ASISTE_POR_TEXTO = ('SE REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO')
+REVISAR_STATUS = ()
 
 # ============================================================
 # UTILIDADES DE NORMALIZACIÓN
@@ -267,21 +267,64 @@ def subir_maestro(ruta):
 # ============================================================
 # LECTURA DE FUENTES (solo lectura)
 # ============================================================
+_SEM_AG = {
+    'DIA': 'DIA', 'MES': 'MES', 'AÑO': 'ANIO', 'ANIO': 'ANIO',
+    'DNI': 'DNI', 'NOMBRE': 'NOMBRE', 'RED SOCIAL': 'RED_SOCIAL',
+    'TELEFONO': 'TELEFONO', 'CORREO': 'CORREO', 'ASISTENCIA': 'ASISTENCIA',
+    'AGENDADO POR': 'AGENDADO',
+    'DIA 2': 'DIA2', 'DIA2': 'DIA2',
+    'MES 2': 'MES3', 'MES3': 'MES3',
+    'AÑO 2': 'ANIO4', 'AÑO4': 'ANIO4', 'ANIO 2': 'ANIO4',
+    'CAMPAÑA': 'CAMPANA', 'CAMPAÑA': 'CAMPANA',
+}
+
+# Columnas que se copian de AGENDADOS a las filas nuevas del maestro (el resto
+# ASISTENCIA, DISTRITO, EDAD, SEXO, TRAT/PAGO se completan desde VENTA).
+AG_COPY_SEMS = {'DIA', 'MES', 'ANIO', 'DNI', 'NOMBRE', 'RED_SOCIAL',
+                'TELEFONO', 'CORREO', 'AGENDADO', 'DIA2', 'MES3', 'ANIO4',
+                'CAMPANA'}
+
+
+def detectar_agendados(ws):
+    """Detecta las columnas de la hoja AGENDADOS por su cabecera (fila 4),
+    soportando el formato Derma Essenza (sin CRM) y el BM (con CRM).
+    Devuelve {semántico: letra} o None si no se reconoce."""
+    hdr = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1)]
+    col = {}
+    for i, h in enumerate(hdr, 1):
+        if h is None:
+            continue
+        hh = str(h).strip().upper().replace(' ', ' ')
+        hh2 = ' '.join(hh.split())
+        sem = _SEM_AG.get(hh2) or _SEM_AG.get(hh)
+        if sem and sem not in col:
+            col[sem] = openpyxl.utils.get_column_letter(i)
+    if not (col.get('NOMBRE') and col.get('TELEFONO') and col.get('DIA2')):
+        return None
+    return col
+
+
 def leer_agendados(path):
-    """Devuelve lista de dicts {col: valor} filas B..O de la hoja AGENDADOS."""
+    """Devuelve (filas, ag_col): filas = [(fila_excel, {letra: valor})] de la hoja
+    AGENDADOS y ag_col = {semántico: letra} detectado por cabecera."""
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb['AGENDADOS']
+    ag_col = detectar_agendados(ws)
     filas = []
+    if not ag_col:
+        return filas, None
+    c_nom = openpyxl.utils.column_index_from_string(ag_col['NOMBRE'])
+    c_dia = openpyxl.utils.column_index_from_string(ag_col['DIA'])
     for r in range(5, ws.max_row + 1):
-        if ws.cell(row=r, column=3).value is None and ws.cell(row=r, column=7).value is None:
+        if ws.cell(row=r, column=c_nom).value is None and ws.cell(row=r, column=c_dia).value is None:
             continue
         fila = {}
-        for c in range(2, 16):  # B..O
+        for c in range(1, ws.max_column + 1):
             v = ws.cell(row=r, column=c).value
             if v is not None:
                 fila[openpyxl.utils.get_column_letter(c)] = v
         filas.append((r, fila))
-    return filas
+    return filas, ag_col
 
 
 def leer_venta(path):
@@ -321,13 +364,66 @@ def leer_maestro(path):
     return ws
 
 
-def _maestro_formato_bm(ws):
-    """True si el maestro usa el formato BM (tiene cabecera CRM en fila 4)."""
-    for c in range(1, ws.max_column + 1):
-        v = ws.cell(row=4, column=c).value
-        if isinstance(v, str) and v.strip().upper() == 'CRM':
-            return True
-    return False
+_SEMANTICOS = {
+    'DIA': 'DIA', 'MES': 'MES', 'AÑO': 'ANIO', 'DNI': 'DNI', 'NOMBRE': 'NOMBRE',
+    'RED SOCIAL': 'RED_SOCIAL', 'TELEFONO': 'TELEFONO', 'CORREO': 'CORREO',
+    'AGENDADO POR': 'AGENDADO', 'DIA2': 'DIA2', 'MES3': 'MES3', 'AÑO4': 'ANIO4',
+    'CAMPAÑA': 'CAMPANA', 'ASISTENCIA': 'ASISTENCIA', 'DISTRITO': 'DISTRITO',
+    'EDAD': 'EDAD', 'SEXO': 'SEXO', 'PAGO TOTAL': 'PAGO_TOTAL',
+}
+
+# Columnas (letras) de la fuente AGENDADOS (formato fijo BM) -> semántico.
+# Con detección por cabecera (detectar_agendados) se usa el mapeo dinámico.
+FUENTE_AG_COLS = {
+    'C': 'DIA', 'D': 'MES', 'E': 'ANIO', 'G': 'NOMBRE', 'H': 'RED_SOCIAL',
+    'I': 'TELEFONO', 'J': 'CORREO', 'K': 'AGENDADO', 'L': 'DIA2', 'M': 'MES3',
+    'N': 'ANIO4', 'O': 'CAMPANA',
+}
+
+
+def detectar_maestro(ws):
+    """Detecta las columnas del maestro por su cabecera (fila 4) y devuelve un
+    dict {semántico: letra} compatible con los formatos BM (con columna CRM) y
+    Derma Essenza (con RED SOCIAL, sin CRM). Devuelve None si el formato no se
+    reconoce (faltan columnas clave como NOMBRE o TELEFONO)."""
+    hdr = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1)]
+    first = {}
+    trat = []
+    pago = []
+    for i, h in enumerate(hdr, 1):
+        if h is None:
+            continue
+        hh = str(h).strip().upper()
+        if hh in _SEMANTICOS:
+            first.setdefault(hh, i)
+        elif hh.startswith('TRAT '):
+            try:
+                trat.append((int(hh[5:]), i))
+            except ValueError:
+                pass
+        elif hh.startswith('PAGO '):
+            try:
+                pago.append((int(hh[5:]), i))
+            except ValueError:
+                pass
+    L = openpyxl.utils.get_column_letter
+
+    def g(h):
+        return L(first[h]) if h in first else None
+
+    if not (first.get('NOMBRE') and first.get('TELEFONO') and first.get('DIA2')):
+        return None
+    return {
+        'DIA': g('DIA'), 'MES': g('MES'), 'ANIO': g('AÑO'), 'DNI': g('DNI'),
+        'NOMBRE': g('NOMBRE'), 'RED_SOCIAL': g('RED SOCIAL'),
+        'TELEFONO': g('TELEFONO'), 'CORREO': g('CORREO'), 'AGENDADO': g('AGENDADO POR'),
+        'DIA2': g('DIA2'), 'MES3': g('MES3'), 'ANIO4': g('AÑO4'),
+        'CAMPANA': g('CAMPAÑA'), 'ASISTENCIA': g('ASISTENCIA'),
+        'DISTRITO': g('DISTRITO'), 'EDAD': g('EDAD'), 'SEXO': g('SEXO'),
+        'TRAT': [L(c) for _, c in sorted(trat)],
+        'PAGO': [L(c) for _, c in sorted(pago)],
+        'PAGO_TOTAL': g('PAGO TOTAL'),
+    }
 
 
 def _rango_pivot(path, nombre_pivot):
@@ -417,8 +513,10 @@ def verificar_venta_vs_td(path, anio, mes, desde, hasta):
 # CÁLCULO DE CAMBIOS
 # ============================================================
 class Calculo:
-    def __init__(self, maestro_ws, agendados, venta):
+    def __init__(self, maestro_ws, agendados, venta, col=None, ag_col=None):
         self.maestro = maestro_ws
+        self.col = col or detectar_maestro(maestro_ws) or {}
+        self.ag_col = ag_col or {}
         self.new_rows = []       # lista de (provisional, {col: valor})
         self.updates = {}        # {fila_maestro: {col: valor}} (existentes y provisionales)
         self.matches = []        # (venta_fila, maestro_fila, modo, hoja)
@@ -431,9 +529,24 @@ class Calculo:
         self._indexar_nuevos()
         self._calcular_ventas(venta)
 
+    def _idx(self, sem):
+        c = self.col.get(sem)
+        return openpyxl.utils.column_index_from_string(c) if c else None
+
+    def _ag(self, sem):
+        """Letra de la fuente AGENDADOS para el semántico (o fallback BM)."""
+        c = self.ag_col.get(sem) or FUENTE_AG_COLS.get(sem)
+        return c if c else None
+
     # ----- índice del maestro -----
     def _indexar(self):
         ws = self.maestro
+        c_nom = self._idx('NOMBRE')
+        c_tel = self._idx('TELEFONO')
+        c_d2 = self._idx('DIA2')
+        c_m3 = self._idx('MES3')
+        c_a4 = self._idx('ANIO4')
+        c_camp = self._idx('CAMPANA')
         self.m_rows = []
         self.by_phone = defaultdict(list)
         self.by_name = defaultdict(list)
@@ -441,32 +554,44 @@ class Calculo:
         self.keys_loose = set()
         self.last_row = 4
         for r in range(5, ws.max_row + 1):
-            if ws.cell(row=r, column=3).value is None and ws.cell(row=r, column=7).value is None:
+            if c_nom and c_tel and c_d2 and all(ws.cell(row=r, column=c).value is None
+                                                for c in (c_nom, c_tel, c_d2)):
                 continue
             self.last_row = r
             self.m_rows.append(r)
-            cel = {openpyxl.utils.get_column_letter(c): ws.cell(row=r, column=c).value
-                   for c in range(2, 16) if ws.cell(row=r, column=c).value is not None}
-            ph = norm_phone(cel.get('I'))
-            nm = norm_name(cel.get('G'))
-            fc = norm_fecha(cel.get('L'), cel.get('M'), cel.get('N'))
+            cel = {}
+            for c in range(1, ws.max_column + 1):
+                v = ws.cell(row=r, column=c).value
+                if v is not None:
+                    cel[openpyxl.utils.get_column_letter(c)] = v
+            ph = norm_phone(cel.get(self.col.get('TELEFONO')))
+            nm = norm_name(cel.get(self.col.get('NOMBRE')))
+            fc = norm_fecha(cel.get(self.col.get('DIA2')),
+                            cel.get(self.col.get('MES3')),
+                            cel.get(self.col.get('ANIO4')))
             if ph:
                 self.by_phone[ph].append(r)
             if nm:
                 self.by_name[nm].append(r)
-            camp = norm_name(cel.get('O'))
+            camp = norm_name(cel.get(self.col.get('CAMPANA')))
             self.keys_full.add((ph, nm, fc, camp))
             if nm:
                 self.keys_loose.add((nm, fc, camp))
 
     # ----- 1) AGENDADOS -> filas nuevas (con fila provisional) -----
     def _calcular_nuevos(self, agendados):
+        c_ph = self._ag('TELEFONO')
+        c_nm = self._ag('NOMBRE')
+        c_d2 = self._ag('DIA2')
+        c_m3 = self._ag('MES3')
+        c_a4 = self._ag('ANIO4')
+        c_camp = self._ag('CAMPANA')
         vistos = set()
         for r, fila in agendados:
-            ph = norm_phone(fila.get('I'))
-            nm = norm_name(fila.get('G'))
-            fc = norm_fecha(fila.get('L'), fila.get('M'), fila.get('N'))
-            camp = norm_name(fila.get('O'))
+            ph = norm_phone(fila.get(c_ph))
+            nm = norm_name(fila.get(c_nm))
+            fc = norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            camp = norm_name(fila.get(c_camp))
             if not nm and not ph:
                 self.incompletas.append((r, fila, 'sin nombre y sin teléfono'))
                 continue
@@ -486,10 +611,15 @@ class Calculo:
             self.new_rows.append((prov, fila))
 
     def _indexar_nuevos(self):
+        c_ph = self._ag('TELEFONO')
+        c_nm = self._ag('NOMBRE')
+        c_d2 = self._ag('DIA2')
+        c_m3 = self._ag('MES3')
+        c_a4 = self._ag('ANIO4')
         for prov, fila in self.new_rows:
-            ph = norm_phone(fila.get('I'))
-            nm = norm_name(fila.get('G'))
-            fc = norm_fecha(fila.get('L'), fila.get('M'), fila.get('N'))
+            ph = norm_phone(fila.get(c_ph))
+            nm = norm_name(fila.get(c_nm))
+            fc = norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
             self._nueva_info[prov] = (ph, nm, fc)
             if ph:
                 self.by_phone[ph].append(prov)
@@ -506,10 +636,12 @@ class Calculo:
     def _fecha(self, fila):
         if fila in self._nueva_info:
             return self._nueva_info[fila][2]
-        return norm_fecha(self._valor(fila, 'L'), self._valor(fila, 'M'), self._valor(fila, 'N'))
+        return norm_fecha(self._valor(fila, self.col.get('DIA2')),
+                          self._valor(fila, self.col.get('MES3')),
+                          self._valor(fila, self.col.get('ANIO4')))
 
     def _asistio(self, fila):
-        return txt(self._valor(fila, 'P')) == 'ASISTIO'
+        return txt(self._valor(fila, self.col.get('ASISTENCIA'))) == 'ASISTIO'
 
     # ----- 2) VENTA DIARIA -> completar P..AB -----
     def _calcular_ventas(self, venta):
@@ -565,18 +697,25 @@ class Calculo:
             self.matches.append((v['fila'], fila_m, modo, v['hoja']))
 
         # ----- armar las celdas a escribir -----
+        c_asist = self.col.get('ASISTENCIA')
+        c_dni = self.col.get('DNI')
+        c_dist = self.col.get('DISTRITO')
+        c_edad = self.col.get('EDAD')
+        c_sexo = self.col.get('SEXO')
         for fila_m, ventas in para_llenar.items():
             ventas.sort(key=lambda x: (x['anio'] or 0, str(x['mes'] or ''), x['dia'] or 0, x['fila']))
             primer = ventas[0]
             u = self.updates.setdefault(fila_m, {})
             if not self._asistio(fila_m):
-                u['P'] = 'ASISTIO'
-            for col, v in (('F', primer['dni']), ('Q', primer['distrito']),
-                           ('R', primer['edad']), ('S', primer['sexo'])):
-                if v is not None and txt(self._valor(fila_m, col)) is None:
+                u[c_asist] = 'ASISTIO'
+            for col, v in ((c_dni, primer['dni']), (c_dist, primer['distrito']),
+                           (c_edad, primer['edad']), (c_sexo, primer['sexo'])):
+                if col and v is not None and txt(self._valor(fila_m, col)) is None:
                     u[col] = v
-            par = [('T', 'U'), ('V', 'W'), ('X', 'Y'), ('Z', 'AA')]
+            par = list(zip(self.col.get('TRAT', []), self.col.get('PAGO', [])))
             for i, v in enumerate(ventas[:4]):
+                if i >= len(par):
+                    break
                 trat_col, pago_col = par[i]
                 if txt(self._valor(fila_m, trat_col)) is None:
                     u[trat_col] = v['tratamiento']
@@ -648,7 +787,13 @@ def build_row(fila, celdas):
     return f'<row r="{fila}" spans="2:28" x14ac:dyDescent="0.3">' + ''.join(x for _, x in items) + '</row>'
 
 
-def aplicar_xml(origen, destino, new_rows, updates):
+def aplicar_xml(origen, destino, new_rows, updates, col=None, ag_col=None):
+    col = col or {}
+    ag_col = ag_col or {}
+    p_total = col.get('PAGO_TOTAL') or 'AB'
+    primera = col.get('DIA') or 'B'
+    ref_inicio = f'{primera}4'
+    ref = f'{ref_inicio}:{p_total}'
     build_dir = os.path.join(TMP_DIR, 'build')
     if os.path.exists(build_dir):
         shutil.rmtree(build_dir)
@@ -668,40 +813,49 @@ def aplicar_xml(origen, destino, new_rows, updates):
         if fila not in updates:
             return m.group(0)
         celdas = parse_row(m.group(0))
-        for col, val in updates[fila].items():
-            celdas[col] = celda_xml(col, fila, val)
+        for colc, val in updates[fila].items():
+            celdas[colc] = celda_xml(colc, fila, val)
         return build_row(fila, celdas)
 
     x = row_re.sub(reemplazar_row, x)
+
+    # letra de AGENDADOS -> semántico (detección por cabecera, fallback BM)
+    letra_a_sem = {letra: sem for sem, letra in ag_col.items()}
 
     # ---- agregar filas nuevas ----
     ultima = max(int(m.group(1)) for m in row_re.finditer(x)) or 4
     for i, (fila_num, fila) in enumerate(new_rows):
         celdas = {}
-        for col, val in fila.items():
-            celdas[col] = celda_xml(col, fila_num, val)
-        for col, val in updates.get(fila_num, {}).items():
-            celdas[col] = celda_xml(col, fila_num, val)
-        celdas['AB'] = celda_xml('AB', fila_num, 0, formula=True)
+        for col_src, val in fila.items():
+            sem = letra_a_sem.get(col_src) or FUENTE_AG_COLS.get(col_src)
+            if not sem or sem not in AG_COPY_SEMS:
+                continue
+            mcol = col.get(sem)
+            if mcol:
+                celdas[mcol] = celda_xml(mcol, fila_num, val)
+        for colc, val in updates.get(fila_num, {}).items():
+            celdas[colc] = celda_xml(colc, fila_num, val)
+        celdas[p_total] = celda_xml(p_total, fila_num, 0, formula=True)
         x = x.replace('</sheetData>', build_row(fila_num, celdas) + '</sheetData>', 1)
         if fila_num > ultima:
             ultima = fila_num
 
     # ---- actualizar tabla y dimension ----
-    x = re.sub(r'<table ref="[^"]+"', f'<table ref="B4:AB{ultima}"', x)
-    x = re.sub(r'<autoFilter ref="[^"]+"', f'<autoFilter ref="B4:AB{ultima}"', x)
-    x = re.sub(r'<dimension ref="[^"]+"', f'<dimension ref="A1:AB{ultima}"', x)
+    x = re.sub(r'<table ref="[^"]+"', f'<table ref="{ref}{ultima}"', x)
+    x = re.sub(r'<autoFilter ref="[^"]+"', f'<autoFilter ref="{ref}{ultima}"', x)
+    x = re.sub(r'<dimension ref="[^"]+"', f'<dimension ref="A1:{p_total}{ultima}"', x)
 
     with open(sheet_path, 'w', encoding='utf-8') as f:
         f.write(x)
 
     # ---- actualizar tabla1.xml ----
     tab_path = os.path.join(build_dir, 'xl', 'tables', 'table1.xml')
-    with open(tab_path, encoding='utf-8') as f:
-        t = f.read()
-    t = re.sub(r'ref="B4:AB\d+"', f'ref="B4:AB{ultima}"', t)
-    with open(tab_path, 'w', encoding='utf-8') as f:
-        f.write(t)
+    if os.path.exists(tab_path):
+        with open(tab_path, encoding='utf-8') as f:
+            t = f.read()
+        t = re.sub(r'ref="[A-Z]+\d+:[A-Z]+\d+"', f'ref="{ref}{ultima}"', t)
+        with open(tab_path, 'w', encoding='utf-8') as f:
+            f.write(t)
 
     # ---- re-empacar ----
     if os.path.exists(destino):
@@ -733,20 +887,27 @@ def escribir_reporte(calc, ruta):
     s.append(f'Incompletos en AGENDADOS (no cop.): {r["incompletas"]}')
     s.append('')
 
+    c_ag = {'d': calc._ag('DIA'), 'm': calc._ag('MES'), 'a': calc._ag('ANIO'),
+            'd2': calc._ag('DIA2'), 'm2': calc._ag('MES3'), 'a2': calc._ag('ANIO4'),
+            'nom': calc._ag('NOMBRE'), 'tel': calc._ag('TELEFONO'),
+            'camp': calc._ag('CAMPANA')}
+
+    def fmt_ag(fila):
+        return (f'{fila.get(c_ag["d"])}/{fila.get(c_ag["m"])}/{fila.get(c_ag["a"])} -> '
+                f'cita {fila.get(c_ag["d2"])}/{fila.get(c_ag["m2"])}/{fila.get(c_ag["a2"])} | '
+                f'{fila.get(c_ag["nom"]) or "(sin nombre)"} | {fila.get(c_ag["tel"])} | '
+                f'{fila.get(c_ag["camp"])}')
+
     if calc.incompletas:
         s.append('--- AGENDADOS INCOMPLETOS (no copiados, revisar fuente) ---')
         for r_ag, fila, motivo in calc.incompletas[:60]:
-            s.append(f'  [{motivo}] fila {r_ag}: {fila.get("C")}/{fila.get("D")}/{fila.get("E")} -> '
-                     f'cita {fila.get("L")}/{fila.get("M")}/{fila.get("N")} | '
-                     f'{fila.get("G") or "(sin nombre)"} | {fila.get("I")} | {fila.get("O")}')
+            s.append(f'  [{motivo}] fila {r_ag}: {fmt_ag(fila)}')
         s.append('')
 
     if calc.new_rows:
         s.append('--- AGENDADOS NUEVOS ---')
         for r_ag, fila in calc.new_rows[:200]:
-            s.append(f'  {fila.get("C")}/{fila.get("D")}/{fila.get("E")} -> '
-                     f'cita {fila.get("L")}/{fila.get("M")}/{fila.get("N")} | '
-                     f'{fila.get("G")} | {fila.get("I")} | {fila.get("O")}')
+            s.append(f'  {fmt_ag(fila)}')
 
     s.append('')
     s.append('--- VENTAS PENDIENTES (sin coincidencia) ---')
@@ -756,10 +917,12 @@ def escribir_reporte(calc, ruta):
     s.append('')
     s.append('--- MATCHES SIN FECHA EXACTA (revisar) ---')
     ws = calc.maestro
+    c_nom = calc._idx('NOMBRE')
+    c_fecha = [calc._idx(x) for x in ('DIA2', 'MES3', 'ANIO4')]
     for vf, mf, modo, hoja in calc.matches:
         if 'sin fecha' in modo:
-            nombre_m = ws.cell(row=mf, column=7).value if mf not in calc._nueva_info else '(fila nueva)'
-            fecha_m = [ws.cell(row=mf, column=c).value for c in (12, 13, 14)] if mf not in calc._nueva_info else '(nueva)'
+            nombre_m = ws.cell(row=mf, column=c_nom).value if mf not in calc._nueva_info else '(fila nueva)'
+            fecha_m = [ws.cell(row=mf, column=c).value for c in c_fecha] if mf not in calc._nueva_info else '(nueva)'
             s.append(f'  venta {vf} -> maestro fila {mf} | {nombre_m} | cita {fecha_m}')
     s.append('')
     s.append('--- CASOS A REVISAR ---')
@@ -794,10 +957,15 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
         maestro = ruta_maestro_local(forzar=True)
         resultado['maestro'] = maestro
         maestro_ws = leer_maestro(maestro)
-        agendados = leer_agendados(ag)
+        col = detectar_maestro(maestro_ws)
+        resultado['formato'] = ('Derma Essenza' if col and col.get('CAMPANA') and not col.get('CRM')
+                                else 'BM' if col else 'desconocido')
+        agendados, ag_col = leer_agendados(ag)
+        resultado['formato_agendados'] = ('Derma Essenza' if ag_col and 'CAMPANA' in ag_col
+                                          else 'BM' if ag_col else 'desconocido')
         venta = leer_venta(ve)
 
-        calc = Calculo(maestro_ws, agendados, venta)
+        calc = Calculo(maestro_ws, agendados, venta, col=col, ag_col=ag_col)
         texto = escribir_reporte(calc, os.path.join(TMP_DIR, 'reporte_actualizacion.txt'))
         resultado['reporte'] = texto
         resultado['resumen'] = calc.resumen()
@@ -805,18 +973,17 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
         resultado['venta_diaria'] = ve
 
         if aplicar:
-            es_bm = _maestro_formato_bm(maestro_ws)
-            if not es_bm:
+            if not col or not ag_col:
                 resultado['aviso'] = (
-                    'Formato maestro sin columna CRM (Derma Essenza): el sync '
-                    'escribe columnas del formato BM, así que NO se aplicaron '
-                    'cambios al maestro.')
+                    'No se reconocieron las columnas del maestro o de AGENDADOS '
+                    '(fila 4 sin NOMBRE/TELEFONO/DIA2). NO se aplicaron cambios.')
             else:
                 ts = datetime.now().strftime('%Y%m%d_%H%M%S')
                 backup = maestro.replace('.xlsx', f'_backup_{ts}.xlsx')
                 shutil.copy2(maestro, backup)
                 resultado['backup'] = backup
-                aplicar_xml(maestro, maestro, calc.new_rows, calc.updates)
+                aplicar_xml(maestro, maestro, calc.new_rows, calc.updates,
+                            col=col, ag_col=ag_col)
                 subir_maestro(maestro)
     except Exception as e:  # noqa: BLE001
         resultado['ok'] = False
