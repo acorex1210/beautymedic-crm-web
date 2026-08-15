@@ -780,6 +780,7 @@
           <div class="kpi"><div class="eti">Gasto total</div><div class="num" id="meGasto">-</div></div>
           <div class="kpi naranja"><div class="eti">Presupuesto</div><div class="num" id="mePresupuesto">-</div></div>
           <div class="kpi verde"><div class="eti">ROAS</div><div class="num" id="meRoas">-</div></div>
+          <div class="kpi verde"><div class="eti">Resultados</div><div class="num" id="meResultados">-</div></div>
           <div class="kpi"><div class="eti">CPC</div><div class="num" id="meCpc">-</div></div>
           <div class="kpi"><div class="eti">CPM</div><div class="num" id="meCpm">-</div></div>
           <div class="kpi verde"><div class="eti">Conversiones</div><div class="num" id="meConversiones">-</div></div>
@@ -2467,7 +2468,7 @@ function pintarMeSelect() {
   if (meActual && ME.cargas.some(c => c.id === meActual)) $('meSelect').value = meActual;
 }
 function limpiarMeKpis() {
-  ['meGasto', 'mePresupuesto', 'meRoas', 'meCpc', 'meCpm', 'meConversiones', 'meValor'].forEach(id => { $(id).textContent = '-'; });
+  ['meGasto', 'mePresupuesto', 'meRoas', 'meResultados', 'meCpc', 'meCpm', 'meConversiones', 'meValor'].forEach(id => { $(id).textContent = '-'; });
 }
 async function mostrarMeta() {
   meActual = $('meSelect').value || meActual;
@@ -2476,6 +2477,7 @@ async function mostrarMeta() {
   $('meGasto').textContent = fmtMon(c.gasto);
   $('mePresupuesto').textContent = fmtMon(c.presupuesto);
   $('meRoas').textContent = nfD(c.roas);
+  $('meResultados').textContent = nf(c.resultados);
   $('meCpc').textContent = fmtMon(c.cpc);
   $('meCpm').textContent = fmtMon(c.cpm);
   $('meConversiones').textContent = nf(c.conversiones);
@@ -2499,7 +2501,7 @@ function pintarMeDetalle(det) {
       <td class="num mon">${fmtMon(c.gasto)}</td>
       <td class="num">${barra}</td>
       <td class="num">${nf(c.impresiones)}</td>
-      <td class="num">${nf(c.clics)}</td>
+      <td class="num">${nf(c.resultados)}</td>
       <td class="num">${nf(c.conversiones)}</td>
       <td class="num mon">${fmtMon(c.valor)}</td>
       <td class="num mon">${fmtMon(c.cpc)}</td>
@@ -2512,7 +2514,7 @@ function pintarMeDetalle(det) {
       <th class="num">Gasto</th>
       <th class="num">% usado</th>
       <th class="num">Impresiones</th>
-      <th class="num">Clics</th>
+      <th class="num">Resultados</th>
       <th class="num">Conversiones</th>
       <th class="num mon">Valor conv.</th>
       <th class="num mon">CPC</th>

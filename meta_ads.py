@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import os
+import re
 from datetime import datetime
 
 import openpyxl
@@ -21,28 +22,44 @@ import openpyxl
 # Cabecera normalizada (sin acentos, en mayúsculas) -> clave lógica
 MAPA = {
     'CAMPANA': 'campania',
+    'NOMBRE DE LA CAMPANA': 'campania',
     'CONJUNTO DE ANUNCIOS': 'conjunto',
     'ANUNCIO': 'anuncio',
     'PRESUPUESTO': 'presupuesto',
+    'PRESUPUESTO DE LA CAMPANA': 'presupuesto',
+    'PRESUPUESTO DEL CONJUNTO DE ANUNCIOS': 'presupuesto',
     'GASTO': 'gasto',
+    'IMPORTE GASTADO': 'gasto',
+    'IMPORTE INVERTIDO': 'gasto',
+    'CANTIDAD GASTADA': 'gasto',
+    'AMOUNT SPENT': 'gasto',
     'IMPRESIONES': 'impresiones',
     'ALCANCE': 'alcance',
     'CLICS EN EL ENLACE': 'clics',
     'CLICS (ENLACE)': 'clics',
+    'CLICKS EN EL ENLACE': 'clics',
     'CLICS': 'clics',
     'CPC': 'cpc',
     'CPM': 'cpm',
     'RESULTADOS': 'resultados',
+    'RESULTADO': 'resultados',
     'COSTE POR RESULTADO': 'costo_resultado',
     'COSTO POR RESULTADO': 'costo_resultado',
+    'COSTE POR RESULTADOS': 'costo_resultado',
+    'COSTO POR RESULTADOS': 'costo_resultado',
     'CONVERSIONES': 'conversiones',
+    'COMPRAS': 'conversiones',
     'COSTE POR CONVERSION': 'costo_conversion',
     'COSTO POR CONVERSION': 'costo_conversion',
+    'COSTE POR COMPRA': 'costo_conversion',
+    'COSTO POR COMPRA': 'costo_conversion',
     'VALOR DE CONVERSION': 'valor_conversion',
+    'VALOR DE LA CONVERSION': 'valor_conversion',
     'ROAS': 'roas',
     'FRECUENCIA': 'frecuencia',
     'ESTADO': 'estado',
     'ENTREGA': 'entrega',
+    'ENTREGA DE LA CAMPANA': 'entrega',
 }
 
 MON = {'presupuesto', 'gasto', 'cpc', 'cpm', 'costo_resultado',
@@ -58,6 +75,10 @@ def _normalizar(v):
     for a, b in (('Á', 'A'), ('É', 'E'), ('Í', 'I'), ('Ó', 'O'),
                  ('Ú', 'U'), ('Ñ', 'N')):
         s = s.replace(a, b)
+    # quita la moneda entre paréntesis de algunas cabeceras: "IMPORTE GASTADO (PEN)"
+    for token in ('(PEN)', '(USD)', '(US$)', '(S/)', '($)'):
+        s = s.replace(token, '')
+    s = re.sub(r'\s+', ' ', s).strip()
     return s
 
 
@@ -222,11 +243,13 @@ def _por_campania(filas):
         c = f.get('campania') or '—'
         g = agrup.setdefault(c, {'gasto': 0.0, 'presupuesto': 0.0,
                                  'impresiones': 0, 'clics': 0,
-                                 'conversiones': 0, 'valor': 0.0})
+                                 'conversiones': 0, 'valor': 0.0,
+                                 'resultados': 0})
         for k, src in (('gasto', 'gasto'), ('presupuesto', 'presupuesto'),
                        ('impresiones', 'impresiones'), ('clics', 'clics'),
                        ('conversiones', 'conversiones'),
-                       ('valor', 'valor_conversion')):
+                       ('valor', 'valor_conversion'),
+                       ('resultados', 'resultados')):
             v = f.get(src)
             if isinstance(v, (int, float)):
                 g[k] += v
@@ -239,6 +262,7 @@ def _por_campania(filas):
             'impresiones': int(g['impresiones']),
             'clics': int(g['clics']),
             'conversiones': int(g['conversiones']),
+            'resultados': int(g['resultados']),
             'valor': round(g['valor'], 2),
             'cpc': round(g['clics'] and g['gasto'] / g['clics'], 2),
             'roas': round(g['gasto'] and g['valor'] / g['gasto'], 2),
