@@ -948,6 +948,7 @@ const HOY_D = HOY.getDate(), HOY_M = MESES[HOY.getMonth()], HOY_A = HOY.getFullY
 let ESTADO = null;
 let AG = null, VE = null;
 let agLimite = 400, veLimite = 400;
+let agEditando = null;
 let veAnioActivo = String(HOY_A);
 
 const ETAPAS = ['NUEVO', 'AGENDADO', 'CONFIRMADO', 'ATENDIDO', 'GANADO', 'PERDIDO'];
@@ -1156,6 +1157,15 @@ function llenarSelect(sel, items, placeholder) {
   sel.innerHTML = (placeholder ? `<option value="">${esc(placeholder)}</option>` : '<option value=""></option>') +
     vals.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
 }
+function asegurarOpcion(idSel, valor) {
+  const v = String(valor ?? '').trim();
+  if (!v) return;
+  const sel = $(idSel);
+  if ([...sel.options].some(o => o.value === v)) return;
+  const opt = document.createElement('option');
+  opt.value = v; opt.textContent = v;
+  sel.appendChild(opt);
+}
 function unir(fijos, items) { return [...new Set([...fijos, ...(items || [])])]; }
 function limpiar(lista) {
   return [...new Set((lista || []).map(x => String(x).trim()).filter(x => x && !/@/.test(x) && !/^\d+(\.\d+)?$/.test(x) && x.length <= 45))];
@@ -1205,7 +1215,7 @@ function pintarAgendados() {
         if (c === 'I') return `<td class="num">${esc(v)}</td>`;
         return `<td>${esc(v)}</td>`;
       }).join('') + (Number.isInteger(f._fila)
-        ? `<td><button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></td>`
+        ? `<td><button class="btn borde pequeno" onclick="editarAgendado(${f._fila})">Editar</button> <button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></td>`
         : '<td></td>') + '</tr>';
     }).join('') + '</tbody>';
   $('agMas').innerHTML = filt.length > agLimite
@@ -1230,6 +1240,7 @@ async function borrarAgendado(fila) {
 }
 
 function abrirModalAgendado() {
+  agEditando = null;
   $('agDia').value = HOY_D; $('agMes').value = HOY_M; $('agAnio').value = HOY_A;
   $('agCitaDia').value = HOY_D; $('agCitaMes').value = HOY_M; $('agCitaAnio').value = HOY_A;
   $('agHora').value = ''; $('agNombre').value = ''; $('agTelefono').value = '';
@@ -1238,6 +1249,36 @@ function abrirModalAgendado() {
   $('agAgendadoPor').value = ''; $('agConfirmado').value = 'CONFIRMADO';
   $('agReconfirmado').value = '';
   $('msgAgForm').classList.add('oculto');
+  $('modalAgendado').querySelector('.cab h3').textContent = 'Nuevo agendado';
+  $('btnAgGuardar').textContent = 'Guardar agendado';
+  $('modalAgendado').classList.add('abierto');
+  $('agNombre').focus();
+}
+
+function editarAgendado(fila) {
+  const f = AG.filas.find(x => x._fila === fila);
+  if (!f) { toast('No se encontró el agendado.', 'err'); return; }
+  agEditando = fila;
+  asegurarOpcion('agCrm', f.B); asegurarOpcion('agCampana', f.O);
+  asegurarOpcion('agRedSocial', f.H); asegurarOpcion('agAgendadoPor', f.K);
+  asegurarOpcion('agConfirmado', f.Q); asegurarOpcion('agReconfirmado', f.S);
+  $('agCrm').value = f.B || '';
+  $('agDia').value = f.C ?? HOY_D; $('agMes').value = f.D || HOY_M; $('agAnio').value = f.E ?? HOY_A;
+  $('agNombre').value = f.G || '';
+  $('agRedSocial').value = f.H || '';
+  $('agTelefono').value = f.I ?? '';
+  $('agCorreo').value = f.J || '';
+  $('agAgendadoPor').value = f.K || '';
+  $('agCitaDia').value = f.L ?? HOY_D; $('agCitaMes').value = f.M || HOY_M; $('agCitaAnio').value = f.N ?? HOY_A;
+  $('agCampana').value = f.O || '';
+  $('agHora').value = f.P || '';
+  $('agConfirmado').value = f.Q || 'CONFIRMADO';
+  $('agObservacion').value = f.R || '';
+  $('agReconfirmado').value = f.S || '';
+  $('agObservacion2').value = f.T || '';
+  $('msgAgForm').classList.add('oculto');
+  $('modalAgendado').querySelector('.cab h3').textContent = `Editar agendado (fila ${fila})`;
+  $('btnAgGuardar').textContent = 'Guardar cambios';
   $('modalAgendado').classList.add('abierto');
   $('agNombre').focus();
 }
@@ -1256,12 +1297,14 @@ $('formAgendado').addEventListener('submit', async (e) => {
     observacion: $('agObservacion').value.trim(), reconfirmado: $('agReconfirmado').value,
     observacion2: $('agObservacion2').value.trim(),
   };
+  const url = agEditando ? '/api/crm/agendados/' + agEditando : '/api/crm/agendados';
+  const method = agEditando ? 'PUT' : 'POST';
   try {
-    const res = await api('/api/crm/agendados', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    const res = await api(url, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     cerrarModales();
-    toast(`Agendado guardado en AGENDADOS (fila ${res.fila})`, 'okm');
+    toast(`Agendado ${agEditando ? `actualizado (fila ${res.fila})` : `guardado en AGENDADOS (fila ${res.fila})`}`, 'okm');
     agLimite = 400; cargarAgendados();
   } catch (err) {
     $('msgAgForm').textContent = err.message; $('msgAgForm').classList.remove('oculto');

@@ -449,6 +449,55 @@ def vaciar_fila_xlsx(origen, destino, hoja, fila_num):
     shutil.rmtree(build_dir)
 
 
+def reescribir_fila_xlsx(origen, destino, hoja, fila_num, valores, estilo_default):
+    """Reemplaza el contenido de una fila existente (valores {col: valor}).
+
+    Se conserva el tag de apertura de la fila (atributos, altura, estilos) y
+    sólo se cambian las celdas; las celdas con valor None/'' quedan en blanco.
+    """
+    build_dir = os.path.join(am.TMP_DIR, 'build_crm_edit')
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+    with zipfile.ZipFile(origen) as z:
+        z.extractall(build_dir)
+
+    hoja_file = _mapa_hojas(origen).get(hoja)
+    if not hoja_file:
+        raise ValueError(f'Hoja "{hoja}" no encontrada en el archivo')
+    sheet_path = os.path.join(build_dir, hoja_file)
+    with open(sheet_path, encoding='utf-8') as f:
+        x = f.read()
+
+    estilos = _estilos_fila(x, fila_num)
+    celdas = []
+    for col in sorted(valores, key=lambda c: openpyxl.utils.column_index_from_string(c)):
+        v = valores[col]
+        if v is None or v == '':
+            continue
+        celdas.append(_celda_xml(col, fila_num, v, estilos.get(col, estilo_default)))
+
+    def _reemplazar(m):
+        return m.group(1) + ''.join(celdas) + '</row>'
+
+    patron = r'(<row r="%d"[^>]*>)(?:(?!</row>).)*</row>' % fila_num
+    x, cambios = re.subn(patron, _reemplazar, x, count=1, flags=re.S)
+    if not cambios:
+        raise ValueError(f'Fila {fila_num} no encontrada en "{hoja}"')
+
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(x)
+
+    if os.path.exists(destino):
+        os.remove(destino)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(build_dir):
+            for fn in files:
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, build_dir))
+    shutil.rmtree(build_dir)
+
+
 def _siguiente_fila(ruta, hoja):
     hoja_file = _mapa_hojas(ruta).get(hoja)
     if not hoja_file:
@@ -507,6 +556,30 @@ def normalizar_agendado(d):
     if _txt(d.get('reconfirmado')): out['S'] = _txt(d['reconfirmado'])
     if _txt(d.get('observacion2')): out['T'] = _txt(d['observacion2'])
     return out
+
+
+def normalizar_agendado_edicion(d):
+    """Todos los campos editables (letras canónicas) con valor o None para limpiar."""
+    return {
+        'B': _txt(d.get('crm')),
+        'C': _int(d.get('dia')),
+        'D': _mes(d.get('mes')),
+        'E': _int(d.get('anio')),
+        'G': _txt(d.get('nombre')),
+        'H': _txt(d.get('red_social')),
+        'I': _tel(d.get('telefono')),
+        'J': _txt(d.get('correo')),
+        'K': _txt(d.get('agendado_por')),
+        'L': _int(d.get('dia_cita')),
+        'M': _mes(d.get('mes_cita')),
+        'N': _int(d.get('anio_cita')),
+        'O': _txt(d.get('campana')),
+        'P': _txt(d.get('hora')),
+        'Q': _txt(d.get('confirmado')),
+        'R': _txt(d.get('observacion')),
+        'S': _txt(d.get('reconfirmado')),
+        'T': _txt(d.get('observacion2')),
+    }
 
 
 def normalizar_venta(d, hoja='VENTA 2026'):
@@ -645,6 +718,83 @@ def agregar_agendado(datos):
                                                valores,
                                                adaptador=_adaptador_agendados)
     return {'ok': True, 'fila': fila, 'hoja': 'AGENDADOS',
+            'valores': valores, 'conflicto': conflicto}
+
+
+def _adaptador_edicion_agendados(ruta, fila_num, valores):
+    """Construye {letra_real: valor} para reescribir la fila editada.
+
+    Parte de los valores actuales de la fila (así se conservan columnas que el
+    formulario no edita, p. ej. DNI o ASISTENCIA) y sobreescribe con los campos
+    editados; los campos editados a None quedan en blanco.
+    """
+    _, campos, _ = _detectar_columnas(ruta, 'AGENDADOS', _HEADERS_AGENDADOS)
+    inverso = _mapa_inverso(campos, AGENDADOS_CANON)
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    ws = wb['AGENDADOS']
+    actual = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=fila_num, column=c).value
+        if v is not None and v != '':
+            actual[openpyxl.utils.get_column_letter(c)] = v
+    wb.close()
+    for cl, v in valores.items():
+        real = inverso.get(cl)
+        if real:
+            actual[real] = v
+    return actual
+
+
+def _editar_xlsx_seguro(nombre, fid, hoja, fila_num, valores, adaptador=None):
+    """Reescribe una fila de un xlsx de Drive con control de concurrencia."""
+    destino = os.path.join(am.TMP_DIR, f'{nombre}_editado.xlsx')
+    conflicto = False
+    for intento in range(MAX_REINTENTOS):
+        rev_antes = _revision_actual(fid)
+        ruta = descargar(nombre, fid, forzar=True)
+        valores_hoja = adaptador(ruta, valores) if adaptador else valores
+        reescribir_fila_xlsx(ruta, destino, hoja, fila_num, valores_hoja,
+                             DEFAULT_STYLE[hoja])
+        if _revision_actual(fid) != rev_antes:
+            if intento < MAX_REINTENTOS - 1:
+                continue
+            raise RuntimeError(
+                'El archivo de Drive cambió durante la edición; reintenta la operación')
+        subir_drive(fid, destino)
+        conflicto = _conflicto_post_subida(fid, rev_antes)
+        break
+    invalidar(nombre)
+    return conflicto
+
+
+def editar_agendado(fila_num, datos):
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    valores = normalizar_agendado_edicion(datos)
+    with _lock:
+        fid = am.AGENDADOS_FID
+        if _es_sheets(fid):
+            ruta = descargar('AGENDADOS', fid, forzar=True)
+            valores_hoja = _adaptador_edicion_agendados(ruta, fila_num, valores)
+            letras = sorted(valores_hoja,
+                            key=openpyxl.utils.column_index_from_string)
+            ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
+            fila_row = [valores_hoja.get(openpyxl.utils.get_column_letter(c))
+                        for c in range(1, ncols + 1)]
+            fila_row = ['' if v is None else v for v in fila_row]
+            _sheets().spreadsheets().values().update(
+                spreadsheetId=fid,
+                range=f"'AGENDADOS'!A{fila_num}",
+                valueInputOption='RAW',
+                body={'values': [fila_row]}).execute()
+            invalidar('AGENDADOS')
+            return {'ok': True, 'fila': fila_num, 'hoja': 'AGENDADOS',
+                    'valores': valores}
+        conflicto = _editar_xlsx_seguro('AGENDADOS', fid, 'AGENDADOS', fila_num,
+                                        valores,
+                                        adaptador=lambda ruta, v:
+                                        _adaptador_edicion_agendados(ruta, fila_num, v))
+    return {'ok': True, 'fila': fila_num, 'hoja': 'AGENDADOS',
             'valores': valores, 'conflicto': conflicto}
 
 

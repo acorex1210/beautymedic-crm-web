@@ -691,6 +691,26 @@ async def crm_agendados_borrar(fila: int):
             raise HTTPException(502, f'No se pudo borrar el agendado en Drive: {e}')
 
 
+@app.put('/api/crm/agendados/{fila}')
+async def crm_agendados_editar(fila: int, data: AgendadoReq):
+    d = data.model_dump()
+    _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
+    _validar_fecha(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'),
+                   requerido_mes=True)
+    if not d.get('nombre') and not d.get('telefono'):
+        raise HTTPException(400, 'Indica al menos el nombre o el teléfono del paciente')
+    with _bloqueo:
+        try:
+            res = crm.editar_agendado(fila, d)
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo editar el agendado en Drive: {e}')
+    return res
+
+
 @app.get('/api/crm/venta')
 async def crm_venta():
     try:
