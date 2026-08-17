@@ -598,6 +598,7 @@
               <div id="metaBarra" style="height:100%;border-radius:99px;background:linear-gradient(90deg,#2e9e5b,#57c785);width:0%;transition:width .4s;"></div>
             </div>
             <div style="margin-top:6px;font-size:13px;color:var(--gris);" id="metaPct"></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--borde);font-size:13px;" id="metaProyeccion"></div>
           </div>
           <div class="nota" id="metaNota" style="margin-top:10px;">Define una meta para ver el avance del mes contra las ventas registradas.</div>
         </div>
@@ -1280,6 +1281,20 @@ async function cargarMetaMensual() {
     $('metaBarra').style.background = pct >= 100 ? 'linear-gradient(90deg,#2e9e5b,#57c785)' : pct >= 60 ? 'linear-gradient(90deg,#e08a2e,#f0b45e)' : 'linear-gradient(90deg,#d64545,#e57373)';
     $('metaPct').textContent = `${pct}% de la meta ${pct >= 100 ? '· ¡meta alcanzada!' : ''}`;
     $('metaNota').classList.add('oculto');
+
+    // Proyección: ritmo de venta actual (S/ por día transcurrido) llevado a fin de mes.
+    const diasMes = new Date(HOY_A, HOY.getMonth() + 1, 0).getDate();
+    const diasTranscurridos = Math.min(HOY_D, diasMes);
+    const proyeccion = diasTranscurridos > 0 ? Math.round((actual / diasTranscurridos) * diasMes * 100) / 100 : 0;
+    const pctProy = meta ? Math.round(100 * proyeccion / meta) : 0;
+    const colorProy = proyeccion >= meta ? 'var(--verde)' : pctProy >= 70 ? 'var(--naranja)' : 'var(--rojo)';
+    const icono = proyeccion >= meta ? '✓' : '⚠';
+    $('metaProyeccion').innerHTML = `
+      <div style="display:flex;justify-content:space-between;color:var(--gris);">
+        <span>Proyección al cierre del mes (según ritmo actual)</span>
+        <span style="font-weight:700;color:${colorProy};">${fmtMon(proyeccion)}</span>
+      </div>
+      <div style="margin-top:2px;color:${colorProy};">${icono} ${pctProy}% de la meta proyectado · día ${diasTranscurridos} de ${diasMes}</div>`;
   } catch (e) { /* sin datos del maestro aún */ }
 }
 $('btnMetaGuardar').addEventListener('click', async () => {
