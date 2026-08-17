@@ -10,6 +10,7 @@ vez. Además agrega vistas derivadas: directorio de pacientes, dashboard de
 métricas y panel de actividades de hoy (combinando AGENDADOS y VENTA DIARIA).
 """
 import io
+import json
 import os
 import re
 import threading
@@ -33,6 +34,7 @@ TIPO_NOTA = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO']
 
 _MM = ['', 'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
        'SET', 'OCT', 'NOV', 'DIC']
+_MM_IDX = {m: i for i, m in enumerate(_MM) if m}
 
 HOJAS = {
     'TARJETAS': ['ID', 'NOMBRE', 'TELEFONO', 'ETAPA', 'CRM', 'CAMPANA', 'VALOR',
@@ -44,6 +46,8 @@ HOJAS = {
     'CUOTAS': ['ID', 'PACIENTE', 'TELEFONO', 'TRATAMIENTO', 'MONTO_TOTAL',
                'N_CUOTAS', 'PAGADAS', 'MONTO_CUOTA', 'PROX_FECHA', 'ESTADO',
                'NOTA'],
+    'CAJA': ['ID', 'FECHA', 'HORA', 'TIPO', 'MONTO', 'CONCEPTO', 'RESPONSABLE',
+             'DESGLOSE', 'MONTO_USD', 'DESGLOSE_USD'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -57,6 +61,15 @@ NOTA_COLS = {'id': 'A', 'telefono': 'B', 'contacto': 'C', 'fecha': 'D',
 CUOTA_COLS = {'id': 'A', 'paciente': 'B', 'telefono': 'C', 'tratamiento': 'D',
               'monto_total': 'E', 'n_cuotas': 'F', 'pagadas': 'G',
               'monto_cuota': 'H', 'prox_fecha': 'I', 'estado': 'J', 'nota': 'K'}
+CAJA_COLS = {'id': 'A', 'fecha': 'B', 'hora': 'C', 'tipo': 'D', 'monto': 'E',
+             'concepto': 'F', 'responsable': 'G', 'desglose': 'H',
+             'monto_usd': 'I', 'desglose_usd': 'J'}
+TIPO_CAJA = ['APERTURA', 'INGRESO', 'EGRESO', 'CIERRE']
+# Denominaciones del arqueo (formato de recepción/caja)
+BILLETES_SOLES = [200, 100, 50, 20, 10]
+MONEDAS_SOLES = [5, 2, 1, 0.5, 0.2, 0.1]
+DENOMINACIONES_CAJA = BILLETES_SOLES + MONEDAS_SOLES
+DENOMINACIONES_USD = [100, 50, 20, 10]
 
 _lock = threading.RLock()
 
@@ -68,6 +81,19 @@ def _ahora():
 def _hoy():
     hoy = datetime.now(TZ)
     return hoy.day, _MM[hoy.month], hoy.year
+
+
+def _fecha_hoy_str():
+    dia, mes, anio = _hoy()
+    return f'{dia}/{mes}/{anio}'
+
+
+def _fecha_orden(fecha):
+    try:
+        d, m, a = str(fecha).split('/')
+        return (int(a), _MM_IDX.get(m, 0), int(d))
+    except (ValueError, AttributeError):
+        return (0, 0, 0)
 
 
 # ============================================================
@@ -728,3 +754,205 @@ def borrar_cuota(cid):
             return False
         _reescribir('CUOTAS', nuevas)
         return True
+
+
+# ============================================================
+# CRM Plus: Caja (apertura / movimientos / cierre del día)
+# ============================================================
+def _json_col(f, letra):
+    crudo = f.get(letra)
+    if not crudo:
+        return None
+    try:
+        return json.loads(crudo)
+    except (TypeError, ValueError):
+        return None
+
+
+def _caja_named(f):
+    return {
+        'id': am.num(f.get('A')),
+        'fecha': f.get('B'),
+        'hora': f.get('C'),
+        'tipo': f.get('D'),
+        'monto': am.num(f.get('E')) or 0,
+        'concepto': f.get('F'),
+        'responsable': f.get('G'),
+        'desglose': _json_col(f, 'H'),
+        'monto_usd': am.num(f.get('I')) or 0,
+        'desglose_usd': _json_col(f, 'J'),
+    }
+
+
+def leer_caja(fecha=None):
+    filas = [_caja_named(f) for f in _leer_hoja('CAJA')]
+    if fecha:
+        filas = [f for f in filas if f['fecha'] == fecha]
+    return sorted(filas, key=lambda f: (f['fecha'] or '', f['hora'] or ''))
+
+
+def _total_desglose(desglose, denominaciones):
+    """Suma cantidad x valor para cada denominación."""
+    total = 0.0
+    for valor in denominaciones:
+        cant = am.num((desglose or {}).get(str(valor))) or 0
+        total += cant * valor
+    return round(total, 2)
+
+
+def _monto_desde_desglose(desglose):
+    return _total_desglose(desglose, DENOMINACIONES_CAJA)
+
+
+def _monto_usd_desde_desglose(desglose):
+    return _total_desglose(desglose, DENOMINACIONES_USD)
+
+
+def _crear_movimiento_caja(tipo, datos):
+    with _lock:
+        filas = _leer_hoja('CAJA')
+        ahora = datetime.now(TZ)
+        desglose = datos.get('desglose') or None
+        desglose_usd = datos.get('desglose_usd') or None
+        monto = (_monto_desde_desglose(desglose) if desglose
+                 else (am.num(datos.get('monto')) or 0))
+        monto_usd = (_monto_usd_desde_desglose(desglose_usd) if desglose_usd
+                     else (am.num(datos.get('monto_usd')) or 0))
+        f = {
+            'A': _siguiente_id(filas),
+            'B': datos.get('fecha') or _fecha_hoy_str(),
+            'C': ahora.strftime('%H:%M'),
+            'D': tipo,
+            'E': monto,
+            'F': str(datos.get('concepto') or '').strip(),
+            'G': str(datos.get('responsable') or '').strip(),
+            'H': json.dumps(desglose, ensure_ascii=False) if desglose else '',
+            'I': monto_usd,
+            'J': json.dumps(desglose_usd, ensure_ascii=False) if desglose_usd else '',
+        }
+        filas.append(f)
+        _reescribir('CAJA', filas)
+        return _caja_named(f)
+
+
+def abrir_caja(datos):
+    return _crear_movimiento_caja('APERTURA', datos)
+
+
+def cerrar_caja(datos):
+    return _crear_movimiento_caja('CIERRE', datos)
+
+
+def registrar_movimiento_caja(datos):
+    tipo = str(datos.get('tipo') or '').upper().strip()
+    if tipo not in ('INGRESO', 'EGRESO'):
+        raise ValueError("El tipo de movimiento debe ser 'INGRESO' o 'EGRESO'")
+    return _crear_movimiento_caja(tipo, datos)
+
+
+def borrar_movimiento_caja(cid):
+    with _lock:
+        filas = _leer_hoja('CAJA')
+        nuevas = [f for f in filas if am.num(f.get('A')) != cid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('CAJA', nuevas)
+        return True
+
+
+def _metodo_pago(valor):
+    """Clasifica el texto de la columna PAGO en las categorías del arqueo."""
+    p = str(valor or '').strip().upper()
+    if not p:
+        return 'sin_dato'
+    if 'EFECTIVO' in p:
+        return 'efectivo'
+    if 'YAPE' in p or 'PLIN' in p:
+        return 'yape_plin'
+    if 'TARJETA' in p or p.startswith('T.') or 'DEBITO' in p or 'CREDITO' in p or 'POS' in p:
+        return 'tarjeta'
+    if 'TRANSF' in p or 'DEPOSITO' in p or 'DEPÓSITO' in p or 'LINK' in p:
+        return 'deposito'
+    return 'otros'
+
+
+def ventas_del_dia(fecha):
+    """Ventas de VENTA DIARIA para la fecha 'D/MES/AAAA', separadas por forma de pago."""
+    res = {'efectivo': 0.0, 'tarjeta': 0.0, 'yape_plin': 0.0,
+           'deposito': 0.0, 'otros': 0.0, 'sin_dato': 0.0}
+    for v in cd.leer_venta()['hojas'].values():
+        for f in v['filas']:
+            if not (f.get('B') and f.get('C') and f.get('D')):
+                continue
+            if f'{f["B"]}/{f["C"]}/{f["D"]}' != fecha:
+                continue
+            monto = am.num(f.get('O')) or 0
+            if not monto:
+                continue
+            res[_metodo_pago(f.get('P'))] += monto
+    res = {k: round(v, 2) for k, v in res.items()}
+    res['total'] = round(sum(res.values()), 2)
+    return res
+
+
+def estado_caja(fecha=None):
+    """Arqueo de caja del día, con las secciones del formato de recepción.
+
+    1. Inicio de día (soles + dólares)
+    2. Efectivo contado al cierre (desglose por denominación)
+    3. Ventas totales por forma de pago (desde VENTA DIARIA)
+    4. Gastos de caja chica / ingresos extra
+    5. Ajuste: sobrante o faltante
+    """
+    fecha = fecha or _fecha_hoy_str()
+    filas = leer_caja(fecha)
+    apertura = next((f for f in filas if f['tipo'] == 'APERTURA'), None)
+    cierre = next((f for f in filas if f['tipo'] == 'CIERRE'), None)
+    movimientos = [f for f in filas if f['tipo'] in ('INGRESO', 'EGRESO')]
+    ingresos = round(sum(f['monto'] for f in movimientos if f['tipo'] == 'INGRESO'), 2)
+    egresos = round(sum(f['monto'] for f in movimientos if f['tipo'] == 'EGRESO'), 2)
+    egresos_usd = round(sum(f['monto_usd'] for f in movimientos if f['tipo'] == 'EGRESO'), 2)
+    ingresos_usd = round(sum(f['monto_usd'] for f in movimientos if f['tipo'] == 'INGRESO'), 2)
+
+    ventas = ventas_del_dia(fecha)
+    inicio = apertura['monto'] if apertura else 0
+    inicio_usd = apertura['monto_usd'] if apertura else 0
+
+    esperado = round(inicio + ventas['efectivo'] + ingresos - egresos, 2)
+    esperado_usd = round(inicio_usd + ingresos_usd - egresos_usd, 2)
+    contado = cierre['monto'] if cierre else None
+    contado_usd = cierre['monto_usd'] if cierre else None
+    diferencia = round(contado - esperado, 2) if cierre else None
+    diferencia_usd = round(contado_usd - esperado_usd, 2) if cierre else None
+
+    return {
+        'fecha': fecha,
+        'abierta': apertura is not None,
+        'cerrada': cierre is not None,
+        'apertura': apertura,
+        'cierre': cierre,
+        'movimientos': movimientos,
+        'ventas': ventas,
+        'ingresos': ingresos,
+        'egresos': egresos,
+        'ingresos_usd': ingresos_usd,
+        'egresos_usd': egresos_usd,
+        'inicio': inicio,
+        'inicio_usd': inicio_usd,
+        'esperado': esperado,
+        'esperado_usd': esperado_usd,
+        'contado': contado,
+        'contado_usd': contado_usd,
+        'diferencia': diferencia,
+        'diferencia_usd': diferencia_usd,
+        # alias de compatibilidad
+        'monto_inicial': inicio,
+        'ventas_efectivo': ventas['efectivo'],
+    }
+
+
+def historial_caja(limite=30):
+    filas = leer_caja()
+    fechas = sorted({f['fecha'] for f in filas if f['tipo'] == 'APERTURA'},
+                    key=_fecha_orden, reverse=True)[:limite]
+    return [estado_caja(f) for f in fechas]

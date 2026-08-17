@@ -204,6 +204,19 @@
   .kcard .valor { font-weight: 800; color: var(--azul2); }
   .kcol.dragsobre { outline: 2px dashed var(--azul3); outline-offset: -2px; }
   .kadd { width: 100%; margin-top: 8px; border: 1px dashed var(--borde); background: #fff; border-radius: 9px; padding: 7px; color: var(--gris); cursor: pointer; font-size: 12px; font-weight: 700; }
+  .cal-cab { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 6px; }
+  .cal-cab div { text-align: center; font-size: 11px; font-weight: 700; color: var(--gris); text-transform: uppercase; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .cal-dia { min-height: 84px; border: 1px solid var(--borde); border-radius: 9px; padding: 6px; cursor: pointer; background: #fff; display: flex; flex-direction: column; gap: 4px; }
+  .cal-dia:hover { box-shadow: 0 2px 8px rgba(20,37,74,.1); }
+  .cal-dia.cal-vacio { background: transparent; border-color: transparent; cursor: default; }
+  .cal-dia.cal-hoy { border-color: var(--azul2); box-shadow: 0 0 0 2px rgba(38,90,196,.15) inset; }
+  .cal-dia.cal-sel { border-color: var(--azul2); background: #f2f6ff; }
+  .cal-dia .cal-num { font-size: 12px; font-weight: 700; color: #2c3550; }
+  .cal-dia .cal-resumen { font-size: 10px; color: var(--gris); }
+  .cal-dia .cal-puntos { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
+  .cal-punto { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .cal-punto.ok { background: #1d7a42; } .cal-punto.ambar { background: #b07614; } .cal-punto.bad { background: #b03a3a; }
   .kadd:hover { color: var(--azul2); border-color: var(--azul3); }
 
   .etapa-NUEVO { --c: #5b6472; } .etapa-AGENDADO { --c: #2f5597; }
@@ -476,10 +489,18 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
         <span class="lab">Venta diaria</span>
       </a>
+      <a data-pagina="caja">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 6v12M18 6v12"/></svg>
+        <span class="lab">Caja</span>
+      </a>
       <div class="sub">CRM</div>
       <a data-pagina="hoy">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
         <span class="lab">Hoy</span>
+      </a>
+      <a data-pagina="calendario">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span class="lab">Calendario</span>
       </a>
       <a data-pagina="pipeline">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="6" height="18" rx="1"/><rect x="11" y="3" width="6" height="18" rx="1"/><rect x="19" y="3" width="2" height="18" rx="1"/></svg>
@@ -488,14 +509,6 @@
       <a data-pagina="pacientes">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="lab">Pacientes</span>
-      </a>
-      <a data-pagina="tareas">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 12 3 3 5-6"/></svg>
-        <span class="lab">Tareas</span>
-      </a>
-      <a data-pagina="cuotas">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        <span class="lab">Cuotas</span>
       </a>
       <a data-pagina="dashboard">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-6"/></svg>
@@ -570,6 +583,25 @@
           <div class="mensaje err oculto" id="msgSync"></div>
         </div>
 
+        <div class="tarjeta">
+          <h3>Meta de ventas del mes</h3>
+          <div class="toolbar">
+            <span style="color:var(--gris);font-size:13px;" id="metaEtiquetaMes">Mes actual</span>
+            <input type="number" id="metaInput" placeholder="Meta en S/" min="0" step="100" style="width:140px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;">
+            <button class="btn borde pequeno" id="btnMetaGuardar">Guardar meta</button>
+          </div>
+          <div id="metaProgreso" class="oculto" style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--gris);margin-bottom:6px;">
+              <span id="metaMontoActual"></span><span id="metaMontoObjetivo"></span>
+            </div>
+            <div style="background:#eef1f6;border-radius:99px;height:14px;overflow:hidden;">
+              <div id="metaBarra" style="height:100%;border-radius:99px;background:linear-gradient(90deg,#2e9e5b,#57c785);width:0%;transition:width .4s;"></div>
+            </div>
+            <div style="margin-top:6px;font-size:13px;color:var(--gris);" id="metaPct"></div>
+          </div>
+          <div class="nota" id="metaNota" style="margin-top:10px;">Define una meta para ver el avance del mes contra las ventas registradas.</div>
+        </div>
+
       </section>
 
       <!-- ============ AGENDADOS ============ -->
@@ -621,6 +653,87 @@
         </div>
       </section>
 
+      <!-- ============ CAJA (arqueo diario) ============ -->
+      <section id="pag-caja" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Estado de caja hoy</div><div class="num" id="cajaEstado">-</div></div>
+          <div class="kpi"><div class="eti">Inicio de día</div><div class="num" id="cajaInicial">-</div></div>
+          <div class="kpi verde"><div class="eti">Ventas del día</div><div class="num" id="cajaVentasTotal">-</div></div>
+          <div class="kpi naranja"><div class="eti">Efectivo esperado</div><div class="num" id="cajaEsperado">-</div></div>
+        </div>
+
+        <!-- 1. INICIO DE DÍA -->
+        <div class="tarjeta oculto" id="cajaBloqueApertura">
+          <h3>1. Inicio de día</h3>
+          <p class="nota" style="margin:0 0 12px;">Cuenta el efectivo con el que abres caja. El monto se calcula solo.</p>
+          <div id="cajaDenoApertura"></div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="campo"><label>Responsable</label><input type="text" id="cajaAperturaResponsable"></div>
+            <div class="campo" style="grid-column:1/-1;"><label>Nota</label><input type="text" id="cajaAperturaNota"></div>
+          </div>
+          <p style="margin:14px 0 0;font-size:15px;">Inicio de caja:
+            <b id="cajaAperturaTotal">S/ 0</b> <span class="nota" id="cajaAperturaTotalUsd"></span></p>
+          <div class="mensaje err oculto" id="msgCajaApertura"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn verde" id="btnCajaAbrir">Abrir caja</button>
+          </div>
+        </div>
+
+        <!-- 3. VENTAS DEL DÍA -->
+        <div class="tarjeta oculto" id="cajaBloqueVentas">
+          <h3>3. Ventas del día por forma de pago</h3>
+          <p class="nota" style="margin:0 0 10px;">Tomado de VENTA DIARIA. Solo el efectivo entra físicamente a la caja.</p>
+          <div class="tabla-wrap"><table class="drive" id="tablaCajaVentas"></table></div>
+        </div>
+
+        <!-- 4. GASTOS DE CAJA CHICA -->
+        <div class="tarjeta oculto" id="cajaBloqueMovimientos">
+          <h3>4. Gastos de caja chica e ingresos extra</h3>
+          <div class="form-grid">
+            <div class="campo"><label>Tipo</label><select id="cajaMovTipo"><option value="EGRESO">Gasto (egreso)</option><option value="INGRESO">Ingreso extra</option></select></div>
+            <div class="campo"><label>Monto (S/)</label><input type="number" id="cajaMovMonto" step="0.01" min="0"></div>
+            <div class="campo"><label>Monto ($)</label><input type="number" id="cajaMovMontoUsd" step="0.01" min="0"></div>
+            <div class="campo" style="grid-column:1/-1;"><label>Concepto</label><input type="text" id="cajaMovConcepto" placeholder="ej. Material médico, movilidad, adelanto"></div>
+            <div class="campo"><label>Responsable</label><input type="text" id="cajaMovResponsable"></div>
+          </div>
+          <div class="mensaje err oculto" id="msgCajaMov"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn verde" id="btnCajaMovAgregar">+ Agregar</button>
+          </div>
+          <div class="tabla-wrap" style="margin-top:14px;"><table class="drive" id="tablaCajaMovimientos"></table></div>
+        </div>
+
+        <!-- 2. EFECTIVO AL CIERRE + 5. AJUSTE -->
+        <div class="tarjeta oculto" id="cajaBloqueCierre">
+          <h3>2. Efectivo contado al cierre</h3>
+          <p class="nota" style="margin:0 0 12px;">Cuenta el efectivo que hay físicamente en caja al terminar el día.</p>
+          <div id="cajaDenoCierre"></div>
+          <p style="margin:14px 0 0;font-size:15px;">Total contado:
+            <b id="cajaCierreTotal">S/ 0</b> <span class="nota" id="cajaCierreTotalUsd"></span></p>
+
+          <h3 style="margin-top:22px;">5. Ajuste</h3>
+          <div id="cajaAjustePreview"></div>
+          <div class="form-grid" style="margin-top:12px;">
+            <div class="campo"><label>Responsable</label><input type="text" id="cajaCierreResponsable"></div>
+            <div class="campo" style="grid-column:1/-1;"><label>Nota</label><input type="text" id="cajaCierreNota"></div>
+          </div>
+          <div class="mensaje err oculto" id="msgCajaCierre"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn rojo" id="btnCajaCerrar">Cerrar caja</button>
+          </div>
+        </div>
+
+        <div class="tarjeta oculto" id="cajaBloqueCerrada">
+          <h3>Arqueo de caja del día</h3>
+          <div id="cajaResumenCerrada"></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
+          <h3>Historial de arqueos</h3>
+          <div class="tabla-wrap"><table class="drive" id="tablaCajaHistorial"></table></div>
+        </div>
+      </section>
+
       <!-- ============ HOY (actividades) ============ -->
       <section id="pag-hoy" class="oculto">
         <div class="kpis">
@@ -635,7 +748,7 @@
             <div id="hoyListaCitas"></div>
           </div>
           <div class="tarjeta caja-hoy">
-            <h3>Tareas de hoy</h3>
+            <h3>Tareas de hoy <button class="btn borde pequeno" style="float:right;" id="btnHoyTareaNueva">+ Tarea</button></h3>
             <div id="hoyListaTareas"></div>
           </div>
           <div class="tarjeta caja-hoy">
@@ -649,15 +762,58 @@
         </div>
       </section>
 
+      <!-- ============ CALENDARIO ============ -->
+      <section id="pag-calendario" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Citas del mes</div><div class="num" id="calTotal">-</div></div>
+          <div class="kpi verde"><div class="eti">Confirmadas</div><div class="num" id="calConfirmadas">-</div></div>
+          <div class="kpi naranja"><div class="eti">Pendientes por confirmar</div><div class="num" id="calPendientes">-</div></div>
+          <div class="kpi rojo"><div class="eti">No confirmadas</div><div class="num" id="calNoConfirmadas">-</div></div>
+        </div>
+        <div class="tarjeta">
+          <div class="toolbar">
+            <button class="btn gris" id="btnCalAnterior">&larr;</button>
+            <b id="calTitulo" style="min-width:160px;text-align:center;"></b>
+            <button class="btn gris" id="btnCalSiguiente">&rarr;</button>
+            <button class="btn borde pequeno" id="btnCalHoy">Ir a hoy</button>
+            <button class="btn gris" id="btnCalRecargar" style="margin-left:auto;">Actualizar</button>
+            <span class="chip ok">Confirmado</span>
+            <span class="chip ambar">Pendiente por confirmar</span>
+            <span class="chip bad">No confirmado</span>
+          </div>
+          <div class="cal-cab"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+        <div class="tarjeta" id="calDetalleBloque" style="margin-top:18px;">
+          <h3 id="calDetalleTitulo">Selecciona un día para ver sus citas</h3>
+          <div id="calDetalleLista"></div>
+        </div>
+      </section>
+
       <!-- ============ PIPELINE (kanban) ============ -->
       <section id="pag-pipeline" class="oculto">
         <div class="tarjeta">
           <div class="toolbar">
             <div class="buscar"><input type="search" id="piBuscar" placeholder="Buscar por nombre, teléfono, campaña, CRM&hellip;"></div>
             <button class="btn gris" id="btnPiRecargar">Actualizar</button>
+            <button class="btn borde" id="btnPiWhatsapp">WhatsApp: palabras clave</button>
             <button class="btn verde" id="btnPiNueva">+ Nueva tarjeta</button>
           </div>
           <div class="kanban" id="kanban"></div>
+        </div>
+        <div class="tarjeta oculto" id="piWhatsappBloque">
+          <h3>Detección de campaña por WhatsApp</h3>
+          <p style="font-size:13px;color:var(--gris);margin:0 0 12px;">
+            Cuando llega un mensaje nuevo por WhatsApp, el sistema crea la tarjeta en Pipeline
+            automáticamente. Si viene de un anuncio de Meta Ads se detecta solo; para el resto
+            (Instagram, boca a boca, etc.) usa la palabra que el paciente escribió para asignar
+            la campaña. Una línea por regla: <code>PALABRA = Nombre de campaña</code>.
+          </p>
+          <textarea id="piWhatsappTexto" rows="8" style="width:100%;padding:10px;border:1px solid var(--borde);border-radius:9px;font-family:monospace;font-size:13px;" placeholder="TOXINA = Promo Toxina Botulínica&#10;VERANO = Campaña Verano 2026"></textarea>
+          <div class="mensaje err oculto" id="msgPiWhatsapp"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn verde" id="btnPiWhatsappGuardar">Guardar palabras clave</button>
+          </div>
         </div>
       </section>
 
@@ -676,6 +832,13 @@
               <button class="btn gris" id="btnPaBuscarHist">Buscar</button>
             </div>
             <div id="paHistorial"><div class="nota">Escribe un teléfono o DNI para ver el historial del paciente (citas, tratamientos y notas).</div></div>
+            <div id="paCuotasBloque" class="oculto" style="margin-top:14px;border-top:1px solid var(--borde);padding-top:12px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <b style="font-size:14px;">Plan de pagos</b>
+                <button class="btn borde pequeno" id="btnPaCuotaNueva">+ Cuota</button>
+              </div>
+              <div id="paCuotasLista"></div>
+            </div>
           </div>
           <div class="tarjeta">
             <h3>Pacientes para reactivar</h3>
@@ -691,46 +854,6 @@
           <div class="nota" id="paNota" style="margin:0 0 10px;"></div>
           <div class="tabla-wrap"><table class="drive" id="tablaPacientes"></table></div>
           <div class="mas" id="paMas"></div>
-        </div>
-      </section>
-
-      <!-- ============ TAREAS ============ -->
-      <section id="pag-tareas" class="oculto">
-        <div class="kpis">
-          <div class="kpi"><div class="eti">Total tareas</div><div class="num" id="taTotal">-</div></div>
-          <div class="kpi naranja"><div class="eti">Pendientes</div><div class="num" id="taPendientes">-</div></div>
-          <div class="kpi verde"><div class="eti">Completadas</div><div class="num" id="taCompletadas">-</div></div>
-          <div class="kpi rojo"><div class="eti">Vencidas</div><div class="num" id="taVencidas">-</div></div>
-        </div>
-        <div class="tarjeta">
-          <div class="toolbar">
-            <select id="taFiltroEstado"><option value="">Estado: todos</option><option>PENDIENTE</option><option>COMPLETADA</option><option>CANCELADA</option></select>
-            <select id="taFiltroTipo"><option value="">Tipo: todos</option></select>
-            <button class="btn gris" id="btnTaRecargar">Actualizar</button>
-            <button class="btn verde" id="btnTaNueva">+ Nueva tarea</button>
-          </div>
-          <div class="tabla-wrap"><table class="drive" id="tablaTareas"></table></div>
-          <div class="mas" id="taMas"></div>
-        </div>
-      </section>
-
-      <!-- ============ CUOTAS ============ -->
-      <section id="pag-cuotas" class="oculto">
-        <div class="kpis">
-          <div class="kpi"><div class="eti">Cuotas vigentes</div><div class="num" id="cuVigentes">-</div></div>
-          <div class="kpi naranja"><div class="eti">Por cobrar</div><div class="num" id="cuPorCobrar">-</div></div>
-          <div class="kpi rojo"><div class="eti">Atrasadas</div><div class="num" id="cuAtrasadas">-</div></div>
-          <div class="kpi verde"><div class="eti">Pagadas</div><div class="num" id="cuPagadas">-</div></div>
-        </div>
-        <div class="tarjeta">
-          <div class="toolbar">
-            <div class="buscar"><input type="search" id="cuBuscar" placeholder="Buscar por paciente o teléfono&hellip;"></div>
-            <select id="cuFiltroEstado"><option value="">Estado: todos</option><option>PENDIENTE</option><option>ATRASADO</option><option>PAGADO</option></select>
-            <button class="btn gris" id="btnCuRecargar">Actualizar</button>
-            <a class="btn borde pequeno" href="/api/exportar/cuotas">Exportar CSV</a>
-            <button class="btn verde" id="btnCuNueva">+ Nueva cuota</button>
-          </div>
-          <div class="tabla-wrap"><table class="drive" id="tablaCuotas"></table></div>
         </div>
       </section>
 
@@ -1044,11 +1167,11 @@ const ETAPAS = ['NUEVO', 'AGENDADO', 'CONFIRMADO', 'ATENDIDO', 'GANADO', 'PERDID
 const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
 const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
-let TARJETAS = null, TAREAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
+let TARJETAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
 let hoyFilaActiva = null;
 let HOY_ACCIONES = {};
 let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
-let paLimite = 200, taLimite = 200;
+let paLimite = 200;
 
 function toast(msg, tipo = '') {
   const t = $('toast');
@@ -1080,11 +1203,11 @@ const TITULOS = {
   panel: ['Panel', 'Reportes de ventas'],
   agendados: ['Agendados', 'Citas y pacientes agendados desde el CRM'],
   venta: ['Venta diaria', 'Registro diario de ventas desde el CRM'],
+  caja: ['Caja', 'Apertura y cierre de caja del día'],
   hoy: ['Hoy', 'Actividades y citas del día'],
+  calendario: ['Calendario', 'Vista general de citas agendadas'],
   pipeline: ['Pipeline', 'Tablero de ventas estilo kanban'],
   pacientes: ['Pacientes', 'Directorio de pacientes e historial'],
-  tareas: ['Tareas', 'Tareas y recordatorios'],
-  cuotas: ['Cuotas', 'Pagos a plazos y deudas'],
   dashboard: ['Dashboard', 'Métricas del negocio'],
   analitica: ['Analítica', 'KPIs y métricas del maestro'],
   metaads: ['Meta Ads', 'Presupuestos y rendimiento de publicidad (import manual)'],
@@ -1097,12 +1220,12 @@ function pagina(nombre) {
   $('subtituloPagina').textContent = TITULOS[nombre][1];
   if (nombre === 'agendados') cargarAgendados();
   if (nombre === 'venta') cargarVenta();
-  if (nombre === 'panel') cargarEstado();
+  if (nombre === 'caja') cargarCaja();
+  if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); }
   if (nombre === 'hoy') cargarHoy();
+  if (nombre === 'calendario') cargarCalendario();
   if (nombre === 'pipeline') cargarPipeline();
   if (nombre === 'pacientes') cargarPacientes();
-  if (nombre === 'tareas') cargarTareas();
-  if (nombre === 'cuotas') cargarCuotas();
   if (nombre === 'dashboard') cargarDashboard();
   if (nombre === 'analitica') cargarAnalitica();
   if (nombre === 'metaads') cargarMeta();
@@ -1135,6 +1258,41 @@ async function cargarEstado() {
   sel.innerHTML = ESTADO.meses.map(m => `<option value="${m}">${m}</option>`).join('');
   sel.value = MESES[HOY.getMonth()];
 }
+
+/* ---------------- Panel: meta de ventas del mes ---------------- */
+async function cargarMetaMensual() {
+  $('metaEtiquetaMes').textContent = `${HOY_M} ${HOY_A}`;
+  let meta = 0;
+  try {
+    const r = await api(`/api/meta-mensual?mes=${HOY_M}&anio=${HOY_A}`);
+    meta = r.meta || 0;
+  } catch (e) { /* sin meta guardada aún */ }
+  $('metaInput').value = meta || '';
+  if (!meta) { $('metaProgreso').classList.add('oculto'); return; }
+  try {
+    const k = await api(`/api/analitica/kpis?mes=${HOY_M}&anio=${HOY_A}&desde=1&hasta=31`);
+    const actual = k.monto || 0;
+    const pct = Math.min(100, Math.round(100 * actual / meta));
+    $('metaProgreso').classList.remove('oculto');
+    $('metaMontoActual').textContent = fmtMon(actual);
+    $('metaMontoObjetivo').textContent = 'Meta: ' + fmtMon(meta);
+    $('metaBarra').style.width = pct + '%';
+    $('metaBarra').style.background = pct >= 100 ? 'linear-gradient(90deg,#2e9e5b,#57c785)' : pct >= 60 ? 'linear-gradient(90deg,#e08a2e,#f0b45e)' : 'linear-gradient(90deg,#d64545,#e57373)';
+    $('metaPct').textContent = `${pct}% de la meta ${pct >= 100 ? '· ¡meta alcanzada!' : ''}`;
+    $('metaNota').classList.add('oculto');
+  } catch (e) { /* sin datos del maestro aún */ }
+}
+$('btnMetaGuardar').addEventListener('click', async () => {
+  const meta = parseFloat($('metaInput').value) || 0;
+  try {
+    await api('/api/meta-mensual', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes: HOY_M, anio: HOY_A, meta }),
+    });
+    toast('Meta guardada', 'okm');
+    cargarMetaMensual();
+  } catch (e) { toast(e.message, 'err'); }
+});
 
 /* ---------------- Panel: reporte ---------------- */
 $('btnReporte').addEventListener('click', async () => {
@@ -1562,6 +1720,290 @@ $('formVenta').addEventListener('submit', async (e) => {
   } finally { b.disabled = false; b.textContent = 'Guardar venta'; }
 });
 
+/* ---------------- CRM PLUS: CAJA (arqueo diario) ---------------- */
+let CAJA_ESTADO = null;
+const CAJA_BILLETES = [200, 100, 50, 20, 10];
+const CAJA_MONEDAS = [5, 2, 1, 0.5, 0.2, 0.1];
+const CAJA_USD = [100, 50, 20, 10];
+const CAJA_VENTA_ETIQUETAS = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta Créd./Déb.', yape_plin: 'Yape / Plin',
+  deposito: 'Depósito / transferencia', otros: 'Otros', sin_dato: 'Sin forma de pago',
+};
+
+function cajaInputId(pref, moneda, valor) {
+  return `caja_${pref}_${moneda}_${String(valor).replace('.', '_')}`;
+}
+function cajaTablaDeno(pref, moneda, titulo, valores, simbolo) {
+  const filas = valores.map(v => `<tr>
+    <td>${simbolo} ${v}</td>
+    <td><input type="number" min="0" step="1" id="${cajaInputId(pref, moneda, v)}" value="0"
+      style="width:70px;" oninput="cajaRecalcular('${pref}')"></td>
+    <td class="der" id="${cajaInputId(pref, moneda, v)}_sub">${simbolo} 0</td></tr>`).join('');
+  return `<div><b style="font-size:12px;color:var(--gris);">${titulo}</b>
+    <table class="drive" style="margin-top:6px;">
+      <thead><tr><th>Denom.</th><th>Cant.</th><th class="der">Subtotal</th></tr></thead>
+      <tbody>${filas}</tbody></table></div>`;
+}
+function renderCajaDenominaciones(pref, contenedor) {
+  $(contenedor).innerHTML = `<div class="dos">
+    ${cajaTablaDeno(pref, 'pen', 'BILLETES SOLES', CAJA_BILLETES, 'S/')}
+    ${cajaTablaDeno(pref, 'pen', 'MONEDAS SOLES', CAJA_MONEDAS, 'S/')}
+  </div>
+  <div style="margin-top:14px;max-width:50%;">
+    ${cajaTablaDeno(pref, 'usd', 'BILLETES DÓLARES', CAJA_USD, '$')}
+  </div>`;
+  cajaRecalcular(pref);
+}
+function cajaLeerDesglose(pref) {
+  const desglose = {}, desglose_usd = {};
+  let total = 0, total_usd = 0;
+  [...CAJA_BILLETES, ...CAJA_MONEDAS].forEach(v => {
+    const el = $(cajaInputId(pref, 'pen', v));
+    if (!el) return;
+    const cant = parseInt(el.value) || 0;
+    const sub = cant * v;
+    if (cant > 0) desglose[v] = cant;
+    total += sub;
+    $(cajaInputId(pref, 'pen', v) + '_sub').textContent = fmtMon(sub);
+  });
+  CAJA_USD.forEach(v => {
+    const el = $(cajaInputId(pref, 'usd', v));
+    if (!el) return;
+    const cant = parseInt(el.value) || 0;
+    const sub = cant * v;
+    if (cant > 0) desglose_usd[v] = cant;
+    total_usd += sub;
+    $(cajaInputId(pref, 'usd', v) + '_sub').textContent = fmtUsd(sub);
+  });
+  return {
+    desglose, desglose_usd,
+    total: Math.round(total * 100) / 100,
+    total_usd: Math.round(total_usd * 100) / 100,
+  };
+}
+function fmtUsd(n) { return '$ ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function cajaRecalcular(pref) {
+  const { total, total_usd } = cajaLeerDesglose(pref);
+  if (pref === 'apertura') {
+    $('cajaAperturaTotal').textContent = fmtMon(total);
+    $('cajaAperturaTotalUsd').textContent = total_usd ? '· ' + fmtUsd(total_usd) : '';
+  } else {
+    $('cajaCierreTotal').textContent = fmtMon(total);
+    $('cajaCierreTotalUsd').textContent = total_usd ? '· ' + fmtUsd(total_usd) : '';
+    pintarCajaAjuste(total, total_usd);
+  }
+}
+function fmtDesglose(desglose, simbolo = 'S/') {
+  if (!desglose) return '';
+  return Object.entries(desglose)
+    .sort((a, b) => Number(b[0]) - Number(a[0]))
+    .map(([v, c]) => `${c}×${simbolo}${v}`).join(', ');
+}
+function chipDiferencia(dif, fmt = fmtMon) {
+  if (dif === null || dif === undefined) return '<span class="chip ambar">Sin cerrar</span>';
+  if (Math.abs(dif) < 0.01) return '<span class="chip ok">Cuadra</span>';
+  return dif > 0
+    ? `<span class="chip info">Sobrante ${fmt(dif)}</span>`
+    : `<span class="chip bad">Faltante ${fmt(Math.abs(dif))}</span>`;
+}
+
+async function cargarCaja() {
+  try { CAJA_ESTADO = await api('/api/crm/caja'); }
+  catch (e) { toast(e.message, 'err'); return; }
+  pintarCaja();
+  cargarCajaHistorial();
+}
+function pintarCaja() {
+  const c = CAJA_ESTADO;
+  $('cajaEstado').textContent = c.cerrada ? 'Cerrada' : c.abierta ? 'Abierta' : 'Sin abrir';
+  $('cajaInicial').textContent = fmtMon(c.inicio) + (c.inicio_usd ? ' / ' + fmtUsd(c.inicio_usd) : '');
+  $('cajaVentasTotal').textContent = fmtMon(c.ventas.total);
+  $('cajaEsperado').textContent = fmtMon(c.esperado);
+
+  $('cajaBloqueApertura').classList.toggle('oculto', c.abierta);
+  $('cajaBloqueVentas').classList.toggle('oculto', !c.abierta);
+  $('cajaBloqueMovimientos').classList.toggle('oculto', !c.abierta || c.cerrada);
+  $('cajaBloqueCierre').classList.toggle('oculto', !c.abierta || c.cerrada);
+  $('cajaBloqueCerrada').classList.toggle('oculto', !c.cerrada);
+
+  if (!c.abierta) renderCajaDenominaciones('apertura', 'cajaDenoApertura');
+  if (c.abierta && !c.cerrada) renderCajaDenominaciones('cierre', 'cajaDenoCierre');
+
+  pintarCajaVentas();
+  pintarCajaMovimientos();
+  if (c.cerrada) pintarCajaCerrada();
+}
+function pintarCajaVentas() {
+  const v = CAJA_ESTADO.ventas;
+  const orden = ['efectivo', 'tarjeta', 'yape_plin', 'deposito', 'otros', 'sin_dato'];
+  const filas = orden.filter(k => v[k]).map(k => `<tr>
+    <td>${CAJA_VENTA_ETIQUETAS[k]}${k === 'efectivo' ? ' <span class="chip ok">entra a caja</span>' : ''}</td>
+    <td class="der">${fmtMon(v[k])}</td>
+    <td class="der pct">${v.total ? Math.round(100 * v[k] / v.total) : 0}%</td></tr>`).join('');
+  $('tablaCajaVentas').innerHTML = v.total
+    ? `<thead><tr><th>Forma de pago</th><th class="der">Monto</th><th class="der">%</th></tr></thead>
+       <tbody>${filas}</tbody>
+       <tfoot><tr><td><b>TOTAL</b></td><td class="der"><b>${fmtMon(v.total)}</b></td><td class="der">100%</td></tr></tfoot>`
+    : '<tr><td><div class="vacio">Sin ventas registradas hoy en VENTA DIARIA.</div></td></tr>';
+}
+function pintarCajaMovimientos() {
+  const m = CAJA_ESTADO.movimientos;
+  $('tablaCajaMovimientos').innerHTML = m.length
+    ? '<thead><tr><th>Hora</th><th>Tipo</th><th class="der">S/</th><th class="der">$</th><th>Concepto</th><th>Responsable</th><th></th></tr></thead><tbody>' +
+      m.map(x => `<tr>
+        <td>${esc(x.hora || '')}</td>
+        <td>${x.tipo === 'INGRESO' ? '<span class="chip ok">INGRESO</span>' : '<span class="chip bad">GASTO</span>'}</td>
+        <td class="der">${x.monto ? fmtMon(x.monto) : '—'}</td>
+        <td class="der">${x.monto_usd ? fmtUsd(x.monto_usd) : '—'}</td>
+        <td>${esc(x.concepto || '')}</td>
+        <td>${esc(x.responsable || '')}</td>
+        <td><button class="btn rojo pequeno" onclick="cajaBorrarMovimiento(${x.id})">Borrar</button></td>
+      </tr>`).join('') + '</tbody>' +
+      `<tfoot><tr><td colspan="2"><b>Total gastos</b></td>
+        <td class="der"><b>${fmtMon(CAJA_ESTADO.egresos)}</b></td>
+        <td class="der"><b>${fmtUsd(CAJA_ESTADO.egresos_usd)}</b></td><td colspan="3"></td></tr></tfoot>`
+    : '<tr><td><div class="vacio">Sin gastos ni ingresos extra registrados.</div></td></tr>';
+}
+function pintarCajaAjuste(contado, contadoUsd) {
+  const c = CAJA_ESTADO;
+  const dif = Math.round((contado - c.esperado) * 100) / 100;
+  const difUsd = Math.round((contadoUsd - c.esperado_usd) * 100) / 100;
+  $('cajaAjustePreview').innerHTML = `
+    <table class="dtab">
+      <tbody>
+        <tr><td>Inicio de día</td><td class="der valor">${fmtMon(c.inicio)}</td><td class="der">${c.inicio_usd ? fmtUsd(c.inicio_usd) : ''}</td></tr>
+        <tr><td>+ Ventas en efectivo</td><td class="der valor">${fmtMon(c.ventas.efectivo)}</td><td></td></tr>
+        <tr><td>+ Ingresos extra</td><td class="der valor">${fmtMon(c.ingresos)}</td><td class="der">${c.ingresos_usd ? fmtUsd(c.ingresos_usd) : ''}</td></tr>
+        <tr><td>− Gastos de caja chica</td><td class="der valor">${fmtMon(c.egresos)}</td><td class="der">${c.egresos_usd ? fmtUsd(c.egresos_usd) : ''}</td></tr>
+        <tr><td><b>= Efectivo esperado</b></td><td class="der valor"><b>${fmtMon(c.esperado)}</b></td><td class="der"><b>${c.esperado_usd ? fmtUsd(c.esperado_usd) : ''}</b></td></tr>
+        <tr><td>Efectivo contado</td><td class="der valor">${fmtMon(contado)}</td><td class="der">${contadoUsd ? fmtUsd(contadoUsd) : ''}</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px;">Soles: ${chipDiferencia(dif)}
+      ${c.esperado_usd || contadoUsd ? ' &nbsp; Dólares: ' + chipDiferencia(difUsd, fmtUsd) : ''}</p>`;
+}
+function pintarCajaCerrada() {
+  const c = CAJA_ESTADO;
+  const detalleMovs = c.movimientos.length ? `
+    <div class="grupo" style="margin:14px 0 6px;">Movimientos del día</div>
+    ${c.movimientos.map(m => `<div class="item-hoy">
+      <span class="hora">${esc(m.hora || '')}</span>
+      <div class="info"><b>${esc(m.concepto || (m.tipo === 'INGRESO' ? 'Ingreso extra' : 'Gasto'))}</b>
+        <small>${esc(m.responsable || '')}</small></div>
+      <span class="chip ${m.tipo === 'INGRESO' ? 'ok' : 'bad'}">${m.tipo === 'INGRESO' ? '+' : '−'} ${fmtMon(m.monto)}${m.monto_usd ? ' / ' + fmtUsd(m.monto_usd) : ''}</span>
+    </div>`).join('')}` : '';
+  $('cajaResumenCerrada').innerHTML = `
+    <table class="dtab">
+      <tbody>
+        <tr><td>1. Inicio de día</td><td class="der valor">${fmtMon(c.inicio)}</td><td class="der">${c.inicio_usd ? fmtUsd(c.inicio_usd) : ''}</td></tr>
+        <tr><td>+ Ventas en efectivo (VENTA DIARIA)</td><td class="der valor">${fmtMon(c.ventas.efectivo)}</td><td></td></tr>
+        <tr><td>+ Ingresos extra</td><td class="der valor">${fmtMon(c.ingresos)}</td><td class="der">${c.ingresos_usd ? fmtUsd(c.ingresos_usd) : ''}</td></tr>
+        <tr><td>− 4. Gasto de caja chica</td><td class="der valor">${fmtMon(c.egresos)}</td><td class="der">${c.egresos_usd ? fmtUsd(c.egresos_usd) : ''}</td></tr>
+        <tr><td><b>= Efectivo esperado</b></td><td class="der valor"><b>${fmtMon(c.esperado)}</b></td><td class="der"><b>${c.esperado_usd ? fmtUsd(c.esperado_usd) : ''}</b></td></tr>
+        <tr><td>2. Efectivo contado</td><td class="der valor">${fmtMon(c.contado)}</td><td class="der">${c.contado_usd ? fmtUsd(c.contado_usd) : ''}</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px;">5. Ajuste — Soles: ${chipDiferencia(c.diferencia)}
+      ${c.esperado_usd || c.contado_usd ? ' &nbsp; Dólares: ' + chipDiferencia(c.diferencia_usd, fmtUsd) : ''}</p>
+    ${c.ventas.total ? `<p class="nota">Ventas totales del día (todas las formas de pago): ${fmtMon(c.ventas.total)}</p>` : ''}
+    ${detalleMovs}
+    ${c.apertura.desglose ? `<p class="nota">Apertura contada: ${esc(fmtDesglose(c.apertura.desglose))}</p>` : ''}
+    ${c.cierre.desglose ? `<p class="nota">Cierre contado: ${esc(fmtDesglose(c.cierre.desglose))}</p>` : ''}
+    ${c.cierre.desglose_usd ? `<p class="nota">Cierre dólares: ${esc(fmtDesglose(c.cierre.desglose_usd, '$'))}</p>` : ''}
+    ${c.cierre.responsable ? `<p class="nota">Responsable: ${esc(c.cierre.responsable)}</p>` : ''}
+    ${c.cierre.concepto ? `<p class="nota">Nota: ${esc(c.cierre.concepto)}</p>` : ''}`;
+}
+async function cajaAbrir() {
+  $('msgCajaApertura').classList.add('oculto');
+  const { desglose, desglose_usd, total, total_usd } = cajaLeerDesglose('apertura');
+  if (!(total > 0) && !(total_usd > 0)) {
+    $('msgCajaApertura').textContent = 'Cuenta los billetes y monedas con los que abres caja';
+    $('msgCajaApertura').classList.remove('oculto');
+    return;
+  }
+  try {
+    await api('/api/crm/caja/apertura', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monto: total, monto_usd: total_usd, desglose, desglose_usd,
+        responsable: $('cajaAperturaResponsable').value.trim(), nota: $('cajaAperturaNota').value.trim() }),
+    });
+    toast('Caja abierta', 'okm');
+    cargarCaja();
+  } catch (e) {
+    $('msgCajaApertura').textContent = e.message; $('msgCajaApertura').classList.remove('oculto');
+  }
+}
+async function cajaAgregarMovimiento() {
+  $('msgCajaMov').classList.add('oculto');
+  const monto = parseFloat($('cajaMovMonto').value) || 0;
+  const montoUsd = parseFloat($('cajaMovMontoUsd').value) || 0;
+  if (!(monto > 0) && !(montoUsd > 0)) {
+    $('msgCajaMov').textContent = 'Ingresa un monto válido en soles o dólares';
+    $('msgCajaMov').classList.remove('oculto');
+    return;
+  }
+  try {
+    await api('/api/crm/caja/movimiento', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: $('cajaMovTipo').value, monto, monto_usd: montoUsd,
+        concepto: $('cajaMovConcepto').value.trim(), responsable: $('cajaMovResponsable').value.trim() }),
+    });
+    $('cajaMovMonto').value = ''; $('cajaMovMontoUsd').value = ''; $('cajaMovConcepto').value = '';
+    toast('Registrado', 'okm');
+    cargarCaja();
+  } catch (e) {
+    $('msgCajaMov').textContent = e.message; $('msgCajaMov').classList.remove('oculto');
+  }
+}
+async function cajaBorrarMovimiento(id) {
+  if (!confirm('¿Borrar este movimiento?')) return;
+  try {
+    await api('/api/crm/caja/' + id, { method: 'DELETE' });
+    toast('Movimiento borrado', 'okm');
+    cargarCaja();
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function cajaCerrar() {
+  $('msgCajaCierre').classList.add('oculto');
+  const { desglose, desglose_usd, total, total_usd } = cajaLeerDesglose('cierre');
+  if (!confirm('¿Cerrar la caja de hoy? No podrás agregar más movimientos después.')) return;
+  try {
+    await api('/api/crm/caja/cierre', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monto: total, monto_usd: total_usd, desglose, desglose_usd,
+        responsable: $('cajaCierreResponsable').value.trim(), nota: $('cajaCierreNota').value.trim() }),
+    });
+    toast('Caja cerrada', 'okm');
+    cargarCaja();
+  } catch (e) {
+    $('msgCajaCierre').textContent = e.message; $('msgCajaCierre').classList.remove('oculto');
+  }
+}
+async function cargarCajaHistorial() {
+  try {
+    const r = await api('/api/crm/caja/historial?limite=30');
+    $('tablaCajaHistorial').innerHTML = r.historial.length
+      ? '<thead><tr><th>Fecha</th><th class="der">Inicio</th><th class="der">Ventas</th><th class="der">Efectivo vendido</th><th class="der">Ingresos</th><th class="der">Gastos</th><th class="der">Esperado</th><th class="der">Contado</th><th class="der">Ajuste</th></tr></thead><tbody>' +
+        r.historial.map(h => `<tr>
+          <td>${esc(h.fecha)}</td>
+          <td class="der">${fmtMon(h.inicio)}</td>
+          <td class="der">${fmtMon(h.ventas.total)}</td>
+          <td class="der">${fmtMon(h.ventas.efectivo)}</td>
+          <td class="der">${fmtMon(h.ingresos)}</td>
+          <td class="der">${fmtMon(h.egresos)}</td>
+          <td class="der">${fmtMon(h.esperado)}</td>
+          <td class="der">${h.cerrada ? fmtMon(h.contado) : '—'}</td>
+          <td class="der">${chipDiferencia(h.cerrada ? h.diferencia : null)}</td>
+        </tr>`).join('') + '</tbody>'
+      : '<tr><td><div class="vacio">Sin arqueos registrados aún.</div></td></tr>';
+  } catch (e) {
+    $('tablaCajaHistorial').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+  }
+}
+$('btnCajaAbrir').addEventListener('click', cajaAbrir);
+$('btnCajaMovAgregar').addEventListener('click', cajaAgregarMovimiento);
+$('btnCajaCerrar').addEventListener('click', cajaCerrar);
+
 /* ---------------- CRM PLUS: HOY ---------------- */
 async function cargarHoy() {
   const cont = $('hoyListaCitas');
@@ -1739,6 +2181,7 @@ async function guardarCompro() {
 function tareaItemHoy(t) {
   return `<div class="item-hoy"><span class="hora">${esc(t.hora || '—')}</span>
     <div class="info"><b>${esc(t.titulo)}</b><small>${esc(t.tipo)} ${t.contacto ? '· ' + esc(t.contacto) : ''}</small></div>
+    <button class="btn pequeno borde" onclick="editarTareaHoy(${t.id})">Editar</button>
     <button class="btn pequeno verde" onclick="completarTareaHoy(${t.id})">Completar</button>
   </div>`;
 }
@@ -1751,6 +2194,98 @@ async function completarTareaHoy(id) {
     cargarHoy();
   } catch (err) { toast(err.message, 'err'); }
 }
+function editarTareaHoy(id) {
+  const t = [...(HOY_DATA?.tareas_hoy || []), ...(HOY_DATA?.tareas_vencidas || [])].find(x => x.id === id);
+  if (t) abrirModalTarea(t);
+}
+
+/* ---------------- CRM PLUS: CALENDARIO ---------------- */
+let CAL_AG = null;
+let calMes = HOY.getMonth(), calAnio = HOY_A, calDiaSel = null;
+const CAL_CLASE = { CONFIRMADO: 'ok', PENDIENTE: 'ambar', NO_CONFIRMADO: 'bad' };
+const CAL_ETIQUETA = { CONFIRMADO: 'Confirmado', PENDIENTE: 'Pendiente por confirmar', NO_CONFIRMADO: 'No confirmado' };
+
+function estadoCita(q) {
+  const s = String(q || '').trim().toUpperCase();
+  if (!s) return 'PENDIENTE';
+  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM')) return 'NO_CONFIRMADO';
+  if (s.includes('CONFIRMADO') || s.includes('RECONFIRM')) return 'CONFIRMADO';
+  return 'PENDIENTE';
+}
+async function cargarCalendario() {
+  $('calGrid').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando agendados&hellip;</div>';
+  try { CAL_AG = await api('/api/crm/agendados'); }
+  catch (e) { $('calGrid').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
+  pintarCalendario();
+}
+function calCitasDia(dia) {
+  if (!CAL_AG) return [];
+  const mesTxt = MESES[calMes];
+  return CAL_AG.filas.filter(f => Number(f.L) === dia && String(f.M || '').trim() === mesTxt && Number(f.N) === calAnio);
+}
+function pintarCalendario() {
+  if (!CAL_AG) return;
+  $('calTitulo').textContent = `${MESES[calMes]} ${calAnio}`;
+  const primerDiaSemana = (new Date(calAnio, calMes, 1).getDay() + 6) % 7; // 0 = lunes
+  const diasEnMes = new Date(calAnio, calMes + 1, 0).getDate();
+  let total = 0, conf = 0, pend = 0, noconf = 0;
+  let html = '';
+  for (let i = 0; i < primerDiaSemana; i++) html += '<div class="cal-dia cal-vacio"></div>';
+  for (let dia = 1; dia <= diasEnMes; dia++) {
+    const citas = calCitasDia(dia);
+    let c = 0, p = 0, n = 0;
+    citas.forEach(f => {
+      const e = estadoCita(f.Q);
+      if (e === 'CONFIRMADO') c++; else if (e === 'NO_CONFIRMADO') n++; else p++;
+    });
+    total += citas.length; conf += c; pend += p; noconf += n;
+    const esHoy = dia === HOY_D && calMes === HOY.getMonth() && calAnio === HOY_A;
+    const esSel = calDiaSel === dia;
+    const puntos = citas.length
+      ? `<div class="cal-puntos">${c ? `<span class="cal-punto ok" title="${c} confirmada(s)"></span>` : ''}${p ? `<span class="cal-punto ambar" title="${p} pendiente(s)"></span>` : ''}${n ? `<span class="cal-punto bad" title="${n} no confirmada(s)"></span>` : ''}</div>`
+      : '';
+    html += `<div class="cal-dia${esHoy ? ' cal-hoy' : ''}${esSel ? ' cal-sel' : ''}" onclick="calSeleccionarDia(${dia})">
+      <div class="cal-num">${dia}</div>
+      ${citas.length ? `<div class="cal-resumen">${citas.length} cita${citas.length === 1 ? '' : 's'}</div>` : ''}
+      ${puntos}
+    </div>`;
+  }
+  $('calGrid').innerHTML = html;
+  $('calTotal').textContent = total;
+  $('calConfirmadas').textContent = conf;
+  $('calPendientes').textContent = pend;
+  $('calNoConfirmadas').textContent = noconf;
+  if (calDiaSel) pintarCalDetalle();
+}
+function calSeleccionarDia(dia) {
+  calDiaSel = dia;
+  pintarCalendario();
+  pintarCalDetalle();
+}
+function pintarCalDetalle() {
+  const citas = calCitasDia(calDiaSel).slice().sort((a, b) => String(a.P || '').localeCompare(String(b.P || '')));
+  $('calDetalleTitulo').textContent = `${calDiaSel} de ${MESES[calMes]} ${calAnio} · ${citas.length} cita${citas.length === 1 ? '' : 's'}`;
+  $('calDetalleLista').innerHTML = citas.length ? citas.map(f => {
+    const e = estadoCita(f.Q);
+    return `<div class="item-hoy"><span class="hora">${esc(f.P || '—')}</span>
+      <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small></div>
+      <span class="chip ${CAL_CLASE[e]}">${CAL_ETIQUETA[e]}</span>
+    </div>`;
+  }).join('') : '<div class="vacio">Sin citas ese día.</div>';
+}
+function calCambiarMes(delta) {
+  calMes += delta;
+  if (calMes < 0) { calMes = 11; calAnio--; }
+  if (calMes > 11) { calMes = 0; calAnio++; }
+  calDiaSel = null;
+  $('calDetalleTitulo').textContent = 'Selecciona un día para ver sus citas';
+  $('calDetalleLista').innerHTML = '';
+  pintarCalendario();
+}
+$('btnCalAnterior').addEventListener('click', () => calCambiarMes(-1));
+$('btnCalSiguiente').addEventListener('click', () => calCambiarMes(1));
+$('btnCalHoy').addEventListener('click', () => { calMes = HOY.getMonth(); calAnio = HOY_A; calDiaSel = HOY_D; pintarCalendario(); pintarCalDetalle(); });
+$('btnCalRecargar').addEventListener('click', cargarCalendario);
 
 /* ---------------- CRM PLUS: PIPELINE ---------------- */
 async function cargarPipeline() {
@@ -1886,6 +2421,39 @@ $('piBuscar').addEventListener('input', pintarPipeline);
 $('btnPiRecargar').addEventListener('click', cargarPipeline);
 $('btnPiNueva').addEventListener('click', () => abrirModalTarjeta(null, 'NUEVO'));
 
+/* ---------------- Pipeline: palabras clave de WhatsApp ---------------- */
+async function cargarWhatsappCampanas() {
+  $('piWhatsappTexto').value = 'Cargando…';
+  try {
+    const r = await api('/api/whatsapp/campanas');
+    $('piWhatsappTexto').value = Object.entries(r.campanas)
+      .map(([palabra, campana]) => `${palabra} = ${campana}`).join('\n');
+  } catch (e) { $('piWhatsappTexto').value = ''; }
+}
+$('btnPiWhatsapp').addEventListener('click', () => {
+  $('piWhatsappBloque').classList.toggle('oculto');
+  if (!$('piWhatsappBloque').classList.contains('oculto')) cargarWhatsappCampanas();
+});
+$('btnPiWhatsappGuardar').addEventListener('click', async () => {
+  $('msgPiWhatsapp').classList.add('oculto');
+  const campanas = {};
+  $('piWhatsappTexto').value.split('\n').forEach(linea => {
+    const i = linea.indexOf('=');
+    if (i === -1) return;
+    const palabra = linea.slice(0, i).trim();
+    const campana = linea.slice(i + 1).trim();
+    if (palabra && campana) campanas[palabra] = campana;
+  });
+  try {
+    await api('/api/whatsapp/campanas', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campanas }),
+    });
+    toast('Palabras clave guardadas', 'okm');
+  } catch (e) {
+    $('msgPiWhatsapp').textContent = e.message; $('msgPiWhatsapp').classList.remove('oculto');
+  }
+});
+
 /* ---------------- CRM PLUS: PACIENTES ---------------- */
 async function cargarPacientes() {
   $('tablaPacientes').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Armando directorio&hellip;</div></td></tr>';
@@ -1902,6 +2470,8 @@ async function buscarHistorial() {
   try {
     const esDni = /^\d{8}$/.test(q);
     const r = await api('/api/analitica/paciente' + (esDni ? `?dni=${encodeURIComponent(q)}` : `?telefono=${encodeURIComponent(q)}`));
+    paBusquedaActual = { telefono: r.telefono || (esDni ? '' : q), nombre: r.nombre || '' };
+    cargarCuotasPaciente(paBusquedaActual.telefono);
     if (!r.citas.length && !r.notas.length) {
       $('paHistorial').innerHTML = '<div class="nota">No se encontraron citas ni notas para ese paciente.</div>';
       return;
@@ -2025,65 +2595,8 @@ $('formNota').addEventListener('submit', async (e) => {
 $('paBuscar').addEventListener('input', pintarPacientes);
 $('btnPaRecargar').addEventListener('click', cargarPacientes);
 
-/* ---------------- CRM PLUS: TAREAS ---------------- */
-async function cargarTareas() {
-  $('tablaTareas').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando tareas&hellip;</div></td></tr>';
-  try { TAREAS = await api('/api/crm/tareas'); }
-  catch (e) { $('tablaTareas').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
-  llenarSelect($('taFiltroTipo'), valoresUnicos(TAREAS.tareas, 'tipo'), 'Tipo: todos');
-  pintarTareas();
-}
-function taFiltradas() {
-  const est = $('taFiltroEstado').value, tip = $('taFiltroTipo').value;
-  return TAREAS.tareas.filter(t => {
-    if (est && t.estado !== est) return false;
-    if (tip && t.tipo !== tip) return false;
-    return true;
-  });
-}
-function pintarTareas() {
-  if (!TAREAS) return;
-  const filt = taFiltradas();
-  const hoy = hoyISO();
-  const pend = filt.filter(t => t.estado === 'PENDIENTE');
-  $('taTotal').textContent = TAREAS.tareas.length;
-  $('taPendientes').textContent = pend.length;
-  $('taCompletadas').textContent = filt.filter(t => t.estado === 'COMPLETADA').length;
-  $('taVencidas').textContent = pend.filter(t => t.fecha && t.fecha < hoy).length;
-  const vis = filt.slice(0, taLimite);
-  $('tablaTareas').innerHTML = '<thead><tr><th></th><th>Título</th><th>Tipo</th><th>Fecha</th><th>Hora</th><th>Prioridad</th><th>Contacto</th><th>Nota</th></tr></thead><tbody>' +
-    vis.map(t => {
-      const vencida = t.estado === 'PENDIENTE' && t.fecha && t.fecha < hoy;
-      const prio = t.prioridad === 'ALTA' ? '<span class="chip bad">ALTA</span>'
-        : t.prioridad === 'BAJA' ? '<span class="chip gris">BAJA</span>'
-        : '<span class="chip ambar">MEDIA</span>';
-      return `<tr style="${vencida ? 'background:#fff4f4 !important;' : ''}">
-        <td class="cen"><button class="btn pequeno ${t.estado === 'COMPLETADA' ? 'verde' : 'gris'}" onclick="toggleTarea(${t.id})">${t.estado === 'COMPLETADA' ? '✓' : 'Completar'}</button></td>
-        <td><b>${esc(t.titulo)}</b>${t.estado === 'COMPLETADA' ? ' <span class="chip ok">COMPLETADA</span>' : vencida ? ' <span class="chip bad">VENCIDA</span>' : ''}</td>
-        <td>${esc(t.tipo)}</td><td>${esc(t.fecha || '')}</td><td>${esc(t.hora || '')}</td>
-        <td>${prio}</td><td>${esc(t.contacto || '')}</td>
-        <td>${esc(t.nota || '')} <button class="btn pequeno borde" onclick="abrirModalTarea(${t.id})">Editar</button></td>
-      </tr>`;
-    }).join('') + '</tbody>';
-  $('taMas').innerHTML = filt.length > taLimite
-    ? `<button onclick="taLimite+=200;pintarTareas()">Mostrar más (${filt.length - taLimite} restantes)</button>`
-    : (filt.length === 0 ? '<div class="vacio">Sin tareas.</div>' : '');
-}
-async function toggleTarea(id) {
-  const t = TAREAS.tareas.find(x => x.id === id);
-  if (!t) return;
-  const nuevo = t.estado === 'COMPLETADA' ? 'PENDIENTE' : 'COMPLETADA';
-  try {
-    await api('/api/crm/tareas/' + id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: nuevo }),
-    });
-    t.estado = nuevo;
-    pintarTareas();
-    toast(nuevo === 'COMPLETADA' ? 'Tarea completada' : 'Tarea reactivada', 'okm');
-  } catch (err) { toast(err.message, 'err'); }
-}
-function abrirModalTarea(id) {
-  const t = id ? TAREAS.tareas.find(x => x.id === id) : null;
+/* ---------------- CRM PLUS: TAREAS (contextuales, desde Hoy) ---------------- */
+function abrirModalTarea(t) {
   tareaEditando = t ? t.id : null;
   $('tareaTitulo').textContent = t ? 'Editar tarea' : 'Nueva tarea';
   $('tareaTituloInput').value = t?.titulo || '';
@@ -2114,7 +2627,7 @@ $('formTarea').addEventListener('submit', async (e) => {
     else await api('/api/crm/tareas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     cerrarModales();
     toast('Tarea guardada', 'okm');
-    cargarTareas();
+    cargarHoy();
   } catch (err) {
     $('msgTareaForm').textContent = err.message; $('msgTareaForm').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = 'Guardar tarea'; }
@@ -2123,13 +2636,10 @@ $('btnTareaBorrar').addEventListener('click', async () => {
   if (!tareaEditando || !confirm('¿Borrar esta tarea?')) return;
   try {
     await api('/api/crm/tareas/' + tareaEditando, { method: 'DELETE' });
-    cerrarModales(); toast('Tarea borrada', 'okm'); cargarTareas();
+    cerrarModales(); toast('Tarea borrada', 'okm'); cargarHoy();
   } catch (err) { toast(err.message, 'err'); }
 });
-$('taFiltroEstado').addEventListener('change', () => { taLimite = 200; pintarTareas(); });
-$('taFiltroTipo').addEventListener('change', () => { taLimite = 200; pintarTareas(); });
-$('btnTaRecargar').addEventListener('click', () => { taLimite = 200; cargarTareas(); });
-$('btnTaNueva').addEventListener('click', () => abrirModalTarea(null));
+$('btnHoyTareaNueva').addEventListener('click', () => abrirModalTarea(null));
 
 /* ---------------- CRM PLUS: DASHBOARD ---------------- */
 function tablaDatos(datos, prefijo, sufijo) {
@@ -2208,6 +2718,8 @@ async function cargarAnalitica() {
     ['comp', '/api/analitica/comparativo' + q, pintarAnaComparativo],
     ['rec', '/api/analitica/recurrentes' + q, pintarAnaRecurrentes],
     ['hist', '/api/analitica/historico', pintarAnaHistorico],
+    ['exec', '/api/analitica/ejecutivas' + q, pintarAnaEjecutivas],
+    ['mot', '/api/analitica/motivos' + q, pintarAnaMotivos],
   ];
   for (const [, url, fn] of tareas) {
     try { fn(await api(url)); } catch (e) { console.warn('Analítica:', e.message); }
@@ -2222,7 +2734,9 @@ function pintarAnaKpis(k) {
     anaKpi('Fueron sin comprar', k.fueron_sin_compra ?? 0, 'asistieron pero no compraron') +
     anaKpi('Monto total', fmtMon(k.monto)) +
     anaKpi('Ticket prom.', fmtMon(k.ticket_promedio)) +
-    anaKpi('Recompra', k.recompra, 'pacientes que repitieron');
+    anaKpi('Recompra', k.recompra, 'pacientes que repitieron') +
+    `<div class="kpi-mini naranja"><div class="eti">Ejecutiva principal</div><div class="num" id="ejecutivaPrincipal">-</div><div class="sub" id="ejecPct">-</div></div>` +
+    `<div class="kpi-mini verde"><div class="eti">Motivo principal</div><div class="num" id="motivoPrincipal">-</div><div class="sub" id="motPct">-</div></div>`;
 }
 function pintarAnaSerie(s) {
   crearChart('grafSerie', {
@@ -2325,69 +2839,75 @@ function pintarAnaRecurrentes(r) {
       <tbody>${filas}</tbody></table>`;
 }
 
-/* ---------------- Cuotas ---------------- */
-let CUOTAS = null;
+function pintarAnaEjecutivas(e) {
+  const execs = e?.ejecutivas || [];
+  if (!execs || !execs.length) {
+    $('ejecutivaPrincipal').textContent = '-';
+    $('ejecPct').textContent = '-';
+    return;
+  }
+  const top = execs[0];  // primera ejecutiva (ya viene ordenada por monto DESC)
+  $('ejecutivaPrincipal').textContent = top.ejecutiva;
+  const pct = top.asistencia_pct || 0;
+  $('ejecPct').textContent = `${pct.toFixed(1)}%`;
+}
+
+function pintarAnaMotivos(m) {
+  const na = m?.no_asistio || [];
+  const nc = m?.no_compra || [];
+  const naTop = na.length ? na[0] : null;  // ya vienen ordenados por cantidad DESC
+  const ncTop = nc.length ? nc[0] : null;
+  const naLabel = naTop ? `${naTop.motivo} (${naTop.cantidad})` : '—';
+  const ncLabel = ncTop ? `${ncTop.motivo} (${ncTop.cantidad})` : '—';
+  $('motivoPrincipal').textContent = naTop ? naTop.motivo : ncTop ? ncTop.motivo : '—';
+  const totalNa = na.reduce((s, v) => s + v.cantidad, 0) || 1;
+  const totalNc = nc.reduce((s, v) => s + v.cantidad, 0) || 1;
+  const pctNa = ((naTop?.cantidad || 0) / totalNa * 100).toFixed(1);
+  const pctNc = ((ncTop?.cantidad || 0) / totalNc * 100).toFixed(1);
+  $('motPct').textContent = `${pctNa}% / ${pctNc}%`;
+}
+
+/* ---------------- Cuotas (plan de pagos, dentro de la ficha del paciente) ---------------- */
+let CUOTAS_PACIENTE = [];
 let cuotaEditando = null;
-async function cargarCuotas() {
-  $('tablaCuotas').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando cuotas&hellip;</div></td></tr>';
-  const est = $('cuFiltroEstado').value;
-  try { CUOTAS = await api('/api/crm/cuotas' + (est ? '?estado=' + est : '')); }
-  catch (e) { $('tablaCuotas').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
-  pintarCuotas();
-}
-function cuFiltradas() {
-  const q = $('cuBuscar').value.trim().toLowerCase();
-  if (!q) return CUOTAS.cuotas;
-  return CUOTAS.cuotas.filter(c =>
-    String(c.paciente || '').toLowerCase().includes(q) || String(c.telefono || '').includes(q));
-}
+let paBusquedaActual = null; // { telefono, nombre }
 function cuEstadoBadge(estado) {
   const cls = estado === 'PAGADO' ? 'okm' : estado === 'ATRASADO' ? 'err' : '';
   return `<span class="verif ${cls === 'okm' ? 'verif-ok' : cls === 'err' ? 'verif-mal' : ''}" style="padding:2px 9px;font-size:11px;">${estado}</span>`;
 }
-function pintarCuotas() {
-  if (!CUOTAS) return;
-  const lista = cuFiltradas();
-  let porCobrar = 0, atrasadas = 0, pagadas = 0;
-  CUOTAS.cuotas.forEach(c => {
-    if (c.estado === 'PAGADO') pagadas++;
-    else { porCobrar += c.saldo || 0; if (c.estado === 'ATRASADO') atrasadas++; }
-  });
-  $('cuVigentes').textContent = CUOTAS.cuotas.filter(c => c.estado !== 'PAGADO').length;
-  $('cuPorCobrar').textContent = fmtMon(porCobrar);
-  $('cuAtrasadas').textContent = atrasadas;
-  $('cuPagadas').textContent = pagadas;
-  if (!lista.length) {
-    $('tablaCuotas').innerHTML = '<tr><td><div class="vacio">Sin cuotas.</div></td></tr>';
+async function cargarCuotasPaciente(telefono) {
+  if (!telefono) { $('paCuotasBloque').classList.add('oculto'); return; }
+  $('paCuotasBloque').classList.remove('oculto');
+  $('paCuotasLista').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando plan de pagos&hellip;</div>';
+  try {
+    const r = await api('/api/crm/cuotas?telefono=' + encodeURIComponent(telefono));
+    CUOTAS_PACIENTE = r.cuotas;
+  } catch (e) { $('paCuotasLista').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`; return; }
+  pintarCuotasPaciente();
+}
+function pintarCuotasPaciente() {
+  if (!CUOTAS_PACIENTE.length) {
+    $('paCuotasLista').innerHTML = '<div class="nota">Este paciente no tiene un plan de pagos registrado.</div>';
     return;
   }
-  $('tablaCuotas').innerHTML = `<thead><tr>
-      <th>Paciente</th><th>Teléfono</th><th>Tratamiento</th>
-      <th class="der">Total</th><th class="der">Cuotas</th><th class="der">Saldo</th>
-      <th>Próx. pago</th><th>Estado</th><th></th></tr></thead><tbody>` +
-    lista.map(c => `<tr>
-      <td><b>${esc(c.paciente || '')}</b></td>
-      <td>${esc(c.telefono || '')}</td>
-      <td>${esc(c.tratamiento || '')}</td>
-      <td class="der">${fmtMon(c.monto_total)}</td>
-      <td class="der">${c.pagadas}/${c.n_cuotas}</td>
-      <td class="der"><b>${fmtMon(c.saldo)}</b></td>
-      <td>${esc(c.prox_fecha || '')}</td>
-      <td>${cuEstadoBadge(c.estado)}</td>
-      <td style="white-space:nowrap;">
-        ${c.estado !== 'PAGADO' ? `<button class="btn verde pequeno" onclick="cuotaPagar(${c.id})">Pagar</button>` : ''}
-        <button class="btn gris pequeno" onclick="cuotaEditar(${c.id})">Editar</button>
-      </td></tr>`).join('') + '</tbody>';
+  $('paCuotasLista').innerHTML = CUOTAS_PACIENTE.map(c => `
+    <div class="item-hoy" style="align-items:flex-start;">
+      <div class="info"><b>${esc(c.tratamiento || 'Plan de pagos')}</b>
+        <small>${c.pagadas}/${c.n_cuotas} cuotas · saldo ${fmtMon(c.saldo)} de ${fmtMon(c.monto_total)} ${c.prox_fecha ? '· próx. ' + esc(c.prox_fecha) : ''}</small></div>
+      ${cuEstadoBadge(c.estado)}
+      ${c.estado !== 'PAGADO' ? `<button class="btn verde pequeno" onclick="cuotaPagar(${c.id})">Pagar cuota</button>` : ''}
+      <button class="btn gris pequeno" onclick="cuotaEditar(${c.id})">Editar</button>
+    </div>`).join('');
 }
 async function cuotaPagar(id) {
   try {
     await api('/api/crm/cuotas/' + id + '/pago', { method: 'POST' });
     toast('Pago registrado', 'okm');
-    cargarCuotas();
+    cargarCuotasPaciente(paBusquedaActual?.telefono);
   } catch (e) { toast(e.message, 'err'); }
 }
 function cuotaEditar(id) {
-  const c = CUOTAS.cuotas.find(x => x.id === id);
+  const c = CUOTAS_PACIENTE.find(x => x.id === id);
   if (!c) return;
   cuotaEditando = c.id;
   $('cuotaTitulo').textContent = 'Editar cuota';
@@ -2408,6 +2928,8 @@ function cuotaNueva() {
   $('cuotaTitulo').textContent = 'Nueva cuota';
   ['cuPaciente', 'cuTelefono', 'cuTratamiento', 'cuMontoTotal', 'cuNCuotas',
    'cuFormPagadas', 'cuMontoCuota', 'cuProxFecha', 'cuNota'].forEach(i => $(i).value = '');
+  $('cuPaciente').value = paBusquedaActual?.nombre || '';
+  $('cuTelefono').value = paBusquedaActual?.telefono || '';
   $('cuNCuotas').value = 1; $('cuFormPagadas').value = 0;
   $('btnCuotaBorrar').classList.add('oculto');
   $('modalCuota').classList.add('abierto');
@@ -2431,7 +2953,7 @@ async function cuotaGuardar(e) {
     else await api('/api/crm/cuotas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     toast('Cuota guardada', 'okm');
     cerrarModales();
-    cargarCuotas();
+    cargarCuotasPaciente(body.telefono || paBusquedaActual?.telefono);
   } catch (err) {
     $('msgCuotaForm').textContent = err.message;
     $('msgCuotaForm').classList.remove('oculto');
@@ -2444,7 +2966,7 @@ async function cuotaBorrar() {
     await api('/api/crm/cuotas/' + cuotaEditando, { method: 'DELETE' });
     toast('Cuota eliminada', 'okm');
     cerrarModales();
-    cargarCuotas();
+    cargarCuotasPaciente(paBusquedaActual?.telefono);
   } catch (err) { toast(err.message, 'err'); }
 }
 
@@ -2587,10 +3109,7 @@ $('btnAnaActualizar').addEventListener('click', cargarAnalitica);
 $('btnPaBuscarHist').addEventListener('click', buscarHistorial);
 $('paBuscarHist').addEventListener('keydown', e => { if (e.key === 'Enter') buscarHistorial(); });
 $('paReactivarMeses').addEventListener('change', cargarReactivar);
-$('btnCuNueva').addEventListener('click', cuotaNueva);
-$('btnCuRecargar').addEventListener('click', cargarCuotas);
-$('cuFiltroEstado').addEventListener('change', cargarCuotas);
-$('cuBuscar').addEventListener('input', pintarCuotas);
+$('btnPaCuotaNueva').addEventListener('click', cuotaNueva);
 $('formCuota').addEventListener('submit', cuotaGuardar);
 $('btnCuotaBorrar').addEventListener('click', cuotaBorrar);
 $('btnMeSubir').addEventListener('click', () => $('meFile').click());

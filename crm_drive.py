@@ -61,7 +61,7 @@ VENTA_COLS = {
     'R': 'OBSERVACION',
 }
 
-# Campo lógico -> letra canónica (layout de Beauty Medic)
+# Campo lógico -> letra canónica (layout fijo de AGENDADOS)
 AGENDADOS_CANON = {
     'crm': 'B', 'dia': 'C', 'mes': 'D', 'anio': 'E',
     'dni': 'F', 'nombre': 'G', 'red_social': 'H', 'telefono': 'I',
@@ -70,7 +70,7 @@ AGENDADOS_CANON = {
     'campana': 'O', 'hora': 'P', 'confirmado': 'Q', 'observacion': 'R',
     'reconfirmado': 'S', 'observacion2': 'T',
 }
-# Campo lógico -> letra canónica para VENTA (layout de Beauty Medic)
+# Campo lógico -> letra canónica para VENTA (layout fijo de VENTA DIARIA)
 VENTA_CANON = {
     'dia': 'B', 'mes': 'C', 'anio': 'D', 'dni': 'E', 'cel': 'F',
     'nombre': 'G', 'nuevo': 'H', 'distrito': 'I', 'edad': 'J', 'sexo': 'K',

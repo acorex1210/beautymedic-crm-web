@@ -49,10 +49,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 _TMP_DEFAULT = os.path.expanduser(
     '/var/folders/fc/2jp7n0610cbfckv3jpbzt73h0000gn/T/opencode/maestro_auto')
 CREDENCIALES = os.environ.get('CREDENCIALES',
-                              os.path.expanduser('~/credenciales-bm.json'))
+                              os.path.expanduser('~/credenciales-derma-essenza.json'))
 GDRIVE_CREDENTIALS_JSON = os.environ.get('GDRIVE_CREDENTIALS_JSON', '')
-AGENDADOS_FID = os.environ.get('AGENDADOS_FID', '12fWJpIBpr3GH7Yj57iyyndm_m37rr7V2')
-VENTA_FID = os.environ.get('VENTA_FID', '1LHtZk0vAGgnyOsODwU6f4LvtUoQxWNis')
+AGENDADOS_FID = os.environ.get('AGENDADOS_FID', '1So_1Fh744c3K9kss2oA1twjBLJpgrSxZCu2lqhWpqJM')
+VENTA_FID = os.environ.get('VENTA_FID', '1TDM7ZFV6Jdsqc6i4CadNkwPQNdrIBhu7')
 MAESTRO = os.environ.get('MAESTRO_PATH',
                          os.path.expanduser('~/Downloads/BD DATA.xlsx'))
 MAESTRO_FID = os.environ.get('MAESTRO_FID', '').strip()
@@ -370,6 +370,8 @@ _SEMANTICOS = {
     'AGENDADO POR': 'AGENDADO', 'DIA2': 'DIA2', 'MES3': 'MES3', 'AÑO4': 'ANIO4',
     'CAMPAÑA': 'CAMPANA', 'ASISTENCIA': 'ASISTENCIA', 'DISTRITO': 'DISTRITO',
     'EDAD': 'EDAD', 'SEXO': 'SEXO', 'PAGO TOTAL': 'PAGO_TOTAL',
+    'MOTIVO NO ASISTIO': 'MOTIVO_NO_ASISTIO',
+    'MOTIVO NO COMPRA': 'MOTIVO_NO_COMPRA',
 }
 
 # Columnas (letras) de la fuente AGENDADOS (formato fijo BM) -> semántico.
@@ -423,6 +425,8 @@ def detectar_maestro(ws):
         'TRAT': [L(c) for _, c in sorted(trat)],
         'PAGO': [L(c) for _, c in sorted(pago)],
         'PAGO_TOTAL': g('PAGO TOTAL'),
+        'MOTIVO_NO_ASISTIO': g('MOTIVO NO ASISTIO'),
+        'MOTIVO_NO_COMPRA': g('MOTIVO NO COMPRA'),
     }
 
 
@@ -507,6 +511,81 @@ def verificar_venta_vs_td(path, anio, mes, desde, hasta):
                'rango de la tabla dinámica.')
     return {'ok': True, 'venta': round(venta_tot, 2), 'td': round(td_tot, 2),
             'coincide': coincide, 'filas_fuera': filas_fuera, 'mensaje': mensaje}
+
+
+def diferencias_maestro_venta(maestro_path, venta_path, anio, mes, desde, hasta):
+    """Compara, paciente por paciente (teléfono+fecha), lo que el maestro tiene
+    registrado como compra contra lo que VENTA DIARIA registra como venta
+    confirmada en el periodo. Devuelve la lista de casos donde el monto no
+    coincide, para señalar exactamente qué fila del maestro hay que revisar
+    (en vez de solo avisar que "algo no cuadra")."""
+    try:
+        ws = leer_maestro(maestro_path)
+    except Exception:  # noqa: BLE001
+        return []
+    col = detectar_maestro(ws)
+    if not col:
+        return []
+
+    def idx(letra):
+        return openpyxl.utils.column_index_from_string(letra) if letra else None
+
+    c_tel, c_nom = idx(col.get('TELEFONO')), idx(col.get('NOMBRE'))
+    c_d2, c_m3, c_a4 = idx(col.get('DIA2')), idx(col.get('MES3')), idx(col.get('ANIO4'))
+    c_asist, c_ptot = idx(col.get('ASISTENCIA')), idx(col.get('PAGO_TOTAL'))
+    c_pago = [idx(c) for c in col.get('PAGO', [])]
+    if not (c_tel and c_d2 and c_m3 and c_a4 and c_asist):
+        return []
+
+    por_paciente = defaultdict(lambda: {'maestro': 0.0, 'venta': 0.0, 'nombre': None,
+                                        'fila_maestro': None, 'fecha': None})
+    for r in range(5, ws.max_row + 1):
+        if not (ws.cell(row=r, column=c_a4).value == anio
+                and ws.cell(row=r, column=c_m3).value == mes
+                and isinstance(ws.cell(row=r, column=c_d2).value, (int, float))
+                and desde <= int(ws.cell(row=r, column=c_d2).value) <= hasta
+                and ws.cell(row=r, column=c_asist).value == 'ASISTIO'):
+            continue
+        ph = norm_phone(ws.cell(row=r, column=c_tel).value)
+        if not ph:
+            continue
+        p_total = ws.cell(row=r, column=c_ptot).value if c_ptot else None
+        if not (isinstance(p_total, (int, float)) and p_total > 0):
+            p_total = sum(x for x in (ws.cell(row=r, column=c).value for c in c_pago)
+                          if isinstance(x, (int, float)))
+        d = por_paciente[ph]
+        d['maestro'] += p_total
+        d['nombre'] = d['nombre'] or (ws.cell(row=r, column=c_nom).value if c_nom else None)
+        d['fila_maestro'] = r
+        d['fecha'] = int(ws.cell(row=r, column=c_d2).value)
+
+    for v in leer_venta(venta_path):
+        st = (txt(v['status']) or '').upper()
+        if not (st.startswith(ASISTE_POR_TEXTO) or any(x in st for x in ASISTE_POR_TEXTO)):
+            continue
+        if not (v['anio'] == anio and v['mes'] == mes
+                and isinstance(v['dia'], (int, float)) and desde <= int(v['dia']) <= hasta
+                and isinstance(v['venta'], (int, float))):
+            continue
+        ph = norm_phone(v['cel'])
+        if not ph:
+            continue
+        d = por_paciente[ph]
+        d['venta'] += v['venta']
+        d['nombre'] = d['nombre'] or v['nombre']
+        d['fecha'] = d['fecha'] or (int(v['dia']) if isinstance(v['dia'], (int, float)) else None)
+
+    diffs = []
+    for ph, d in por_paciente.items():
+        if abs(d['maestro'] - d['venta']) > 0.01:
+            diffs.append({
+                'telefono': ph, 'nombre': d['nombre'], 'fecha': d['fecha'],
+                'fila_maestro': d['fila_maestro'],
+                'monto_maestro': round(d['maestro'], 2), 'monto_venta': round(d['venta'], 2),
+                'diferencia': round(d['maestro'] - d['venta'], 2),
+            })
+    diffs.sort(key=lambda x: abs(x['diferencia']), reverse=True)
+    return diffs
 
 
 # ============================================================
@@ -647,6 +726,7 @@ class Calculo:
     def _calcular_ventas(self, venta):
         ws = self.maestro
         para_llenar = defaultdict(list)  # maestro_row -> [venta_row]
+        walkins = defaultdict(list)      # (tel, nombre, fecha) -> [venta_row] sin match
         for v in venta:
             status = txt(v['status']) or ''
             st = status.upper()
@@ -689,12 +769,51 @@ class Calculo:
                 elif len(cand) > 1:
                     self.revisar.append((v, f'{len(cand)} filas con mismo nombre+fecha'))
             if not candidatos:
-                self.pendientes.append((v, 'sin coincidencia en maestro'))
+                if ph or nm:
+                    walkins[(ph, nm, fv)].append(v)
+                else:
+                    self.pendientes.append((v, 'sin coincidencia en maestro'))
                 continue
 
             fila_m = candidatos[0]
             para_llenar[fila_m].append(v)
             self.matches.append((v['fila'], fila_m, modo, v['hoja']))
+
+        # ----- ventas sin agendado previo: crear fila nueva (walk-in) para que -----
+        # ----- el dinero no se pierda del maestro y siempre cuadre con VENTA DIARIA -----
+        c_nom = self.col.get('NOMBRE')
+        c_tel = self.col.get('TELEFONO')
+        c_dia = self.col.get('DIA')
+        c_mes = self.col.get('MES')
+        c_anio = self.col.get('ANIO')
+        c_dia2 = self.col.get('DIA2')
+        c_mes3 = self.col.get('MES3')
+        c_anio4 = self.col.get('ANIO4')
+        c_camp = self.col.get('CAMPANA')
+        for (ph, nm, fv), ventas in walkins.items():
+            ventas.sort(key=lambda x: (x['anio'] or 0, str(x['mes'] or ''), x['dia'] or 0, x['fila']))
+            primer = ventas[0]
+            prov = self.last_row + len(self.new_rows) + 1
+            self.new_rows.append((prov, {}))
+            self._nueva_info[prov] = (ph, nm, fv)
+            if ph:
+                self.by_phone[ph].append(prov)
+            if nm:
+                self.by_name[nm].append(prov)
+            u = self.updates.setdefault(prov, {})
+            if c_nom:
+                u[c_nom] = primer['nombre']
+            if c_tel:
+                u[c_tel] = primer['cel']
+            for c, val in ((c_dia, primer['dia']), (c_mes, primer['mes']), (c_anio, primer['anio']),
+                           (c_dia2, primer['dia']), (c_mes3, primer['mes']), (c_anio4, primer['anio'])):
+                if c and val is not None:
+                    u[c] = val
+            if c_camp:
+                u[c_camp] = 'VENTA SIN AGENDAR'
+            for v in ventas:
+                para_llenar[prov].append(v)
+                self.matches.append((v['fila'], prov, 'venta sin agendado (fila nueva)', v['hoja']))
 
         # ----- armar las celdas a escribir -----
         c_asist = self.col.get('ASISTENCIA')
@@ -784,7 +903,9 @@ _COL_ORDER = {openpyxl.utils.get_column_letter(i): i for i in range(1, 64)}
 
 def build_row(fila, celdas):
     items = sorted(celdas.items(), key=lambda kv: _COL_ORDER[kv[0]])
-    return f'<row r="{fila}" spans="2:28" x14ac:dyDescent="0.3">' + ''.join(x for _, x in items) + '</row>'
+    ult = max((_COL_ORDER.get(k, 0) for k, _ in items), default=28)
+    spans = f'2:{max(ult, 28)}'
+    return f'<row r="{fila}" spans="{spans}" x14ac:dyDescent="0.3">' + ''.join(x for _, x in items) + '</row>'
 
 
 def aplicar_xml(origen, destino, new_rows, updates, col=None, ag_col=None):
@@ -869,10 +990,118 @@ def aplicar_xml(origen, destino, new_rows, updates, col=None, ag_col=None):
 
 
 # ============================================================
+# MIGRACIÓN DE COLUMNAS DE MOTIVO (preserva tablas dinámicas)
+# ============================================================
+MOTIVO_NO_ASISTIO_HEADER = 'MOTIVO NO ASISTIO'
+MOTIVO_NO_COMPRA_HEADER = 'MOTIVO NO COMPRA'
+MOTIVOS_NO_ASISTIO = ['REAGENDÓ', 'NO CONTESTÓ', 'CANCELÓ', 'OTRO']
+MOTIVOS_NO_COMPRA = ['SOLO CONSULTA', 'NO TENÍA PRESUPUESTO', 'REAGENDÓ', 'OTRO']
+
+
+def detectar_columnas_motivo(ws):
+    """Devuelve {semántico: letra} de las columnas de motivo del maestro (o {} si no existen)."""
+    col = detectar_maestro(ws) or {}
+    return {k: col[k] for k in ('MOTIVO_NO_ASISTIO', 'MOTIVO_NO_COMPRA') if col.get(k)}
+
+
+def migrar_columnas_motivo(maestro, nuevo_path=None):
+    """Agrega las columnas MOTIVO NO ASISTIO / MOTIVO NO COMPRA al maestro si no
+    existen, vía XML surgery (no rompe tablas dinámicas ni fórmulas).
+
+    Devuelve el dict {semántico: letra} de las columnas de motivo tras la
+    migración. Idempotente: si ya existen ambas, no modifica nada.
+    """
+    destino = nuevo_path or maestro
+    build_dir = os.path.join(TMP_DIR, 'build_motivo')
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+
+    with zipfile.ZipFile(maestro) as z:
+        z.extractall(build_dir)
+
+    sheet_path = os.path.join(build_dir, 'xl', 'worksheets', 'sheet1.xml')
+    with open(sheet_path, encoding='utf-8') as f:
+        x = f.read()
+
+    # --- detectar cabeceras existentes en la fila 4 (via openpyxl) ---
+    salida = detectar_columnas_motivo(leer_maestro(maestro))
+    if len(salida) == 2:
+        return salida
+
+    # --- calcular letras libres (después de la última columna usada) ---
+    ws = leer_maestro(maestro)
+    L = openpyxl.utils.get_column_letter
+    ultima = max((ws.max_column, 27))
+    if 'MOTIVO_NO_ASISTIO' not in salida:
+        ultima += 1
+        salida['MOTIVO_NO_ASISTIO'] = L(ultima)
+    if 'MOTIVO_NO_COMPRA' not in salida:
+        ultima += 1
+        salida['MOTIVO_NO_COMPRA'] = L(ultima)
+
+    # --- reescribir la fila 4 con las nuevas cabeceras ---
+    fila4 = re.search(r'<row r="4"[^>]*>.*?</row>', x, re.S)
+    if not fila4:
+        raise ValueError('No se encontró la fila 4 (cabecera) del maestro')
+    celdas = parse_row(fila4.group(0))
+    for sem, texto in (('MOTIVO_NO_ASISTIO', MOTIVO_NO_ASISTIO_HEADER),
+                       ('MOTIVO_NO_COMPRA', MOTIVO_NO_COMPRA_HEADER)):
+        letra = salida[sem]
+        celdas[letra] = celda_xml(letra, 4, texto)
+
+    def reemplazar_row4(m):
+        return build_row(4, celdas)
+
+    x = row_re_sub4(x, reemplazar_row4)
+
+    # --- actualizar dimension ---
+    x = re.sub(r'<dimension ref="A1:[A-Z]+', f'<dimension ref="A1:{salida["MOTIVO_NO_COMPRA"]}', x)
+
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(x)
+
+    if os.path.exists(destino):
+        os.remove(destino)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(build_dir):
+            for fn in files:
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, build_dir)
+                z.write(full, rel)
+    return salida
+
+
+def row_re_sub4(x, fn):
+    """Reemplaza la fila 4 de sheet1.xml (revisada antes con `<row r="4"`)."""
+    return re.sub(r'<row r="4"[^>]*>.*?</row>', fn, x, count=1, flags=re.S)
+
+
+def actualizar_motivo_maestro(fila, tipo, motivo):
+    """Registra un motivo (MOTIVO NO ASISTIO / MOTIVO NO COMPRA) en la fila del
+    maestro. tipo en ('no_asistio', 'no_compra'). Aplica y sube el maestro.
+
+    Devuelve el dict col detectado tras la escritura."""
+    maestro = ruta_maestro_local()
+    sem = 'MOTIVO_NO_ASISTIO' if tipo == 'no_asistio' else 'MOTIVO_NO_COMPRA'
+    col = detectar_maestro(leer_maestro(maestro)) or {}
+    letra = col.get(sem)
+    if not letra:
+        salida = migrar_columnas_motivo(maestro)
+        letra = salida.get(sem)
+        col = detectar_maestro(leer_maestro(maestro)) or {}
+    if not letra:
+        raise ValueError(f'No se encontró la columna {sem} en el maestro')
+    aplicar_xml(maestro, maestro, [], {int(fila): {letra: motivo}}, col=col)
+    migrar_columnas_motivo(maestro)
+    subir_maestro(maestro)
+    return col
+
+
+# ============================================================
 # REPORTE
 # ============================================================
 def escribir_reporte(calc, ruta):
-    s = []
     s.append('=' * 60)
     s.append(f'REPORTE DE ACTUALIZACION DEL MAESTRO - {datetime.now():%d/%m/%Y %H:%M}')
     s.append('=' * 60)
@@ -984,6 +1213,7 @@ def ejecutar_sync(aplicar=True, sin_descarga=False):
                 resultado['backup'] = backup
                 aplicar_xml(maestro, maestro, calc.new_rows, calc.updates,
                             col=col, ag_col=ag_col)
+                migrar_columnas_motivo(maestro)
                 subir_maestro(maestro)
     except Exception as e:  # noqa: BLE001
         resultado['ok'] = False

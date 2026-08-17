@@ -83,6 +83,9 @@ _CABECERA = {
     'SEXO': 'SEXO', 'CRM': 'CRM', 'RED SOCIAL': 'RED_SOCIAL',
     'PAGO TOTAL': 'PAGO_TOTAL', 'DNI': 'DNI', 'NOMBRE': 'NOMBRE',
     'CORREO': 'CORREO',
+    'AGENDADO POR': 'AGENDADO',
+    'MOTIVO NO ASISTIO': 'MOTIVO_NO_ASISTIO',
+    'MOTIVO NO COMPRA': 'MOTIVO_NO_COMPRA',
 }
 
 
@@ -232,6 +235,126 @@ def datos_analiticos():
             'montos': montos, 'crm': crm, 'camp': camp}
 
 
+def datos_ejecutivas():
+    """Ranking por ejecutiva (AGENDADO POR) del periodo, desde el maestro."""
+    global COL
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    COL = detectar_columnas(ws)
+    c_ag = COL.get('AGENDADO')
+    if not c_ag:
+        return []
+    c_ej = c_ag
+    agrup = {}
+    for r in range(5, ws.max_row + 1):
+        ej = str(ws.cell(row=r, column=c_ej).value or '').strip() or 'SIN EJECUTIVA'
+        d = agrup.setdefault(ej, {'ag': 0, 'as_': 0, 'co': 0, 'mon': 0.0,
+                                  'no_fueron': 0, 'fueron_sin_compra': 0})
+        if (ws.cell(row=r, column=COL['ANIO']).value == ANIO
+                and ws.cell(row=r, column=COL['MES']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA']).value)
+                and ws.cell(row=r, column=COL['TELEFONO']).value):
+            d['ag'] += 1
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist != 'ASISTIO' and _cita_pasada(ws, r):
+                d['no_fueron'] += 1
+        if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                and ws.cell(row=r, column=COL['MES3']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)
+                and ws.cell(row=r, column=COL['ASISTENCIA']).value == 'ASISTIO'):
+            d['as_'] += 1
+            p = pago_total(ws, r)
+            d['mon'] += p
+            if p > 0:
+                d['co'] += 1
+            else:
+                d['fueron_sin_compra'] += 1
+    out = []
+    for ej, d in agrup.items():
+        out.append({'ejecutiva': ej, 'ag': d['ag'], 'as_': d['as_'], 'co': d['co'],
+                    'mon': round(d['mon'], 2), 'no_fueron': d['no_fueron'],
+                    'fueron_sin_compra': d['fueron_sin_compra'],
+                    'asistencia_pct': pct(d['as_'], d['ag']),
+                    'conversion_pct': pct(d['co'], d['as_']),
+                    'ticket': d['mon'] / d['co'] if d['co'] else 0})
+    out.sort(key=lambda x: (x['mon'], x['ag']), reverse=True)
+    return out
+
+
+def datos_motivos():
+    """Distribución de motivos de no asistencia y no compra del periodo."""
+    global COL
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    COL = detectar_columnas(ws)
+    c_m_as = COL.get('MOTIVO_NO_ASISTIO')
+    c_m_co = COL.get('MOTIVO_NO_COMPRA')
+    no_asistio = Counter()
+    no_compra = Counter()
+    for r in range(5, ws.max_row + 1):
+        agendado_ok = (ws.cell(row=r, column=COL['ANIO']).value == ANIO
+                       and ws.cell(row=r, column=COL['MES']).value == MES
+                       and en_periodo(ws.cell(row=r, column=COL['DIA']).value))
+        asistido_ok = (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                       and ws.cell(row=r, column=COL['MES3']).value == MES
+                       and en_periodo(ws.cell(row=r, column=COL['DIA2']).value))
+        asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+        if agendado_ok and asist != 'ASISTIO' and _cita_pasada(ws, r) and c_m_as:
+            m = str(ws.cell(row=r, column=c_m_as).value or '').strip()
+            if m:
+                no_asistio[m.upper()] += 1
+        if asistido_ok and asist == 'ASISTIO' and pago_total(ws, r) == 0 and c_m_co:
+            m = str(ws.cell(row=r, column=c_m_co).value or '').strip()
+            if m:
+                no_compra[m.upper()] += 1
+    return {'no_asistio': dict(no_asistio.most_common()),
+            'no_compra': dict(no_compra.most_common())}
+
+
+def _periodo_anterior(mes, anio, desde, hasta):
+    """Mes previo con el mismo rango de días (variación comparable)."""
+    orden = list(NOMBRES_MES)
+    i = orden.index(mes)
+    if i == 0:
+        return orden[-1], anio - 1, desde, hasta
+    return orden[i - 1], anio, desde, hasta
+
+
+def _variacion(actual, anterior):
+    if anterior is None or anterior == 0:
+        return None
+    return round((actual - anterior) / anterior * 100.0, 1)
+
+
+def totales_periodo(mes, anio, desde, hasta):
+    """Totales del periodo sobre el maestro actual (sin tocar globales)."""
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    col = detectar_columnas(ws)
+    tot = {'ag': 0, 'as_': 0, 'co': 0, 'mon': 0.0,
+           'no_fueron': 0, 'fueron_sin_compra': 0}
+    for r in range(5, ws.max_row + 1):
+        if (ws.cell(row=r, column=col['ANIO']).value == anio
+                and ws.cell(row=r, column=col['MES']).value == mes
+                and isinstance(ws.cell(row=r, column=col['DIA']).value, (int, float))
+                and desde <= int(ws.cell(row=r, column=col['DIA']).value) <= hasta
+                and ws.cell(row=r, column=col['TELEFONO']).value):
+            tot['ag'] += 1
+            asist = str(ws.cell(row=r, column=col['ASISTENCIA']).value or '').strip()
+            if asist != 'ASISTIO' and _cita_pasada(ws, r):
+                tot['no_fueron'] += 1
+        if (ws.cell(row=r, column=col['ANIO4']).value == anio
+                and ws.cell(row=r, column=col['MES3']).value == mes
+                and isinstance(ws.cell(row=r, column=col['DIA2']).value, (int, float))
+                and desde <= int(ws.cell(row=r, column=col['DIA2']).value) <= hasta
+                and ws.cell(row=r, column=col['ASISTENCIA']).value == 'ASISTIO'):
+            tot['as_'] += 1
+            p = pago_total(ws, r)
+            tot['mon'] += p
+            if p > 0:
+                tot['co'] += 1
+            else:
+                tot['fueron_sin_compra'] += 1
+    return tot
+
+
 def pct(a, b):
     return 100.0 * a / b if b else 0.0
 
@@ -297,6 +420,13 @@ def _fila_meta(nombre, mc, d):
                 co=co, mon=mon, ticket=mon / as_ if as_ else 0, organica=False)
 
 
+def _gasto_ads_total():
+    por_meta = _cargar_meta_campanas()
+    if not por_meta:
+        return None
+    return round(sum((mc.get('gasto') or 0) for mc in por_meta), 2)
+
+
 def build_campana_meta(agg):
     """Une cada campaña de Meta Ads con su embudo del maestro (ag→as→co→monto)."""
     camps = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0))
@@ -319,7 +449,7 @@ def build_campana_meta(agg):
     for camp, d in sorted(camps.items(), key=lambda kv: -kv[1]['ag']):
         if camp in usadas or (not d['ag'] and not d['as_']):
             continue
-        filas.append(dict(campania=camp + ' (sin Meta)', gasto=0, leads=0,
+        filas.append(dict(campania=camp + ' (organica)', gasto=0, leads=0,
                           costo_res=0, ag=d['ag'], pct_ag=0,
                           as_=d['as_'], pct_as=pct(d['as_'], d['ag']),
                           co=d['co'], mon=d['mon'],
@@ -329,13 +459,19 @@ def build_campana_meta(agg):
 
 
 def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
-                 fontsize=8.5, scale=1.7, alinear_izq_col0=True, altura_fila=None):
+                 fontsize=8.5, scale=1.7, alinear_izq_col0=True, altura_fila=None,
+                 max_row_h=None):
+    """scale ahora limita la altura de fila (fraccion de la altura del eje);
+    la tabla siempre llena el eje en horizontal, y en vertical hasta ese
+    tope, quedando pegada arriba en vez de centrada con un hueco grande."""
     ax.axis('off')
+    n_filas = len(datos) + (1 if header else 0)
+    tope = max_row_h if max_row_h is not None else 0.11 * (scale / 1.7)
+    alto_tabla = min(1.0, n_filas * tope)
     tabla = ax.table(cellText=datos, colLabels=header, cellLoc='center',
-                     loc='center', colWidths=col_w)
+                     bbox=[0, 1 - alto_tabla, 1, alto_tabla], colWidths=col_w)
     tabla.auto_set_font_size(False)
     tabla.set_fontsize(fontsize)
-    tabla.scale(1, scale)
     for (i, j), cel in tabla.get_celld().items():
         cel.set_edgecolor('#bfbfbf')
         if altura_fila:
@@ -350,20 +486,24 @@ def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
     return tabla
 
 
-def caja_kpi(fig, x, y, w, h, titulo, valor, sub, color):
+def caja_kpi(fig, x, y, w, h, titulo, valor, sub, color, var_pct=None):
     ax = fig.add_axes([x, y, w, h]); ax.axis('off')
     ax.add_patch(plt.Rectangle((0, 0), 1, 1, facecolor=color, edgecolor='none',
                                transform=ax.transAxes))
     fs = 24 if len(valor) <= 3 else 22
     ax.text(0.5, 0.72, valor, ha='center', va='center', fontsize=fs,
             fontweight='bold', color='white', transform=ax.transAxes)
-    ax.text(0.5, 0.42, titulo, ha='center', va='center', fontsize=10,
+    ax.text(0.5, 0.44, titulo, ha='center', va='center', fontsize=10,
             color='white', fontweight='bold', transform=ax.transAxes)
-    ax.text(0.5, 0.12, sub, ha='center', va='center', fontsize=8,
+    sub_txt = sub
+    if var_pct is not None:
+        signo = '▲ +' if var_pct > 0 else ('▼ ' if var_pct < 0 else '▶ ')
+        sub_txt = f"{signo}{var_pct:+.1f}% vs periodo ant.\n{sub}"
+    ax.text(0.5, 0.16, sub_txt, ha='center', va='center', fontsize=7.5,
             color='white', alpha=0.9, transform=ax.transAxes)
 
 
-def pagina_resumen(pdf, tot, agg):
+def pagina_resumen(pdf, tot, agg, variacion=None, gasto_ads=None):
     fig = plt.figure(figsize=(8.27, 11.69))
     fig.patch.set_facecolor('white')
     ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
@@ -375,38 +515,47 @@ def pagina_resumen(pdf, tot, agg):
     ax.add_line(plt.Line2D([0.15, 0.85], [0.90, 0.90], transform=fig.transFigure,
                            color=CELESTE, lw=2))
 
+    v = variacion or {}
     kpis = [
-        ('AGENDADOS', str(tot['ag']), 'citas agendadas en el periodo', AZUL),
-        ('ASISTIERON', str(tot['as_']), f"{pct(tot['as_'], tot['ag']):.0f}% de asistencia", VERDE),
-        ('COMPRARON', str(tot['co']), f"{pct(tot['co'], tot['as_']):.0f}% de conversion", NARANJA),
-        ('MONTO TOTAL', monto(tot['mon']), 'ventas del periodo', FONDO_TITULO),
+        ('AGENDADOS', str(tot['ag']), 'citas agendadas', AZUL, v.get('ag')),
+        ('ASISTIERON', str(tot['as_']), f"{pct(tot['as_'], tot['ag']):.0f}% de asistencia", VERDE, v.get('as_')),
+        ('COMPRARON', str(tot['co']), f"{pct(tot['co'], tot['as_']):.0f}% de conversion", NARANJA, v.get('co')),
+        ('MONTO TOTAL', monto(tot['mon']), 'ventas del periodo', FONDO_TITULO, v.get('mon')),
     ]
     n = len(kpis)
     w = 0.21
     gap = (0.92 - n * w) / (n + 1)
-    for i, (t, v, s, c) in enumerate(kpis):
+    for i, (t, val, s, c, vp) in enumerate(kpis):
         x = gap + i * (w + gap)
-        caja_kpi(fig, x, 0.70, w, 0.16, t, v, s, c)
+        caja_kpi(fig, x, 0.70, w, 0.16, t, val, s, c, var_pct=vp)
 
-    ax.add_patch(plt.Rectangle((0.06, 0.48), 0.88, 0.15, facecolor=FONDO_CLARO,
+    ax.add_patch(plt.Rectangle((0.06, 0.46), 0.88, 0.17, facecolor=FONDO_CLARO,
                                edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+    ax.text(0.09, 0.605, 'Indicadores clave', fontsize=11, fontweight='bold',
+            color=FONDO_TITULO, transform=fig.transFigure)
     if tot['co']:
         ticket = tot['mon'] / tot['co']
-        ax.text(0.09, 0.585, 'Indicadores clave', fontsize=11, fontweight='bold',
-                color=FONDO_TITULO, transform=fig.transFigure)
         lineas = [
             f"Ticket promedio: S/ {ticket:,.0f} por compra  |  Asistencia: {pct(tot['as_'], tot['ag']):.0f}%  |  Conversion a compra: {pct(tot['co'], tot['as_']):.0f}%",
             f"Agendaron pero no fueron: {tot['no_fueron']}  |  Fueron pero no compraron: {tot['fueron_sin_compra']}.",
             f"Cada {tot['ag']} agendados generan {tot['co']} ventas por S/ {tot['mon']:,.0f}.",
         ]
+        if gasto_ads and gasto_ads > 0:
+            roas = tot['mon'] / gasto_ads
+            cac = gasto_ads / tot['co']
+            lineas.append(f"Inversión Meta Ads: S/ {gasto_ads:,.0f}  |  ROAS: {roas:.2f}x  |  CAC: S/ {cac:,.0f} por compra")
     else:
         lineas = ['No se registraron ventas en el periodo.',
                   f"Agendaron pero no fueron: {tot['no_fueron']}  |  Fueron pero no compraron: {tot['fueron_sin_compra']}."]
-    ax.text(0.09, 0.545, lineas[0], fontsize=9.5, color=GRIS, transform=fig.transFigure)
+        if gasto_ads and gasto_ads > 0:
+            lineas.append(f"Inversión Meta Ads: S/ {gasto_ads:,.0f} (sin ventas registradas aún)")
+    ax.text(0.09, 0.565, lineas[0], fontsize=9.5, color=GRIS, transform=fig.transFigure)
     if len(lineas) > 1:
-        ax.text(0.09, 0.512, lineas[1], fontsize=9.5, color=GRIS, transform=fig.transFigure)
+        ax.text(0.09, 0.535, lineas[1], fontsize=9.5, color=GRIS, transform=fig.transFigure)
     if len(lineas) > 2:
-        ax.text(0.09, 0.479, lineas[2], fontsize=9.5, color=GRIS, transform=fig.transFigure)
+        ax.text(0.09, 0.505, lineas[2], fontsize=9.5, color=GRIS, transform=fig.transFigure)
+    if len(lineas) > 3:
+        ax.text(0.09, 0.475, lineas[3], fontsize=9.5, color=AZUL, fontweight='bold', transform=fig.transFigure)
 
     ax.text(0.08, 0.415, 'Resumen por CRM', fontsize=12, fontweight='bold',
             color=FONDO_TITULO, transform=fig.transFigure)
@@ -553,7 +702,7 @@ def pagina_campanas_meta(pdf, filas):
     total = dict(gasto=0, leads=0, ag=0, as_=0, co=0, mon=0.0)
     datos = []
     for f in filas:
-        fila = [f['campania'],
+        fila = [f['campania'][:18],
                 monto(f['gasto']) if f['gasto'] else '—',
                 str(f['leads']) if f['leads'] else '—',
                 f"S/ {f['costo_res']:.2f}" if f['leads'] else '—',
@@ -578,16 +727,17 @@ def pagina_campanas_meta(pdf, filas):
                   str(total['co']), monto(total['mon']),
                   monto(total['mon'] / total['as_']) if total['as_'] else '—'])
 
-    axc = fig.add_axes([0.045, 0.10, 0.91, 0.78])
+    axc = fig.add_axes([0.03, 0.10, 0.94, 0.72])
     estilo_tabla(axc, datos,
-                 [0.21, 0.075, 0.055, 0.08, 0.075, 0.07, 0.075, 0.07, 0.075, 0.09, 0.09],
-                 header=['Campana', 'Gasto Meta', 'Leads', 'Costo/lead', 'Agendados',
-                         'Agend/lead', 'Asistieron', 'Asistencia', 'Compraron',
-                         'Monto', 'Ticket/asist.'],
-                 fontsize=8, scale=6.0)
-    ax.text(0.045, 0.045, 'Agend/lead = % de agendados logrados por cada lead de Meta. '
-                          'Ticket/asist. = ventas entre los que asistieron. '
-                          'El gasto y los leads de Meta son del rango del reporte cargado.',
+                 [0.21, 0.07, 0.045, 0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.085, 0.095],
+                 header=['Campana', 'Gasto\nMeta', 'Leads', 'Costo\n/lead', 'Agend.',
+                         'Agend.\n/lead', 'Asist.', '%\nAsist.', 'Compr.',
+                         'Monto', 'Ticket\n/asist.'],
+                 fontsize=7.3, scale=3.6)
+    ax.text(0.045, 0.055, 'Agend/lead = % de agendados logrados por cada lead de Meta.  '
+                          'Ticket/asist. = ventas entre los que asistieron.',
+            fontsize=7.5, color=GRIS, transform=fig.transFigure)
+    ax.text(0.045, 0.035, 'El gasto y los leads de Meta son del rango del reporte cargado.',
             fontsize=7.5, color=GRIS, transform=fig.transFigure)
     pdf.savefig(fig); plt.close(fig)
 
@@ -722,12 +872,13 @@ def pagina_metricas(pdf, analitica):
 
     trat = analitica['trat'].most_common(8)
     if trat:
-        ax1 = fig.add_axes([0.10, 0.48, 0.80, 0.42])
-        names = [str(t[0])[:22] for t in trat]
+        ax1 = fig.add_axes([0.30, 0.48, 0.62, 0.42])
+        names = [str(t[0])[:20] for t in trat]
         vals = [t[1] for t in trat]
         ypos = np.arange(len(names))[::-1]
         ax1.barh(ypos, vals, color=AZUL)
-        ax1.set_yticks(ypos); ax1.set_yticklabels(names, fontsize=8)
+        ax1.set_yticks(ypos); ax1.set_yticklabels(names, fontsize=7.5)
+        ax1.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
         ax1.set_title('Tratamientos mas frecuentes', fontsize=12, fontweight='bold',
                       color=FONDO_TITULO, pad=10)
         for yi, va in zip(ypos, vals):
@@ -737,12 +888,13 @@ def pagina_metricas(pdf, analitica):
 
     dist = analitica['dist'].most_common(8)
     if dist:
-        ax2 = fig.add_axes([0.10, 0.06, 0.38, 0.38])
-        names2 = [str(d[0])[:14] for d in dist]
+        ax2 = fig.add_axes([0.24, 0.06, 0.24, 0.38])
+        names2 = [str(d[0])[:13] for d in dist]
         vals2 = [d[1] for d in dist]
         ypos2 = np.arange(len(names2))[::-1]
         ax2.barh(ypos2, vals2, color=VERDE)
-        ax2.set_yticks(ypos2); ax2.set_yticklabels(names2, fontsize=7)
+        ax2.set_yticks(ypos2); ax2.set_yticklabels(names2, fontsize=6.8)
+        ax2.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
         ax2.set_title('Distritos', fontsize=11, fontweight='bold', color=FONDO_TITULO, pad=8)
         ax2.tick_params(axis='x', labelsize=7)
         ax2.spines[['top', 'right']].set_visible(False)
@@ -758,16 +910,391 @@ def pagina_metricas(pdf, analitica):
     sf = sexo.get('F', 0)
     sm = sexo.get('M', 0)
     stot = sf + sm or 1
-    ax3.text(0.02, 0.88, 'Edad media', fontsize=9, fontweight='bold', color=GRIS)
-    ax3.text(0.02, 0.72, f'{ed_med} anos', fontsize=16, fontweight='bold', color=FONDO_TITULO)
-    ax3.text(0.02, 0.55, 'Rango de edad', fontsize=9, fontweight='bold', color=GRIS)
-    ax3.text(0.02, 0.40, f'{ed_min} - {ed_max} anos', fontsize=12, color=FONDO_TITULO)
-    ax3.text(0.02, 0.20, f'F: {sf}  ({pct(sf, stot):.0f}%)', fontsize=10, color=AZUL)
-    ax3.text(0.02, 0.08, f'M: {sm}  ({pct(sm, stot):.0f}%)', fontsize=10, color=VERDE)
+    ax3.text(0.02, 0.95, 'Edad media', fontsize=9, fontweight='bold', color=GRIS)
+    ax3.text(0.02, 0.82, f'{ed_med} anos (rango {ed_min}-{ed_max})', fontsize=12,
+             fontweight='bold', color=FONDO_TITULO)
+
+    ax3.text(0.02, 0.68, 'Bandas de edad', fontsize=9, fontweight='bold', color=GRIS)
+    bandas = {'18-25': 0, '26-35': 0, '36-45': 0, '46-55': 0, '56+': 0}
+    for e in edades:
+        if e < 26:
+            bandas['18-25'] += 1
+        elif e < 36:
+            bandas['26-35'] += 1
+        elif e < 46:
+            bandas['36-45'] += 1
+        elif e < 56:
+            bandas['46-55'] += 1
+        else:
+            bandas['56+'] += 1
+    ed_tot = len(edades) or 1
+    colores_banda = [AZUL, VERDE, NARANJA, CELESTE, GRIS]
+    x0, y0, alto = 0.02, 0.58, 0.055
+    for (nom, cnt), col in zip(bandas.items(), colores_banda):
+        w = 0.96 * cnt / ed_tot
+        if w > 0:
+            ax3.add_patch(plt.Rectangle((x0, y0), w, alto, facecolor=col,
+                                        edgecolor='white', linewidth=0.6,
+                                        transform=ax3.transAxes))
+        x0 += w
+    for i, ((nom, cnt), col) in enumerate(zip(bandas.items(), colores_banda)):
+        ax3.text(0.02 + (i % 2) * 0.50, 0.46 - (i // 2) * 0.10,
+                 f'{nom}: {pct(cnt, ed_tot):.0f}%', fontsize=7.8, color=col, fontweight='bold')
+
+    ax3.text(0.02, 0.12, 'Sexo', fontsize=9, fontweight='bold', color=GRIS)
+    ax3.text(0.02, 0.00, f'F: {sf} ({pct(sf, stot):.0f}%)   |   M: {sm} ({pct(sm, stot):.0f}%)',
+             fontsize=10, fontweight='bold', color=FONDO_TITULO)
     pdf.savefig(fig); plt.close(fig)
 
 
-def pagina_hallazgos(pdf, tot, analitica):
+def pagina_ejecutivas(pdf, ejecutivas):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Performance por ejecutiva (Agendado por)', ha='center',
+            fontsize=16, fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO}', ha='center',
+            fontsize=11, color=GRIS)
+
+    if not ejecutivas:
+        ax.text(0.5, 0.5, 'No hay datos de ejecutivas en el periodo',
+                ha='center', fontsize=12, color=GRIS)
+        pdf.savefig(fig); plt.close(fig)
+        return
+
+    filas = []
+    tot_ag_e = sum(e['ag'] for e in ejecutivas)
+    tot_as_e = sum(e['as_'] for e in ejecutivas)
+    tot_co_e = sum(e['co'] for e in ejecutivas)
+    tot_mon_e = sum(e['mon'] for e in ejecutivas)
+    tot_nf_e = sum(e['no_fueron'] for e in ejecutivas)
+    for e in ejecutivas:
+        filas.append([
+            e['ejecutiva'][:18],
+            e['ag'],
+            e['as_'],
+            f"{e['asistencia_pct']:.0f}%",
+            e['co'],
+            f"{e['conversion_pct']:.0f}%",
+            e['no_fueron'],
+            monto(e['mon']),
+            monto(e['ticket']) if e['co'] else '—',
+        ])
+    filas.append([
+        'TOTAL',
+        tot_ag_e,
+        tot_as_e,
+        f"{pct(tot_as_e, tot_ag_e):.0f}%",
+        tot_co_e,
+        f"{pct(tot_co_e, tot_as_e):.0f}%",
+        tot_nf_e,
+        monto(tot_mon_e),
+        monto(tot_mon_e / tot_co_e) if tot_co_e else '—',
+    ])
+
+    header = ['Ejecutiva', 'Agend.', 'Asist.', '%\nAsist.', 'Compr.',
+              '%\nConv.', 'No\nAsist.', 'Monto', 'Ticket']
+    col_w = [0.20, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.13, 0.13]
+    sw = sum(col_w)
+    col_w = [w / sw for w in col_w]
+
+    ax_t = fig.add_axes([0.06, 0.50, 0.88, 0.35])
+    estilo_tabla(ax_t, filas, col_w, header=header, fontsize=7.8, scale=2.2)
+
+    valid_ej = [e for e in ejecutivas if e['ejecutiva'] != 'SIN EJECUTIVA'] or ejecutivas
+    if valid_ej:
+        ax_g = fig.add_axes([0.10, 0.10, 0.80, 0.32])
+        names = [e['ejecutiva'][:16] for e in valid_ej][:8]
+        montos_ej = [e['mon'] for e in valid_ej][:8]
+        ypos = np.arange(len(names))[::-1]
+        ax_g.barh(ypos, montos_ej, color=AZUL, height=0.55)
+        ax_g.set_yticks(ypos)
+        ax_g.set_yticklabels(names, fontsize=8.5)
+        ax_g.set_title('Ventas generadas por ejecutiva (S/)', fontsize=11,
+                       fontweight='bold', color=FONDO_TITULO, pad=8)
+        max_m = max(montos_ej) if montos_ej else 100
+        for yi, va in zip(ypos, montos_ej):
+            ax_g.text(va + max(max_m * 0.02, 1), yi, monto(va),
+                      va='center', fontsize=8.5, color=FONDO_TITULO, fontweight='bold')
+        ax_g.tick_params(axis='x', labelsize=8)
+        ax_g.spines[['top', 'right']].set_visible(False)
+        ax_g.set_xlim(0, max_m * 1.25 if max_m > 0 else 100)
+
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_motivos(pdf, motivos):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Motivos de pérdida', ha='center', fontsize=16,
+            fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO}', ha='center',
+            fontsize=11, color=GRIS)
+
+    m_as = motivos.get('no_asistio', {})
+    m_co = motivos.get('no_compra', {})
+
+    # Bloque 1: No Asistencia (arriba)
+    ax.text(0.08, 0.88, '1. Motivos de NO Asistencia (agendaron pero no acudieron)',
+            fontsize=12, fontweight='bold', color=FONDO_TITULO)
+    tot_as_loss = sum(m_as.values())
+    if m_as:
+        filas_as = []
+        for mot, cnt in m_as.items():
+            filas_as.append([mot, cnt, f"{cnt / tot_as_loss * 100.0:.1f}%"])
+        filas_as.append(['TOTAL', tot_as_loss, '100.0%'])
+        ax_t1 = fig.add_axes([0.08, 0.58, 0.42, 0.26])
+        estilo_tabla(ax_t1, filas_as, [0.55, 0.22, 0.23],
+                     header=['Motivo', 'Cant.', '%'], fontsize=8, scale=1.3)
+
+        ax_g1 = fig.add_axes([0.56, 0.58, 0.36, 0.26])
+        names = list(m_as.keys())[:6]
+        vals = list(m_as.values())[:6]
+        ypos = np.arange(len(names))[::-1]
+        ax_g1.barh(ypos, vals, color=ROJO, alpha=0.85, height=0.55)
+        ax_g1.set_yticks(ypos)
+        ax_g1.set_yticklabels(names, fontsize=7.5)
+        ax_g1.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax_g1.spines[['top', 'right']].set_visible(False)
+        for yi, va in zip(ypos, vals):
+            ax_g1.text(va + 0.05, yi, str(va), va='center', fontsize=8, color=GRIS)
+    else:
+        ax.add_patch(plt.Rectangle((0.08, 0.60), 0.84, 0.24, facecolor=FONDO_CLARO,
+                                   edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+        ax.text(0.5, 0.73, 'Sin motivos de no asistencia registrados en el periodo.',
+                ha='center', va='center', fontsize=10, color=GRIS, transform=fig.transFigure)
+        ax.text(0.5, 0.68, 'Tipificación en la columna "MOTIVO NO ASISTIO" (col AB) del maestro BD DATA.',
+                ha='center', va='center', fontsize=8.5, color=AZUL, transform=fig.transFigure)
+
+    # Bloque 2: No Compra (abajo)
+    ax.text(0.08, 0.48, '2. Motivos de NO Compra (asistieron pero no compraron)',
+            fontsize=12, fontweight='bold', color=FONDO_TITULO)
+    tot_co_loss = sum(m_co.values())
+    if m_co:
+        filas_co = []
+        for mot, cnt in m_co.items():
+            filas_co.append([mot, cnt, f"{cnt / tot_co_loss * 100.0:.1f}%"])
+        filas_co.append(['TOTAL', tot_co_loss, '100.0%'])
+        ax_t2 = fig.add_axes([0.08, 0.18, 0.42, 0.26])
+        estilo_tabla(ax_t2, filas_co, [0.55, 0.22, 0.23],
+                     header=['Motivo', 'Cant.', '%'], fontsize=8, scale=1.3)
+
+        ax_g2 = fig.add_axes([0.56, 0.18, 0.36, 0.26])
+        names2 = list(m_co.keys())[:6]
+        vals2 = list(m_co.values())[:6]
+        ypos2 = np.arange(len(names2))[::-1]
+        ax_g2.barh(ypos2, vals2, color=NARANJA, alpha=0.85, height=0.55)
+        ax_g2.set_yticks(ypos2)
+        ax_g2.set_yticklabels(names2, fontsize=7.5)
+        ax_g2.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+        ax_g2.spines[['top', 'right']].set_visible(False)
+        for yi, va in zip(ypos2, vals2):
+            ax_g2.text(va + 0.05, yi, str(va), va='center', fontsize=8, color=GRIS)
+    else:
+        ax.add_patch(plt.Rectangle((0.08, 0.20), 0.84, 0.24, facecolor=FONDO_CLARO,
+                                   edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+        ax.text(0.5, 0.33, 'Sin motivos de no compra registrados en el periodo.',
+                ha='center', va='center', fontsize=10, color=GRIS, transform=fig.transFigure)
+        ax.text(0.5, 0.28, 'Tipificación en la columna "MOTIVO NO COMPRA" (col AC) del maestro BD DATA.',
+                ha='center', va='center', fontsize=8.5, color=AZUL, transform=fig.transFigure)
+
+    ax.text(0.08, 0.06, 'Fuente: maestro BD DATA.xlsx (columnas AB y AC).',
+            fontsize=8, color=GRIS, transform=fig.transFigure)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_comparativo_historico(pdf, comp, historico):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Comparativo y tendencia', ha='center', fontsize=16,
+            fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO} vs periodos comparables',
+            ha='center', fontsize=11, color=GRIS)
+
+    actual = comp['actual']
+    ant = comp['anterior_mes']
+    anio_ant = comp['mismo_mes_anio_anterior']
+
+    ax1 = fig.add_axes([0.12, 0.62, 0.76, 0.27])
+    metricas = ['agendados', 'asistidos', 'compraron']
+    labels_m = ['Agendados', 'Asistieron', 'Compraron']
+    periodos = [('Periodo actual', actual, FONDO_TITULO),
+                ('Mes anterior\n(mismos dias)', ant, CELESTE),
+                ('Mismo periodo\nano anterior', anio_ant, GRIS)]
+    x = np.arange(len(metricas))
+    width = 0.25
+    for i, (nombre, d, color) in enumerate(periodos):
+        vals = [d.get(m, 0) for m in metricas]
+        ax1.bar(x + (i - 1) * width, vals, width, label=nombre, color=color)
+    ax1.set_xticks(x); ax1.set_xticklabels(labels_m, fontsize=9)
+    ax1.legend(fontsize=6.5, loc='upper right', ncol=1)
+    ax1.set_title('Embudo: periodo actual vs comparables', fontsize=11,
+                  fontweight='bold', color=FONDO_TITULO, pad=10)
+    ax1.tick_params(axis='y', labelsize=8)
+    ax1.spines[['top', 'right']].set_visible(False)
+
+    def var(a, b):
+        return f"{((a - b) / b * 100):+.1f}%" if b else 'n/d'
+
+    filas = [
+        ['Agendados', actual['agendados'], ant.get('agendados', 0),
+         anio_ant.get('agendados', 0), var(actual['agendados'], ant.get('agendados', 0))],
+        ['Asistieron', actual['asistidos'], ant.get('asistidos', 0),
+         anio_ant.get('asistidos', 0), var(actual['asistidos'], ant.get('asistidos', 0))],
+        ['Compraron', actual['compraron'], ant.get('compraron', 0),
+         anio_ant.get('compraron', 0), var(actual['compraron'], ant.get('compraron', 0))],
+        ['Monto (S/)', f"{actual['monto']:,.0f}", f"{ant.get('monto', 0):,.0f}",
+         f"{anio_ant.get('monto', 0):,.0f}", var(actual['monto'], ant.get('monto', 0))],
+    ]
+    axt = fig.add_axes([0.09, 0.42, 0.82, 0.15])
+    estilo_tabla(axt, filas, [0.24, 0.19, 0.21, 0.21, 0.15],
+                 header=['Metrica', 'Actual', 'Mes ant.', 'Ano ant.', 'Var. vs mes ant.'],
+                 fontsize=8, scale=1.25)
+
+    if historico:
+        ax2 = fig.add_axes([0.10, 0.08, 0.82, 0.27])
+        etiquetas = [f"{h['mes']} {str(h['anio'])[2:]}" for h in historico]
+        montos_h = [h['monto'] for h in historico]
+        ax2.plot(range(len(etiquetas)), montos_h, marker='o', color=AZUL,
+                 linewidth=2, markersize=4)
+        ax2.fill_between(range(len(etiquetas)), montos_h, alpha=0.12, color=AZUL)
+        ax2.set_xticks(range(len(etiquetas)))
+        ax2.set_xticklabels(etiquetas, fontsize=6.5, rotation=45, ha='right')
+        ax2.set_title(f'Tendencia de ventas ({len(historico)} meses)', fontsize=11,
+                      fontweight='bold', color=FONDO_TITULO, pad=8)
+        ax2.spines[['top', 'right']].set_visible(False)
+        ax2.tick_params(axis='y', labelsize=7)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_evolucion_diaria(pdf, serie):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Evolucion diaria del periodo', ha='center', fontsize=16,
+            fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO}', ha='center',
+            fontsize=11, color=GRIS)
+
+    dias = serie['dias']
+    montos_d = serie['monto']
+    if not dias or (not any(montos_d) and not any(serie['agendados'])):
+        ax.text(0.5, 0.5, 'Sin actividad diaria registrada en el periodo.',
+                ha='center', fontsize=11, color=GRIS, transform=fig.transFigure)
+        pdf.savefig(fig); plt.close(fig)
+        return
+
+    ax1 = fig.add_axes([0.10, 0.56, 0.82, 0.32])
+    ax1.bar(dias, montos_d, color=FONDO_TITULO, width=0.6)
+    ax1.set_title('Monto vendido por dia (S/)', fontsize=12, fontweight='bold',
+                  color=FONDO_TITULO, pad=8)
+    ax1.set_xticks(dias)
+    ax1.tick_params(axis='both', labelsize=7.5)
+    ax1.spines[['top', 'right']].set_visible(False)
+    for d, v in zip(dias, montos_d):
+        if v:
+            ax1.text(d, v, f'{v:,.0f}', ha='center', va='bottom', fontsize=6.5, color=GRIS)
+
+    ax2 = fig.add_axes([0.10, 0.16, 0.82, 0.32])
+    ax2.plot(dias, serie['agendados'], marker='o', color=AZUL, label='Agendados',
+             linewidth=1.6, markersize=4)
+    ax2.plot(dias, serie['asistidos'], marker='o', color=VERDE, label='Asistieron',
+             linewidth=1.6, markersize=4)
+    ax2.plot(dias, serie['compraron'], marker='o', color=NARANJA, label='Compraron',
+             linewidth=1.6, markersize=4)
+    ax2.set_xticks(dias)
+    ax2.tick_params(axis='both', labelsize=7.5)
+    ax2.legend(fontsize=8, loc='upper right')
+    ax2.set_title('Agendados, asistencia y compras por dia', fontsize=12,
+                  fontweight='bold', color=FONDO_TITULO, pad=8)
+    ax2.spines[['top', 'right']].set_visible(False)
+
+    if any(montos_d):
+        mejor_i = max(range(len(dias)), key=lambda i: montos_d[i])
+        ax.text(0.5, 0.06, f'Mejor dia del periodo: {dias[mejor_i]} de {NOMBRES_MES[MES]} '
+                           f'con S/ {montos_d[mejor_i]:,.0f} en ventas.',
+                ha='center', fontsize=9.5, color=AZUL, fontweight='bold',
+                transform=fig.transFigure)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_recurrentes(pdf, rec):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Pacientes recurrentes y valor de vida (LTV)', ha='center',
+            fontsize=15, fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, 'Historico completo de la base de datos (no limitado al periodo)',
+            ha='center', fontsize=10, color=GRIS)
+
+    total_p = rec['total_pacientes']
+    total_r = rec['total_recurrentes']
+    kpis = [
+        ('PACIENTES UNICOS', str(total_p), 'con al menos 1 compra', AZUL),
+        ('RECURRENTES', str(total_r), f'{pct(total_r, total_p):.1f}% del total', VERDE),
+        ('LTV PROMEDIO', monto(rec['ltv_promedio']), 'valor de vida por paciente', FONDO_TITULO),
+    ]
+    n = len(kpis)
+    w = 0.26
+    gap = (0.92 - n * w) / (n + 1)
+    for i, (t, val, s, c) in enumerate(kpis):
+        x = gap + i * (w + gap)
+        caja_kpi(fig, x, 0.74, w, 0.15, t, val, s, c)
+
+    ax.text(0.08, 0.65, 'Top pacientes recurrentes (por numero de compras)', fontsize=12,
+            fontweight='bold', color=FONDO_TITULO)
+    pacientes = rec['pacientes'][:15]
+    if pacientes:
+        filas = [[p['nombre'][:26], p['compras'], monto(p['monto']),
+                  monto(p['monto'] / p['compras']), p['ultima']] for p in pacientes]
+        axt = fig.add_axes([0.06, 0.10, 0.90, 0.52])
+        estilo_tabla(axt, filas, [0.30, 0.13, 0.19, 0.19, 0.19],
+                     header=['Paciente', 'Compras', 'Monto total', 'Ticket prom.', 'Ultima visita'],
+                     fontsize=8, scale=1.3)
+    else:
+        ax.text(0.5, 0.4, 'Aun no hay pacientes con 2 o mas compras registradas.',
+                ha='center', fontsize=11, color=GRIS, transform=fig.transFigure)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_reactivacion(pdf, react, meses_umbral=3):
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Oportunidad de reactivacion de pacientes', ha='center',
+            fontsize=15, fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'Pacientes que asistieron alguna vez pero no vuelven hace mas '
+                        f'de {meses_umbral} meses (a hoy)', ha='center',
+            fontsize=10, color=GRIS)
+
+    ax.add_patch(plt.Rectangle((0.08, 0.80), 0.84, 0.11, facecolor=FONDO_TITULO,
+                               edgecolor='none', transform=fig.transFigure))
+    ax.text(0.5, 0.855, f'{len(react)} pacientes para contactar', ha='center', va='center',
+            fontsize=18, fontweight='bold', color='white', transform=fig.transFigure)
+
+    if react:
+        filas = [[p['nombre'][:26], p['telefono'], p['ultima_cita'], p['meses_sin_volver']]
+                 for p in react[:25]]
+        axt = fig.add_axes([0.08, 0.20, 0.84, 0.55])
+        estilo_tabla(axt, filas, [0.34, 0.24, 0.22, 0.20],
+                     header=['Paciente', 'Telefono', 'Ultima cita', 'Meses sin volver'],
+                     fontsize=8, scale=1.3)
+        if len(react) > 25:
+            ax.text(0.5, 0.145, f'Mostrando los 25 casos mas antiguos de {len(react)} totales.',
+                    ha='center', fontsize=8.5, color=GRIS, transform=fig.transFigure)
+    else:
+        ax.text(0.5, 0.5, 'No hay pacientes pendientes de reactivar en este momento.',
+                ha='center', fontsize=11, color=GRIS, transform=fig.transFigure)
+    ax.text(0.5, 0.065, 'Contactar a esta lista es una oportunidad directa de venta:',
+            ha='center', fontsize=9, color=AZUL, fontweight='bold', transform=fig.transFigure)
+    ax.text(0.5, 0.045, 'son pacientes que ya confiaron en el consultorio.',
+            ha='center', fontsize=9, color=AZUL, fontweight='bold', transform=fig.transFigure)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_hallazgos(pdf, tot, analitica, rec=None, react=None, serie=None):
     fig = plt.figure(figsize=(8.27, 11.69))
     fig.patch.set_facecolor('white')
     ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
@@ -781,6 +1308,30 @@ def pagina_hallazgos(pdf, tot, analitica):
     conv = pct(tot['co'], tot['as_'])
     hallazgos.append(f"La asistencia fue del {asis:.0f}% ({tot['as_']} de {tot['ag']} "
                      f"agendados) y la conversion a compra del {conv:.0f}%.")
+    if tot['co']:
+        ticket = tot['mon'] / tot['co']
+        hallazgos.append(f"Ticket promedio de {monto(ticket)} por compra.")
+    mejor_crm = max(((c, v) for c, v in agg_tot_crm.items() if v['co']),
+                    key=lambda kv: kv[1]['co'], default=None)
+    if mejor_crm:
+        hallazgos.append(f"{mejor_crm[0]} genera la mayor parte de las ventas "
+                         f"({mejor_crm[1]['co']} compras, S/ {mejor_crm[1]['mon']:,.0f}).")
+    top_trat = analitica['trat'].most_common(1)
+    if top_trat:
+        t, n = top_trat[0]
+        hallazgos.append(f"El servicio mas solicitado fue {t} ({n} veces).")
+    if rec and rec.get('total_pacientes'):
+        pct_rec = pct(rec['total_recurrentes'], rec['total_pacientes'])
+        hallazgos.append(f"{pct_rec:.0f}% de los pacientes de la base son recurrentes "
+                         f"(2+ compras), con un LTV promedio de {monto(rec['ltv_promedio'])}.")
+    if react:
+        hallazgos.append(f"{len(react)} pacientes no vuelven hace mas de 3 meses: "
+                         'oportunidad directa de reactivacion.')
+    if serie and any(serie.get('monto', [])):
+        montos_s = serie['monto']
+        mejor_i = max(range(len(montos_s)), key=lambda i: montos_s[i])
+        hallazgos.append(f"El mejor dia del periodo fue el {serie['dias'][mejor_i]} "
+                         f"con S/ {montos_s[mejor_i]:,.0f} en ventas.")
     if tot['no_fueron']:
         hallazgos.append(f"{tot['no_fueron']} pacientes agendaron pero no fueron a "
                          f"su cita ({pct(tot['no_fueron'], tot['ag']):.0f}% de los "
@@ -793,22 +1344,11 @@ def pagina_hallazgos(pdf, tot, analitica):
     if top_camp:
         c, n = top_camp[0]
         hallazgos.append(f"La campana con mas asistentes fue {c} ({n}).")
-    top_trat = analitica['trat'].most_common(1)
-    if top_trat:
-        t, n = top_trat[0]
-        hallazgos.append(f"El servicio mas solicitado fue {t} ({n} veces).")
     top_dist = analitica['dist'].most_common(1)
     if top_dist:
         d, n = top_dist[0]
         hallazgos.append(f"Mayor concentracion de pacientes: {d} ({n} asistentes).")
-    mejor_crm = max(((c, v) for c, v in agg_tot_crm.items() if v['co']),
-                    key=lambda kv: kv[1]['co'], default=None)
-    if mejor_crm:
-        hallazgos.append(f"{mejor_crm[0]} genera la mayor parte de las ventas "
-                         f"({mejor_crm[1]['co']} compras, S/ {mejor_crm[1]['mon']:,.0f}).")
-    if tot['co']:
-        ticket = tot['mon'] / tot['co']
-        hallazgos.append(f"Ticket promedio de {monto(ticket)} por compra.")
+    hallazgos = hallazgos[:8]
 
     sugerencias = []
     if asis < 65:
@@ -823,21 +1363,25 @@ def pagina_hallazgos(pdf, tot, analitica):
     else:
         sugerencias.append('La conversion es solida; sube el ticket con paquetes y '
                            'promociones.')
+    if react:
+        sugerencias.append(f'Contactar a los {len(react)} pacientes inactivos con una '
+                           'promocion de regreso puede generar ventas rapidas.')
     if top_trat:
         t, n = top_trat[0]
         sugerencias.append(f'Reserva mas stock y agenda para {t}, el mas demandado.')
-    sugerencias.append('Monitorea el embudo semanalmente para detectar caidas de '
-                       'asistencia o conversion a tiempo.')
+    sugerencias = sugerencias[:4]
 
     def bloque(titulo, items, y0, color):
         ax.text(0.08, y0, titulo, fontsize=12, fontweight='bold', color=color)
-        y = y0 - 0.05
+        y = y0 - 0.045
         for it in items:
-            ax.text(0.08, y, '\u2022  ' + it, fontsize=10, color=GRIS, va='top')
-            y -= 0.065
+            ax.text(0.08, y, '\u2022  ' + it, fontsize=9.5, color=GRIS, va='top',
+                    wrap=True)
+            y -= 0.056
+        return y
 
-    bloque('Hallazgos', hallazgos, 0.89, FONDO_TITULO)
-    bloque('Sugerencias', sugerencias, 0.47, VERDE)
+    y_fin = bloque('Hallazgos', hallazgos, 0.89, FONDO_TITULO)
+    bloque('Sugerencias', sugerencias, y_fin - 0.03, VERDE)
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -881,20 +1425,58 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
     tot_ag, tot_as, tot_co, tot_mon = tot['ag'], tot['as_'], tot['co'], tot['mon']
     analitica = datos_analiticos()
     filas_meta = build_campana_meta(agg)
+    ejecutivas = datos_ejecutivas()
+    motivos = datos_motivos()
+    gasto_ads = _gasto_ads_total()
+
+    # Variación vs periodo anterior equivalente (mismo rango de días)
+    pm, pa, pd, ph = _periodo_anterior(MES, ANIO, D1, D2)
+    tot_ant = totales_periodo(pm, pa, pd, ph)
+    variacion = {
+        'ag': _variacion(tot['ag'], tot_ant['ag']),
+        'as_': _variacion(tot['as_'], tot_ant['as_']),
+        'co': _variacion(tot['co'], tot_ant['co']),
+        'mon': _variacion(tot['mon'], tot_ant['mon']),
+    }
+
+    # Analítica adicional (comparativos, tendencia, recurrencia, reactivación).
+    # Import diferido para evitar el ciclo de imports con analitica.py, que a
+    # su vez importa este módulo.
+    import analitica as ana
+    comp = ana.comparativo(MES, ANIO, D1, D2)
+    historico = ana.ventas_por_mes()
+    serie = ana.serie_diaria(MES, ANIO, D1, D2)
+    rec = ana.recurrentes(MES, ANIO, D1, D2)
+    react = ana.pacientes_a_reactivar(meses=3)
+
     with PdfPages(SALIDA) as pdf:
-        pagina_resumen(pdf, tot, agg)
+        pagina_resumen(pdf, tot, agg, variacion=variacion, gasto_ads=gasto_ads)
+        pagina_comparativo_historico(pdf, comp, historico)
         pagina_flujo(pdf, tot)
+        pagina_evolucion_diaria(pdf, serie)
         pagina_campanas(pdf, agg)
         if filas_meta:
             pagina_campanas_meta(pdf, filas_meta)
         pagina_campana_canal(pdf, agg)
+        if ejecutivas:
+            pagina_ejecutivas(pdf, ejecutivas)
         pagina_metricas(pdf, analitica)
-        pagina_hallazgos(pdf, tot, analitica)
+        pagina_recurrentes(pdf, rec)
+        pagina_reactivacion(pdf, react)
+        pagina_motivos(pdf, motivos)
+        pagina_hallazgos(pdf, tot, analitica, rec=rec, react=react, serie=serie)
     return {'archivo': SALIDA, 'totales': tot,
             'por_crm': {c: dict(v) for c, v in agg_tot_crm.items()},
             'detalle': {f'{k[0]} | {k[1]}': dict(v) for k, v in sorted(
                 agg.items(), key=lambda kv: -kv[1]['ag'])},
-            'por_campana_meta': filas_meta}
+            'por_campana_meta': filas_meta,
+            'ejecutivas': ejecutivas,
+            'motivos': motivos,
+            'variacion': variacion,
+            'recurrentes': {'total_pacientes': rec['total_pacientes'],
+                            'total_recurrentes': rec['total_recurrentes'],
+                            'ltv_promedio': rec['ltv_promedio']},
+            'reactivacion': {'pendientes': len(react)}}
 
 
 def main(argv=None):

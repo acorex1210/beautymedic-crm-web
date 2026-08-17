@@ -10,17 +10,19 @@ Variables de entorno (además de las de alimentar_maestro.py):
   REPORTES_DIR  carpeta para los PDF (default: DATA_DIR/reportes)
 """
 import io
+import json
 import os
 import shutil
 import sys
 import threading
-from datetime import datetime
-from typing import Optional
+import time
+from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 import openpyxl
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -34,6 +36,7 @@ import crm_drive as crm                 # noqa: E402
 import crm_plus as cp                   # noqa: E402
 import meta_ads as mads                 # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
+import whatsapp_leads as wa             # noqa: E402
 
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
 REPORTES_DIR = os.environ.get('REPORTES_DIR', os.path.join(DATA_DIR, 'reportes'))
@@ -67,13 +70,35 @@ def _crear_backup():
 
 _bloqueo = threading.Lock()
 
-app = FastAPI(title='Reportes Beauty Medic', version='1.0.0')
+SYNC_HORA_UTC = int(os.environ.get('SYNC_HORA_UTC', '10'))  # 10:00 UTC = 05:00 Perú
+
+
+def _sync_diario_loop():
+    """Corre alimentar_maestro.ejecutar_sync(aplicar=True) una vez al día,
+    para que el maestro (fuente de todo) siempre esté al día aunque nadie
+    genere un reporte."""
+    while True:
+        ahora = datetime.utcnow()
+        objetivo = ahora.replace(hour=SYNC_HORA_UTC, minute=0, second=0, microsecond=0)
+        if objetivo <= ahora:
+            objetivo += timedelta(days=1)
+        time.sleep((objetivo - ahora).total_seconds())
+        try:
+            with _bloqueo:
+                am.ejecutar_sync(aplicar=True)
+        except Exception as e:  # noqa: BLE001
+            print(f'[sync diario] error: {e}', file=sys.stderr)
+
+
+threading.Thread(target=_sync_diario_loop, daemon=True).start()
+
+app = FastAPI(title='Reportes Derma Essenza', version='1.0.0')
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'],
                    allow_headers=['*'])
 
 BRAND = {
-    'BRAND_NOMBRE': os.environ.get('BRAND_NOMBRE', 'Beauty Medic'),
-    'BRAND_BADGE': os.environ.get('BRAND_BADGE', 'BM'),
+    'BRAND_NOMBRE': os.environ.get('BRAND_NOMBRE', 'Derma Essenza'),
+    'BRAND_BADGE': os.environ.get('BRAND_BADGE', 'DE'),
 }
 
 
@@ -191,6 +216,12 @@ class ComproReq(BaseModel):
     lineas: list[LineaCompra] = []
 
 
+class MotivoReq(BaseModel):
+    fila: int
+    tipo: str = 'no_asistio'
+    motivo: str = ''
+
+
 class TarjetaReq(BaseModel):
     nombre: str = ''
     telefono: str = ''
@@ -234,6 +265,32 @@ class CuotaReq(BaseModel):
     prox_fecha: str = ''
     estado: str = ''
     nota: str = ''
+
+
+class AperturaCajaReq(BaseModel):
+    monto: float = 0
+    monto_usd: float = 0
+    responsable: str = ''
+    nota: str = ''
+    desglose: Optional[Dict[str, float]] = None
+    desglose_usd: Optional[Dict[str, float]] = None
+
+
+class MovimientoCajaReq(BaseModel):
+    tipo: str
+    monto: float = 0
+    monto_usd: float = 0
+    concepto: str = ''
+    responsable: str = ''
+
+
+class CierreCajaReq(BaseModel):
+    monto: float = 0
+    monto_usd: float = 0
+    responsable: str = ''
+    nota: str = ''
+    desglose: Optional[Dict[str, float]] = None
+    desglose_usd: Optional[Dict[str, float]] = None
 
 
 MESES_VALIDOS = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
@@ -290,11 +347,10 @@ async def generar_reporte(data: ReporteReq):
     if not (am.MAESTRO_FID or os.path.exists(am.ruta_maestro_local())):
         raise HTTPException(400, 'No hay maestro BD DATA.xlsx. Súbelo primero.')
     with _bloqueo:
-        if data.fuente == 'auto':
-            am.descargar(am.AGENDADOS_FID, 'AGENDADOS')
-            am.descargar(am.VENTA_FID, 'VENTA_DIARIA')
-        else:
-            am.ejecutar_sync(aplicar=True)
+        # El maestro es la fuente de todo: se corre la sincronización virtual
+        # (AGENDADOS + VENTA DIARIA -> maestro) y se aplica siempre antes de
+        # generar el reporte, sin importar la fuente elegida.
+        am.ejecutar_sync(aplicar=True)
         ruta = _nombre_reporte(mes, data.anio, data.desde, data.hasta)
         try:
             res = rv.generar_reporte(mes=mes, anio=data.anio, desde=data.desde,
@@ -314,10 +370,26 @@ async def generar_reporte(data: ReporteReq):
                 verificacion['reporte_monto'] = reporte_monto
                 verificacion['monto_coincide'] = monto_coincide
                 if not monto_coincide:
-                    verificacion['mensaje'] = (
-                        f"El reporte maestro da S/ {reporte_monto:,.2f} pero VENTA 2026 / "
-                        f"TD 2026 suman S/ {verificacion['venta']:,.2f} en el periodo. "
-                        'Algún dato está mal (revisa PAGO TOTAL acumulado en el maestro).')
+                    diffs = am.diferencias_maestro_venta(
+                        am.ruta_maestro_local(),
+                        os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx'),
+                        data.anio, mes, data.desde, data.hasta)
+                    verificacion['diferencias'] = diffs
+                    if diffs:
+                        detalle = '; '.join(
+                            f"{d['nombre'] or d['telefono']} (fila {d['fila_maestro']}, "
+                            f"{d['fecha']} {mes.lower()}): maestro S/ {d['monto_maestro']:,.2f} "
+                            f"vs venta S/ {d['monto_venta']:,.2f}"
+                            for d in diffs[:5])
+                        verificacion['mensaje'] = (
+                            f"El reporte maestro da S/ {reporte_monto:,.2f} pero VENTA 2026 / "
+                            f"TD 2026 suman S/ {verificacion['venta']:,.2f} en el periodo. "
+                            f"Revisa: {detalle}.")
+                    else:
+                        verificacion['mensaje'] = (
+                            f"El reporte maestro da S/ {reporte_monto:,.2f} pero VENTA 2026 / "
+                            f"TD 2026 suman S/ {verificacion['venta']:,.2f} en el periodo. "
+                            'Algún dato está mal (revisa PAGO TOTAL acumulado en el maestro).')
                     verificacion['coincide'] = False
         except Exception:  # noqa: BLE001
             verificacion = None
@@ -390,6 +462,21 @@ async def descargar_maestro():
     if not os.path.exists(ruta):
         raise HTTPException(404, 'No hay maestro subido')
     return FileResponse(ruta, filename='BD DATA.xlsx')
+
+
+@app.put('/api/maestro/motivo')
+async def registrar_motivo(req: MotivoReq):
+    if req.tipo not in ('no_asistio', 'no_compra'):
+        raise HTTPException(400, "tipo debe ser 'no_asistio' o 'no_compra'")
+    if not req.motivo.strip():
+        raise HTTPException(400, 'El motivo no puede estar vacío')
+    try:
+        col = am.actualizar_motivo_maestro(req.fila, req.tipo, req.motivo.strip().upper())
+        return {'ok': True, 'col': col}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo registrar el motivo: {e}')
 
 
 # ============================================================
@@ -490,6 +577,69 @@ async def analitica_reactivar(meses: int = 3):
         return {'ok': True, 'pacientes': ana.pacientes_a_reactivar(meses)}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo calcular pacientes a reactivar: {e}')
+
+
+@app.get('/api/analitica/ejecutivas')
+async def analitica_ejecutivas(mes: str = '', anio: str = '',
+                               desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.ejecutivas(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular el ranking de ejecutivas: {e}')
+
+
+@app.get('/api/analitica/motivos')
+async def analitica_motivos(mes: str = '', anio: str = '',
+                            desde: str = '', hasta: str = ''):
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
+    try:
+        return {'ok': True, **ana.motivos(m, a, d, h)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular los motivos: {e}')
+
+
+# ============================================================
+# Meta de ventas mensual (barra de progreso en el Panel)
+# ============================================================
+META_MENSUAL_PATH = os.path.join(DATA_DIR, 'meta_mensual.json')
+
+
+def _leer_metas_mensuales():
+    if not os.path.exists(META_MENSUAL_PATH):
+        return {}
+    try:
+        with open(META_MENSUAL_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+class MetaMensualReq(BaseModel):
+    mes: str
+    anio: int
+    meta: float
+
+
+@app.get('/api/meta-mensual')
+async def obtener_meta_mensual(mes: str = '', anio: str = ''):
+    m, a, _, _ = _filtros(mes, anio, '1', '31')
+    metas = _leer_metas_mensuales()
+    return {'ok': True, 'mes': m, 'anio': a, 'meta': metas.get(f'{m}-{a}', 0)}
+
+
+@app.put('/api/meta-mensual')
+async def guardar_meta_mensual(data: MetaMensualReq):
+    if data.meta < 0:
+        raise HTTPException(400, 'La meta no puede ser negativa')
+    m = data.mes.upper().replace('SEP', 'SET')
+    if m not in rv.NOMBRES_MES:
+        raise HTTPException(400, f'Mes inválido: {m}')
+    metas = _leer_metas_mensuales()
+    metas[f'{m}-{data.anio}'] = data.meta
+    with open(META_MENSUAL_PATH, 'w', encoding='utf-8') as f:
+        json.dump(metas, f, ensure_ascii=False, indent=2)
+    return {'ok': True, 'mes': m, 'anio': data.anio, 'meta': data.meta}
 
 
 # ============================================================
@@ -1033,6 +1183,89 @@ async def crm_cuotas_borrar(cid: int):
 
 
 # ============================================================
+# CRM Plus: Caja (apertura / movimientos / cierre del día)
+# ============================================================
+@app.get('/api/crm/caja')
+async def crm_caja_estado(fecha: str = ''):
+    try:
+        return {'ok': True, **cp.estado_caja(fecha or None)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el estado de caja (Drive): {e}')
+
+
+@app.get('/api/crm/caja/historial')
+async def crm_caja_historial(limite: int = 30):
+    try:
+        return {'ok': True, 'historial': cp.historial_caja(limite)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el historial de caja (Drive): {e}')
+
+
+@app.post('/api/crm/caja/apertura')
+async def crm_caja_apertura(data: AperturaCajaReq):
+    try:
+        if cp.estado_caja()['abierta']:
+            raise HTTPException(400, 'La caja de hoy ya está abierta')
+        if not data.desglose and not data.monto and not data.desglose_usd and not data.monto_usd:
+            raise HTTPException(400, 'Indica el desglose de billetes y monedas con el que abres caja')
+        res = cp.abrir_caja({'monto': data.monto, 'monto_usd': data.monto_usd,
+                             'concepto': data.nota, 'responsable': data.responsable,
+                             'desglose': data.desglose, 'desglose_usd': data.desglose_usd})
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo abrir la caja (Drive): {e}')
+    return {'ok': True, 'apertura': res}
+
+
+@app.post('/api/crm/caja/movimiento')
+async def crm_caja_movimiento(data: MovimientoCajaReq):
+    try:
+        estado = cp.estado_caja()
+        if not estado['abierta']:
+            raise HTTPException(400, 'Primero debes abrir la caja de hoy')
+        if estado['cerrada']:
+            raise HTTPException(400, 'La caja de hoy ya está cerrada')
+        res = cp.registrar_movimiento_caja(data.model_dump())
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo registrar el movimiento (Drive): {e}')
+    return {'ok': True, 'movimiento': res}
+
+
+@app.delete('/api/crm/caja/{cid}')
+async def crm_caja_borrar(cid: int):
+    try:
+        ok = cp.borrar_movimiento_caja(cid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el movimiento (Drive): {e}')
+    if not ok:
+        raise HTTPException(404, 'Movimiento no encontrado')
+    return {'ok': True}
+
+
+@app.post('/api/crm/caja/cierre')
+async def crm_caja_cierre(data: CierreCajaReq):
+    try:
+        estado = cp.estado_caja()
+        if not estado['abierta']:
+            raise HTTPException(400, 'Primero debes abrir la caja de hoy')
+        if estado['cerrada']:
+            raise HTTPException(400, 'La caja de hoy ya está cerrada')
+        res = cp.cerrar_caja({'monto': data.monto, 'monto_usd': data.monto_usd,
+                              'concepto': data.nota, 'responsable': data.responsable,
+                              'desglose': data.desglose, 'desglose_usd': data.desglose_usd})
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo cerrar la caja (Drive): {e}')
+    return {'ok': True, 'cierre': res, 'estado': cp.estado_caja()}
+
+
+# ============================================================
 # CRM Plus: Directorio, dashboard y actividades de hoy
 # ============================================================
 @app.get('/api/crm/pacientes')
@@ -1100,3 +1333,44 @@ async def meta_borrar(carga_id: str):
         raise HTTPException(404, str(e))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo borrar el reporte: {e}')
+
+
+# ============================================================
+# WhatsApp: webhook de solo-lectura (Cloud API) -> Pipeline
+# ============================================================
+@app.get('/api/whatsapp/webhook')
+async def whatsapp_verificar(request: Request):
+    """Handshake que pide Meta al configurar el webhook (hub.challenge)."""
+    p = request.query_params
+    if wa.VERIFY_TOKEN and p.get('hub.mode') == 'subscribe' and p.get('hub.verify_token') == wa.VERIFY_TOKEN:
+        return PlainTextResponse(p.get('hub.challenge', ''))
+    raise HTTPException(403, 'Token de verificación inválido o no configurado')
+
+
+@app.post('/api/whatsapp/webhook')
+async def whatsapp_recibir(request: Request):
+    cuerpo = await request.body()
+    firma = request.headers.get('x-hub-signature-256', '')
+    if not wa.verificar_firma(cuerpo, firma):
+        raise HTTPException(403, 'Firma inválida')
+    try:
+        payload = json.loads(cuerpo or b'{}')
+        tarjetas = wa.procesar_webhook_payload(payload)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo procesar el mensaje: {e}')
+    return {'ok': True, 'procesados': len(tarjetas)}
+
+
+class CampanasWhatsappReq(BaseModel):
+    campanas: dict
+
+
+@app.get('/api/whatsapp/campanas')
+async def whatsapp_campanas_get():
+    return {'ok': True, 'campanas': wa.leer_campanas()}
+
+
+@app.put('/api/whatsapp/campanas')
+async def whatsapp_campanas_put(data: CampanasWhatsappReq):
+    wa.guardar_campanas(data.campanas)
+    return {'ok': True, 'campanas': data.campanas}
