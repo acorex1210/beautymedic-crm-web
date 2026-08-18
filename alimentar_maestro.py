@@ -1102,6 +1102,7 @@ def actualizar_motivo_maestro(fila, tipo, motivo):
 # REPORTE
 # ============================================================
 def escribir_reporte(calc, ruta):
+    s = []
     s.append('=' * 60)
     s.append(f'REPORTE DE ACTUALIZACION DEL MAESTRO - {datetime.now():%d/%m/%Y %H:%M}')
     s.append('=' * 60)
