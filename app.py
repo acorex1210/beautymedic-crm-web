@@ -963,6 +963,28 @@ async def crm_agendados_nocompro(fila: int):
             raise HTTPException(502, f'No se pudo registrar el no compró en Drive: {e}')
 
 
+@app.post('/api/crm/agendados/{fila}/noasistio')
+async def crm_agendados_noasistio(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'NO ASISTIO'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar el no asistió en Drive: {e}')
+
+
+@app.post('/api/crm/agendados/{fila}/nocontesto')
+async def crm_agendados_nocontesto(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'NO CONTESTO'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar el no contestó en Drive: {e}')
+
+
 @app.get('/api/crm/venta')
 async def crm_venta():
     try:

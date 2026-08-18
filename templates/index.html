@@ -2055,19 +2055,26 @@ function chipHoyCita(c) {
   return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
 }
 
+function accionesHoyCita(c) {
+  if (estadoCita(c.estado) === 'CONFIRMADO') {
+    return `
+          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">✓ COMPRÓ</button>
+          <button class="btn gris mini" onclick="noComproCita(${c.fila})">◐ ASISTIÓ Y NO COMPRÓ</button>
+          <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>`;
+  }
+  return `
+          <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
+          <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
+          <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
+          <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>`;
+}
 function renderCitasHoy() {
   const h = HOY_DATA;
   $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
     <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
       <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
         ${HOY_ACCIONES[c.fila] ? '' : `
-        <div class="acciones-hoy">
-          <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
-          <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
-          <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
-          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">✓ COMPRÓ</button>
-          <button class="btn gris mini" onclick="noComproCita(${c.fila})">✕ NO COMPRÓ</button>
-        </div>`}
+        <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
       </div>
       ${chipHoyCita(c)}
     </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
@@ -2100,9 +2107,25 @@ async function cancelarCita(fila) {
 async function noComproCita(fila) {
   try {
     await api(`/api/crm/agendados/${fila}/nocompro`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'gris', txt: '✕ NO COMPRÓ' };
+    HOY_ACCIONES[fila] = { cls: 'gris', txt: '◐ Asistió y no compró' };
     renderCitasHoy();
-    toast('Registrado: no compró', 'okm');
+    toast('Registrado: asistió y no compró', 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function noAsistioCita(fila) {
+  try {
+    await api(`/api/crm/agendados/${fila}/noasistio`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { cls: 'bad', txt: '✕ No asistió' };
+    renderCitasHoy();
+    toast('Registrado: no asistió', 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function noContestoCita(fila) {
+  try {
+    await api(`/api/crm/agendados/${fila}/nocontesto`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { cls: 'warn', txt: '☎ No contestó' };
+    renderCitasHoy();
+    toast('Registrado: no contestó', 'okm');
   } catch (e) { toast(e.message, 'err'); }
 }
 function abrirReprogramar(fila) {
