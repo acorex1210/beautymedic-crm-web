@@ -4,10 +4,11 @@
 Funciones estilo CRM (tipo KOMMO) sobre Google Drive: pipeline kanban,
 tareas/recordatorios y notas de seguimiento por paciente.
 
-Guarda todo en un workbook propio ``CRM.xlsx`` (hojas TARJETAS, TAREAS y
-NOTAS) que se busca por nombre en Drive y se crea automáticamente la primera
-vez. Además agrega vistas derivadas: directorio de pacientes, dashboard de
-métricas y panel de actividades de hoy (combinando AGENDADOS y VENTA DIARIA).
+Guarda todo en un workbook propio ``CRM.xlsx`` (hojas TARJETAS, TAREAS,
+NOTAS, CUOTAS, CAJA, PRODUCTOS y MOVIMIENTOS_STOCK) que se busca por nombre
+en Drive. Además agrega vistas derivadas: directorio de pacientes, dashboard
+de métricas, panel de actividades de hoy (combinando AGENDADOS y VENTA
+DIARIA) y el catálogo/kardex de inventario.
 """
 import io
 import json
@@ -48,6 +49,10 @@ HOJAS = {
                'NOTA'],
     'CAJA': ['ID', 'FECHA', 'HORA', 'TIPO', 'MONTO', 'CONCEPTO', 'RESPONSABLE',
              'DESGLOSE', 'MONTO_USD', 'DESGLOSE_USD'],
+    'PRODUCTOS': ['ID', 'CODIGO', 'PRODUCTO', 'COSTO_BRUTO', 'STOCK',
+                  'STOCK_MINIMO', 'UNIDAD', 'FECHA_ALTA', 'ACTUALIZADO'],
+    'MOVIMIENTOS_STOCK': ['ID', 'FECHA', 'CODIGO', 'PRODUCTO', 'TIPO', 'CANTIDAD',
+                          'STOCK_RESULTANTE', 'REFERENCIA', 'NOTA'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -65,6 +70,13 @@ CAJA_COLS = {'id': 'A', 'fecha': 'B', 'hora': 'C', 'tipo': 'D', 'monto': 'E',
              'concepto': 'F', 'responsable': 'G', 'desglose': 'H',
              'monto_usd': 'I', 'desglose_usd': 'J'}
 TIPO_CAJA = ['APERTURA', 'INGRESO', 'EGRESO', 'CIERRE']
+PRODUCTO_COLS = {'id': 'A', 'codigo': 'B', 'producto': 'C', 'costo_bruto': 'D',
+                 'stock': 'E', 'stock_minimo': 'F', 'unidad': 'G',
+                 'fecha_alta': 'H', 'actualizado': 'I'}
+MOVIMIENTO_COLS = {'id': 'A', 'fecha': 'B', 'codigo': 'C', 'producto': 'D',
+                   'tipo': 'E', 'cantidad': 'F', 'stock_resultante': 'G',
+                   'referencia': 'H', 'nota': 'I'}
+TIPO_MOVIMIENTO = ['ENTRADA', 'SALIDA', 'AJUSTE']
 # Denominaciones del arqueo (formato de recepción/caja)
 BILLETES_SOLES = [200, 100, 50, 20, 10]
 MONEDAS_SOLES = [5, 2, 1, 0.5, 0.2, 0.1]
@@ -956,3 +968,164 @@ def historial_caja(limite=30):
     fechas = sorted({f['fecha'] for f in filas if f['tipo'] == 'APERTURA'},
                     key=_fecha_orden, reverse=True)[:limite]
     return [estado_caja(f) for f in fechas]
+
+
+# ============================================================
+# CRM Plus: Inventario (catálogo de productos + kardex de stock)
+# ============================================================
+def _producto_named(f):
+    p = {
+        'id': am.num(f.get('A')),
+        'codigo': f.get('B'),
+        'producto': f.get('C'),
+        'costo_bruto': am.num(f.get('D')) or 0,
+        'stock': am.num(f.get('E')) or 0,
+        'stock_minimo': am.num(f.get('F')) or 0,
+        'unidad': f.get('G') or 'UND',
+        'fecha_alta': f.get('H'),
+        'actualizado': f.get('I'),
+    }
+    p['stock_bajo'] = p['stock'] <= p['stock_minimo']
+    return p
+
+
+def leer_productos():
+    out = [_producto_named(f) for f in _leer_hoja('PRODUCTOS')]
+    out.sort(key=lambda p: str(p['producto'] or '').upper())
+    return out
+
+
+def producto_por_codigo(codigo):
+    codigo = str(codigo or '').strip().upper()
+    if not codigo:
+        return None
+    for f in _leer_hoja('PRODUCTOS'):
+        if str(f.get('B') or '').strip().upper() == codigo:
+            return _producto_named(f)
+    return None
+
+
+def crear_producto(datos):
+    with _lock:
+        filas = _leer_hoja('PRODUCTOS')
+        codigo = str(datos.get('codigo') or '').strip().upper()
+        if not codigo:
+            raise ValueError('Indica el código del producto')
+        if any(str(f.get('B') or '').strip().upper() == codigo for f in filas):
+            raise ValueError(f'Ya existe un producto con el código "{codigo}"')
+        producto = str(datos.get('producto') or '').strip()
+        if not producto:
+            raise ValueError('Indica el nombre del producto')
+        f = {
+            'A': _siguiente_id(filas), 'B': codigo, 'C': producto,
+            'D': am.num(datos.get('costo_bruto')) or 0,
+            'E': am.num(datos.get('stock')) or 0,
+            'F': am.num(datos.get('stock_minimo')) or 0,
+            'G': str(datos.get('unidad') or 'UND').strip().upper(),
+            'H': _ahora(), 'I': _ahora(),
+        }
+        filas.append(f)
+        _reescribir('PRODUCTOS', filas)
+        return _producto_named(f)
+
+
+def actualizar_producto(pid, cambios):
+    with _lock:
+        filas = _leer_hoja('PRODUCTOS')
+        for f in filas:
+            if am.num(f.get('A')) == pid:
+                if cambios.get('codigo'):
+                    nuevo = str(cambios['codigo']).strip().upper()
+                    if any(am.num(g.get('A')) != pid
+                           and str(g.get('B') or '').strip().upper() == nuevo
+                           for g in filas):
+                        raise ValueError(f'Ya existe un producto con el código "{nuevo}"')
+                    f['B'] = nuevo
+                for campo, letra in (('producto', 'C'), ('unidad', 'G')):
+                    if cambios.get(campo):
+                        f[letra] = str(cambios[campo]).strip()
+                for campo, letra in (('costo_bruto', 'D'), ('stock_minimo', 'F')):
+                    if campo in cambios and cambios[campo] not in (None, ''):
+                        f[letra] = am.num(cambios[campo]) or 0
+                f['I'] = _ahora()
+                _reescribir('PRODUCTOS', filas)
+                return _producto_named(f)
+    return None
+
+
+def borrar_producto(pid):
+    with _lock:
+        filas = _leer_hoja('PRODUCTOS')
+        nuevas = [f for f in filas if am.num(f.get('A')) != pid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('PRODUCTOS', nuevas)
+        return True
+
+
+def _movimiento_named(f):
+    return {
+        'id': am.num(f.get('A')), 'fecha': f.get('B'), 'codigo': f.get('C'),
+        'producto': f.get('D'), 'tipo': f.get('E'), 'cantidad': am.num(f.get('F')) or 0,
+        'stock_resultante': am.num(f.get('G')) or 0, 'referencia': f.get('H'),
+        'nota': f.get('I'),
+    }
+
+
+def leer_movimientos_stock(codigo=None, limite=200):
+    filas = [_movimiento_named(f) for f in _leer_hoja('MOVIMIENTOS_STOCK')]
+    if codigo:
+        c = str(codigo).strip().upper()
+        filas = [f for f in filas if str(f['codigo'] or '').strip().upper() == c]
+    filas.sort(key=lambda f: am.num(f['id']) or 0, reverse=True)
+    return filas[:limite]
+
+
+def registrar_movimiento_stock(codigo, tipo, cantidad, referencia='', nota=''):
+    """Registra un movimiento de stock y actualiza el producto.
+
+    ENTRADA suma, SALIDA resta, AJUSTE fija el stock al valor de
+    ``cantidad`` directamente (para corregir conteos).
+    """
+    tipo = str(tipo or '').upper().strip()
+    if tipo not in TIPO_MOVIMIENTO:
+        raise ValueError(f"El tipo de movimiento debe ser {', '.join(TIPO_MOVIMIENTO)}")
+    cantidad = am.num(cantidad)
+    if cantidad is None or cantidad < 0:
+        raise ValueError('Indica una cantidad válida')
+    with _lock:
+        todo = {n: _leer_hoja(n) for n in HOJAS}
+        codigo_u = str(codigo or '').strip().upper()
+        prod_f = next((f for f in todo['PRODUCTOS']
+                       if str(f.get('B') or '').strip().upper() == codigo_u), None)
+        if prod_f is None:
+            raise ValueError(f'No existe un producto con el código "{codigo}"')
+        stock_actual = am.num(prod_f.get('E')) or 0
+        if tipo == 'ENTRADA':
+            nuevo_stock = stock_actual + cantidad
+        elif tipo == 'SALIDA':
+            nuevo_stock = stock_actual - cantidad
+        else:
+            nuevo_stock = cantidad
+        prod_f['E'] = nuevo_stock
+        prod_f['I'] = _ahora()
+
+        m = {'A': _siguiente_id(todo['MOVIMIENTOS_STOCK']), 'B': _ahora(),
+             'C': prod_f.get('B'), 'D': prod_f.get('C'), 'E': tipo, 'F': cantidad,
+             'G': nuevo_stock, 'H': str(referencia or '').strip(),
+             'I': str(nota or '').strip()}
+        todo['MOVIMIENTOS_STOCK'].append(m)
+        _guardar(todo)
+        return {'producto': _producto_named(prod_f), 'movimiento': _movimiento_named(m)}
+
+
+def registrar_entrada_stock(codigo, cantidad, referencia='', nota=''):
+    return registrar_movimiento_stock(codigo, 'ENTRADA', cantidad, referencia, nota)
+
+
+def registrar_salida_stock(codigo, cantidad, referencia='', nota=''):
+    return registrar_movimiento_stock(codigo, 'SALIDA', cantidad, referencia, nota)
+
+
+def ajustar_stock(codigo, stock_nuevo, nota=''):
+    return registrar_movimiento_stock(codigo, 'AJUSTE', stock_nuevo, 'Ajuste manual', nota)

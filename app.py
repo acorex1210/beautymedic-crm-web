@@ -191,6 +191,8 @@ class VentaReq(BaseModel):
     pago: str = ''
     comisiona: Optional[float] = None
     observacion: str = ''
+    producto_codigo: str = ''
+    cantidad: Optional[float] = None
 
 
 class ReprogramarReq(BaseModel):
@@ -202,6 +204,8 @@ class ReprogramarReq(BaseModel):
 class LineaCompra(BaseModel):
     tratamiento: str = ''
     venta: Optional[float] = None
+    producto_codigo: str = ''
+    cantidad: Optional[float] = None
 
 
 class ComproReq(BaseModel):
@@ -291,6 +295,22 @@ class CierreCajaReq(BaseModel):
     nota: str = ''
     desglose: Optional[Dict[str, float]] = None
     desglose_usd: Optional[Dict[str, float]] = None
+
+
+class ProductoReq(BaseModel):
+    codigo: str = ''
+    producto: str = ''
+    costo_bruto: Optional[float] = None
+    stock: Optional[float] = None
+    stock_minimo: Optional[float] = None
+    unidad: str = ''
+
+
+class MovimientoStockReq(BaseModel):
+    tipo: str = 'ENTRADA'
+    cantidad: Optional[float] = None
+    referencia: str = ''
+    nota: str = ''
 
 
 MESES_VALIDOS = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
@@ -935,6 +955,7 @@ async def crm_agendados_compro(fila: int, data: ComproReq):
     lineas = [ln for ln in d.get('lineas', []) if ln.get('tratamiento')]
     if not lineas:
         raise HTTPException(400, 'Indica al menos un tratamiento')
+    avisos_inventario = []
     with _bloqueo:
         try:
             venta = crm.agregar_ventas_multi(
@@ -949,7 +970,17 @@ async def crm_agendados_compro(fila: int, data: ComproReq):
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo registrar la compra en Drive: {e}')
-    return {'ok': True, 'venta': venta, 'agendado': estado}
+        for ln in lineas:
+            codigo = str(ln.get('producto_codigo') or '').strip()
+            if not codigo:
+                continue
+            try:
+                cp.registrar_salida_stock(codigo, ln.get('cantidad') or 1,
+                                          referencia=f"Venta: {d.get('nombre')}")
+            except Exception as e:  # noqa: BLE001
+                avisos_inventario.append(f'{codigo}: {e}')
+    return {'ok': True, 'venta': venta, 'agendado': estado,
+            'avisos_inventario': avisos_inventario}
 
 
 @app.post('/api/crm/agendados/{fila}/nocompro')
@@ -1014,6 +1045,7 @@ async def crm_venta_nuevo(data: VentaReq):
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if not d.get('nombre'):
         raise HTTPException(400, 'Indica el nombre del paciente')
+    aviso_inventario = None
     with _bloqueo:
         try:
             res = crm.agregar_venta(d)
@@ -1021,6 +1053,15 @@ async def crm_venta_nuevo(data: VentaReq):
             raise
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo guardar en VENTA DIARIA (Drive): {e}')
+        codigo = str(d.get('producto_codigo') or '').strip()
+        if codigo:
+            try:
+                cp.registrar_salida_stock(codigo, d.get('cantidad') or 1,
+                                          referencia=f"Venta: {d.get('nombre')}")
+            except Exception as e:  # noqa: BLE001
+                aviso_inventario = f'{codigo}: {e}'
+    if aviso_inventario:
+        res['aviso_inventario'] = aviso_inventario
     return res
 
 
@@ -1285,6 +1326,81 @@ async def crm_caja_cierre(data: CierreCajaReq):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo cerrar la caja (Drive): {e}')
     return {'ok': True, 'cierre': res, 'estado': cp.estado_caja()}
+
+
+# ============================================================
+# CRM Plus: Inventario (catálogo de productos + kardex de stock)
+# ============================================================
+@app.get('/api/crm/inventario/productos')
+async def inventario_productos():
+    try:
+        return {'ok': True, 'productos': cp.leer_productos()}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el inventario (Drive): {e}')
+
+
+@app.post('/api/crm/inventario/productos')
+async def inventario_producto_nuevo(data: ProductoReq):
+    try:
+        p = cp.crear_producto(data.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo crear el producto (Drive): {e}')
+    return {'ok': True, 'producto': p}
+
+
+@app.patch('/api/crm/inventario/productos/{pid}')
+async def inventario_producto_editar(pid: int, data: ProductoReq):
+    try:
+        p = cp.actualizar_producto(pid, data.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo editar el producto (Drive): {e}')
+    if not p:
+        raise HTTPException(404, 'Producto no encontrado')
+    return {'ok': True, 'producto': p}
+
+
+@app.delete('/api/crm/inventario/productos/{pid}')
+async def inventario_producto_borrar(pid: int):
+    try:
+        ok = cp.borrar_producto(pid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el producto (Drive): {e}')
+    if not ok:
+        raise HTTPException(404, 'Producto no encontrado')
+    return {'ok': True}
+
+
+@app.get('/api/crm/inventario/movimientos')
+async def inventario_movimientos(codigo: str = '', limite: int = 200):
+    try:
+        return {'ok': True, 'movimientos': cp.leer_movimientos_stock(codigo or None, limite)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer los movimientos (Drive): {e}')
+
+
+@app.post('/api/crm/inventario/productos/{pid}/movimiento')
+async def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
+    try:
+        productos = cp.leer_productos()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer el inventario (Drive): {e}')
+    prod = next((p for p in productos if p['id'] == pid), None)
+    if not prod:
+        raise HTTPException(404, 'Producto no encontrado')
+    if data.cantidad is None:
+        raise HTTPException(400, 'Indica la cantidad')
+    try:
+        res = cp.registrar_movimiento_stock(prod['codigo'], data.tipo, data.cantidad,
+                                            data.referencia, data.nota)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo registrar el movimiento (Drive): {e}')
+    return {'ok': True, **res}
 
 
 # ============================================================

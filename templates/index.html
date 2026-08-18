@@ -277,6 +277,8 @@
   .co-linea { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
   .co-linea .co-trat { flex: 1; }
   .co-linea .co-venta { width: 130px; }
+  .co-linea .co-producto { width: 180px; }
+  .co-linea .co-cantidad { width: 64px; }
   .me-barra { display: inline-block; width: 64px; height: 8px; background: #e4eaf3; border-radius: 5px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
   .me-barra span { display: block; height: 100%; background: var(--azul3); }
   .me-barra span.full { background: var(--rojo); }
@@ -492,6 +494,10 @@
       <a data-pagina="caja">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 6v12M18 6v12"/></svg>
         <span class="lab">Caja</span>
+      </a>
+      <a data-pagina="inventario">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        <span class="lab">Inventario</span>
       </a>
       <div class="sub">CRM</div>
       <a data-pagina="hoy">
@@ -732,6 +738,29 @@
         <div class="tarjeta" style="margin-top:18px;">
           <h3>Historial de arqueos</h3>
           <div class="tabla-wrap"><table class="drive" id="tablaCajaHistorial"></table></div>
+        </div>
+      </section>
+
+      <!-- ============ INVENTARIO ============ -->
+      <section id="pag-inventario" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Productos</div><div class="num" id="kpiInvTotal">-</div></div>
+          <div class="kpi verde"><div class="eti">Valor del inventario</div><div class="num" id="kpiInvValor">-</div></div>
+          <div class="kpi rojo"><div class="eti">Stock bajo</div><div class="num" id="kpiInvBajo">-</div></div>
+        </div>
+
+        <div class="tarjeta">
+          <div class="toolbar">
+            <div class="buscar"><input type="search" id="invBuscar" placeholder="Buscar por código o producto&hellip;"></div>
+            <button class="btn gris" id="btnInvRecargar">Actualizar</button>
+            <button class="btn verde" id="btnInvNuevo">+ Nuevo producto</button>
+          </div>
+          <div class="tabla-wrap"><table class="drive" id="tablaInventario"></table></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
+          <h3>Kardex &middot; últimos movimientos</h3>
+          <div class="tabla-wrap"><table class="drive" id="tablaInvMovimientos"></table></div>
         </div>
       </section>
 
@@ -1001,6 +1030,8 @@
         <div class="campo"><label>Venta (S/)</label><input type="number" id="veVenta" step="0.01" min="0"></div>
         <div class="campo"><label>Pago</label><select id="vePago"></select></div>
         <div class="campo"><label>Comisiona (S/)</label><input type="number" id="veComisiona" step="0.01" min="0"></div>
+        <div class="campo"><label>Producto (inventario)</label><select id="veProducto"><option value="">Sin producto (no descuenta stock)</option></select></div>
+        <div class="campo"><label>Cantidad</label><input type="number" id="veCantidad" step="1" min="1" value="1"></div>
         <div class="campo ancho"><label>Observación</label><input type="text" id="veObservacion"></div>
       </div>
       <div class="mensaje err oculto" id="msgVeForm"></div>
@@ -1109,6 +1140,55 @@
   </div>
 </div>
 
+<!-- ============ MODAL PRODUCTO (inventario) ============ -->
+<div class="modal-fondo" id="modalProducto">
+  <div class="modal">
+    <div class="cab"><h3 id="prodTitulo">Nuevo producto</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formProducto">
+      <div class="form-grid">
+        <div class="campo"><label>Código</label><input type="text" id="prodCodigo" placeholder="ej. AH-001" required></div>
+        <div class="campo ancho"><label>Producto</label><input type="text" id="prodNombre" placeholder="ej. Ácido Hialurónico 1ml" required></div>
+        <div class="campo"><label>Costo bruto (S/)</label><input type="number" id="prodCosto" step="0.01" min="0"></div>
+        <div class="campo"><label>Unidad</label><input type="text" id="prodUnidad" placeholder="UND" value="UND"></div>
+        <div class="campo" id="prodStockCampo"><label>Stock inicial</label><input type="number" id="prodStock" step="1" min="0" value="0"></div>
+        <div class="campo"><label>Stock mínimo (alerta)</label><input type="number" id="prodStockMinimo" step="1" min="0" value="0"></div>
+      </div>
+      <div class="mensaje err oculto" id="msgProdForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnProdBorrar" style="margin-right:auto;">Borrar</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnProdGuardar">Guardar producto</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL MOVIMIENTO DE STOCK ============ -->
+<div class="modal-fondo" id="modalMovStock">
+  <div class="modal">
+    <div class="cab"><h3 id="movStockTitulo">Movimiento de stock</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formMovStock">
+      <div class="form-grid">
+        <div class="campo"><label>Tipo</label>
+          <select id="movStockTipo">
+            <option value="ENTRADA">Entrada (compra a proveedor)</option>
+            <option value="SALIDA">Salida (uso / merma)</option>
+            <option value="AJUSTE">Ajuste (fijar stock exacto)</option>
+          </select>
+        </div>
+        <div class="campo"><label id="movStockCantidadLabel">Cantidad</label><input type="number" id="movStockCantidad" step="1" min="0" required></div>
+        <div class="campo ancho"><label>Referencia</label><input type="text" id="movStockReferencia" placeholder="ej. Compra proveedor X, factura 001"></div>
+        <div class="campo ancho"><label>Nota</label><input type="text" id="movStockNota"></div>
+      </div>
+      <div class="mensaje err oculto" id="msgMovStockForm"></div>
+      <div class="pies">
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnMovStockGuardar">Registrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ============ MODAL REPROGRAMAR CITA ============ -->
@@ -1169,6 +1249,7 @@ const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
 const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
 let TARJETAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
+let INVENTARIO_PRODUCTOS = null, INV_MOVIMIENTOS = null, productoEditando = null, movStockCodigo = null;
 let hoyFilaActiva = null;
 let HOY_ACCIONES = {};
 let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
@@ -1205,6 +1286,7 @@ const TITULOS = {
   agendados: ['Agendados', 'Citas y pacientes agendados desde el CRM'],
   venta: ['Venta diaria', 'Registro diario de ventas desde el CRM'],
   caja: ['Caja', 'Apertura y cierre de caja del día'],
+  inventario: ['Inventario', 'Catálogo de productos y kardex de stock'],
   hoy: ['Hoy', 'Actividades y citas del día'],
   calendario: ['Calendario', 'Vista general de citas agendadas'],
   pipeline: ['Pipeline', 'Tablero de ventas estilo kanban'],
@@ -1222,6 +1304,7 @@ function pagina(nombre) {
   if (nombre === 'agendados') cargarAgendados();
   if (nombre === 'venta') cargarVenta();
   if (nombre === 'caja') cargarCaja();
+  if (nombre === 'inventario') cargarInventario();
   if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); }
   if (nombre === 'hoy') cargarHoy();
   if (nombre === 'calendario') cargarCalendario();
@@ -1707,13 +1790,16 @@ async function borrarVenta(fila, hoja) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
-function abrirModalVenta() {
+async function abrirModalVenta() {
   $('veDia').value = HOY_D; $('veMes').value = HOY_M; $('veAnio').value = HOY_A;
   $('veDni').value = ''; $('veCel').value = ''; $('veNombre').value = '';
   $('veEdad').value = ''; $('veVenta').value = ''; $('veComisiona').value = '';
   $('veObservacion').value = ''; $('veNuevo').value = 'NUEVO'; $('veSexo').value = 'F';
   $('veStatus').value = 'SE REALIZO'; $('vePago').value = '';
   $('veDistrito').value = ''; $('veTratamiento').value = ''; $('veDoctor').value = '';
+  $('veCantidad').value = 1;
+  await asegurarInventario();
+  $('veProducto').innerHTML = coOpcionesProducto();
   $('msgVeForm').classList.add('oculto');
   $('modalVenta').classList.add('abierto');
   $('veNombre').focus();
@@ -1732,6 +1818,8 @@ $('formVenta').addEventListener('submit', async (e) => {
     status: $('veStatus').value, venta: $('veVenta').value ? +$('veVenta').value : null,
     pago: $('vePago').value, comisiona: $('veComisiona').value ? +$('veComisiona').value : null,
     observacion: $('veObservacion').value.trim(),
+    producto_codigo: $('veProducto').value,
+    cantidad: $('veCantidad').value ? +$('veCantidad').value : 1,
   };
   try {
     const res = await api('/api/crm/venta', {
@@ -1739,6 +1827,8 @@ $('formVenta').addEventListener('submit', async (e) => {
     });
     cerrarModales();
     toast(`Venta guardada en ${res.hoja} (fila ${res.fila})`, 'okm');
+    if (res.aviso_inventario) toast('Aviso de inventario: ' + res.aviso_inventario, 'err');
+    if (payload.producto_codigo) INVENTARIO_PRODUCTOS = null;
     veAnioActivo = res.hoja; veLimite = 400; cargarVenta();
   } catch (err) {
     $('msgVeForm').textContent = err.message; $('msgVeForm').classList.remove('oculto');
@@ -2029,6 +2119,174 @@ $('btnCajaAbrir').addEventListener('click', cajaAbrir);
 $('btnCajaMovAgregar').addEventListener('click', cajaAgregarMovimiento);
 $('btnCajaCerrar').addEventListener('click', cajaCerrar);
 
+/* ---------------- CRM PLUS: INVENTARIO ---------------- */
+async function asegurarInventario() {
+  if (INVENTARIO_PRODUCTOS) return;
+  try {
+    const r = await api('/api/crm/inventario/productos');
+    INVENTARIO_PRODUCTOS = r.productos;
+  } catch (e) { INVENTARIO_PRODUCTOS = []; }
+}
+async function cargarInventario() {
+  const tbody = $('tablaInventario');
+  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando inventario&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/crm/inventario/productos');
+    INVENTARIO_PRODUCTOS = r.productos;
+  } catch (e) {
+    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  pintarInventario();
+  cargarInvMovimientos();
+}
+function invFilasActivas() {
+  const q = $('invBuscar').value.trim().toLowerCase();
+  if (!q) return INVENTARIO_PRODUCTOS;
+  return INVENTARIO_PRODUCTOS.filter(p =>
+    String(p.codigo || '').toLowerCase().includes(q) || String(p.producto || '').toLowerCase().includes(q));
+}
+function pintarInventario() {
+  const filt = invFilasActivas();
+  const bajo = INVENTARIO_PRODUCTOS.filter(p => p.stock_bajo).length;
+  const valor = INVENTARIO_PRODUCTOS.reduce((s, p) => s + (p.costo_bruto || 0) * (p.stock || 0), 0);
+  $('kpiInvTotal').textContent = INVENTARIO_PRODUCTOS.length;
+  $('kpiInvValor').textContent = fmtMon(valor);
+  $('kpiInvBajo').textContent = bajo;
+  $('tablaInventario').innerHTML = filt.length
+    ? '<thead><tr><th>Código</th><th>Producto</th><th class="der">Costo bruto</th><th class="der">Stock</th><th class="der">Stock mín.</th><th>Unidad</th><th>Actualizado</th><th>Acciones</th></tr></thead><tbody>' +
+      filt.map(p => `<tr${p.stock_bajo ? ' style="background:rgba(220,53,69,.08);"' : ''}>
+        <td>${esc(p.codigo)}</td>
+        <td>${esc(p.producto)}</td>
+        <td class="der">${fmtMon(p.costo_bruto)}</td>
+        <td class="der">${p.stock_bajo ? '<span class="chip bad">' + p.stock + '</span>' : p.stock}</td>
+        <td class="der">${p.stock_minimo}</td>
+        <td>${esc(p.unidad)}</td>
+        <td>${esc(p.actualizado || '')}</td>
+        <td>
+          <button class="btn verde pequeno" onclick="abrirMovStock(${p.id})">+ Stock</button>
+          <button class="btn borde pequeno" onclick="abrirModalProducto(${p.id})">Editar</button>
+        </td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td><div class="vacio">Sin productos en el inventario. Crea el primero con "+ Nuevo producto".</div></td></tr>';
+}
+async function cargarInvMovimientos() {
+  try {
+    const r = await api('/api/crm/inventario/movimientos?limite=100');
+    INV_MOVIMIENTOS = r.movimientos;
+  } catch (e) {
+    $('tablaInvMovimientos').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  $('tablaInvMovimientos').innerHTML = INV_MOVIMIENTOS.length
+    ? '<thead><tr><th>Fecha</th><th>Código</th><th>Producto</th><th>Tipo</th><th class="der">Cantidad</th><th class="der">Stock resultante</th><th>Referencia</th></tr></thead><tbody>' +
+      INV_MOVIMIENTOS.map(m => `<tr>
+        <td>${esc(m.fecha)}</td><td>${esc(m.codigo)}</td><td>${esc(m.producto)}</td>
+        <td>${esc(m.tipo)}</td><td class="der">${m.cantidad}</td><td class="der">${m.stock_resultante}</td>
+        <td>${esc(m.referencia || m.nota || '')}</td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td><div class="vacio">Sin movimientos aún.</div></td></tr>';
+}
+$('invBuscar').addEventListener('input', pintarInventario);
+$('btnInvRecargar').addEventListener('click', cargarInventario);
+$('btnInvNuevo').addEventListener('click', () => abrirModalProducto(null));
+
+function abrirModalProducto(pid) {
+  productoEditando = pid;
+  const p = pid ? INVENTARIO_PRODUCTOS.find(x => x.id === pid) : null;
+  $('prodTitulo').textContent = p ? 'Editar producto' : 'Nuevo producto';
+  $('prodCodigo').value = p ? p.codigo : '';
+  $('prodCodigo').disabled = !!p;
+  $('prodNombre').value = p ? p.producto : '';
+  $('prodCosto').value = p ? p.costo_bruto : '';
+  $('prodUnidad').value = p ? p.unidad : 'UND';
+  $('prodStockMinimo').value = p ? p.stock_minimo : 0;
+  $('prodStock').value = p ? p.stock : 0;
+  $('prodStockCampo').style.display = p ? 'none' : '';
+  $('btnProdBorrar').classList.toggle('oculto', !p);
+  $('msgProdForm').classList.add('oculto');
+  $('modalProducto').classList.add('abierto');
+  $('prodNombre').focus();
+}
+$('formProducto').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnProdGuardar'); b.disabled = true;
+  $('msgProdForm').classList.add('oculto');
+  const payload = {
+    codigo: $('prodCodigo').value.trim(),
+    producto: $('prodNombre').value.trim(),
+    costo_bruto: $('prodCosto').value ? +$('prodCosto').value : 0,
+    stock_minimo: $('prodStockMinimo').value ? +$('prodStockMinimo').value : 0,
+    unidad: $('prodUnidad').value.trim() || 'UND',
+  };
+  if (!productoEditando) payload.stock = $('prodStock').value ? +$('prodStock').value : 0;
+  try {
+    if (productoEditando) {
+      await api(`/api/crm/inventario/productos/${productoEditando}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      toast('Producto actualizado', 'okm');
+    } else {
+      await api('/api/crm/inventario/productos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      toast('Producto creado', 'okm');
+    }
+    cerrarModales();
+    cargarInventario();
+  } catch (err) {
+    $('msgProdForm').textContent = err.message; $('msgProdForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+$('btnProdBorrar').addEventListener('click', async () => {
+  if (!productoEditando) return;
+  if (!confirm('¿Borrar este producto del inventario? El historial de movimientos se conserva.')) return;
+  try {
+    await api(`/api/crm/inventario/productos/${productoEditando}`, { method: 'DELETE' });
+    cerrarModales();
+    toast('Producto borrado', 'okm');
+    cargarInventario();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+function abrirMovStock(pid) {
+  const p = INVENTARIO_PRODUCTOS.find(x => x.id === pid);
+  if (!p) return;
+  movStockCodigo = pid;
+  $('movStockTitulo').textContent = `Movimiento de stock · ${p.codigo} — ${p.producto} (stock actual: ${p.stock})`;
+  $('movStockTipo').value = 'ENTRADA';
+  $('movStockCantidad').value = '';
+  $('movStockReferencia').value = '';
+  $('movStockNota').value = '';
+  $('msgMovStockForm').classList.add('oculto');
+  $('modalMovStock').classList.add('abierto');
+  $('movStockCantidad').focus();
+}
+$('movStockTipo').addEventListener('change', () => {
+  $('movStockCantidadLabel').textContent = $('movStockTipo').value === 'AJUSTE' ? 'Stock exacto (nuevo total)' : 'Cantidad';
+});
+$('formMovStock').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnMovStockGuardar'); b.disabled = true;
+  $('msgMovStockForm').classList.add('oculto');
+  try {
+    await api(`/api/crm/inventario/productos/${movStockCodigo}/movimiento`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: $('movStockTipo').value,
+        cantidad: $('movStockCantidad').value ? +$('movStockCantidad').value : null,
+        referencia: $('movStockReferencia').value.trim(),
+        nota: $('movStockNota').value.trim(),
+      }),
+    });
+    cerrarModales();
+    toast('Movimiento de stock registrado', 'okm');
+    cargarInventario();
+  } catch (err) {
+    $('msgMovStockForm').textContent = err.message; $('msgMovStockForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+
 /* ---------------- CRM PLUS: HOY ---------------- */
 async function cargarHoy() {
   const cont = $('hoyListaCitas');
@@ -2171,17 +2429,24 @@ async function abrirCompro(fila) {
   $('coCel').value = c.telefono || '';
   $('msgCoForm').classList.add('oculto');
   $('coLineas').innerHTML = '';
+  await asegurarInventario();
   coAgregarLinea();
   await asegurarValoresVenta();
   llenarSelect($('coPago'), unir(['YAPE', 'PLIN', 'EFECTIVO', 'TRANSF. BCA', 'T. CREDITO', 'T. DEBITO'], limpiar(VE.valores?.pago || [])));
   llenarSelect($('coDoctor'), VE.valores?.doctor || []);
   $('modalCompro').classList.add('abierto');
 }
+function coOpcionesProducto() {
+  return '<option value="">Sin producto</option>' + (INVENTARIO_PRODUCTOS || [])
+    .map(p => `<option value="${esc(p.codigo)}">${esc(p.codigo)} — ${esc(p.producto)}</option>`).join('');
+}
 function coAgregarLinea() {
   const d = document.createElement('div');
   d.className = 'co-linea';
   d.innerHTML = `<input type="text" class="co-trat" list="coTratList" placeholder="Tratamiento (ej. Ácido)">
     <input type="number" class="co-venta" step="0.01" min="0" placeholder="S/ monto">
+    <select class="co-producto" title="Producto de inventario a descontar (opcional)">${coOpcionesProducto()}</select>
+    <input type="number" class="co-cantidad" step="1" min="1" value="1" style="width:64px;" title="Cantidad">
     <button type="button" class="btn rojo pequeno" onclick="coQuitarLinea(this)" title="Quitar">✕</button>`;
   $('coLineas').appendChild(d);
   d.querySelector('.co-trat').focus();
@@ -2199,13 +2464,15 @@ async function guardarCompro() {
   const lineas = [...$('coLineas').querySelectorAll('.co-linea')].map(l => ({
     tratamiento: l.querySelector('.co-trat').value.trim(),
     venta: l.querySelector('.co-venta').value ? +l.querySelector('.co-venta').value : null,
+    producto_codigo: l.querySelector('.co-producto').value,
+    cantidad: l.querySelector('.co-cantidad').value ? +l.querySelector('.co-cantidad').value : 1,
   })).filter(l => l.tratamiento);
   if (!nombre) { $('msgCoForm').textContent = 'Indica el nombre del paciente'; $('msgCoForm').classList.remove('oculto'); b.disabled = false; return; }
   if (!lineas.length) { $('msgCoForm').textContent = 'Indica al menos un tratamiento'; $('msgCoForm').classList.remove('oculto'); b.disabled = false; return; }
   const total = lineas.reduce((s, l) => s + (l.venta || 0), 0);
   const doctor = $('coDoctor').value;
   try {
-    await api(`/api/crm/agendados/${fila}/compro`, {
+    const res = await api(`/api/crm/agendados/${fila}/compro`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dia: HOY_D, mes: HOY_M, anio: HOY_A,
@@ -2223,6 +2490,10 @@ async function guardarCompro() {
     $('hoyVentas').textContent = HOY_DATA.ventas.length;
     renderVentasHoy();
     toast(`Compra registrada en VENTA (${fmtMon(total)})`, 'okm');
+    if (res.avisos_inventario && res.avisos_inventario.length) {
+      toast('Aviso de inventario: ' + res.avisos_inventario.join(' · '), 'err');
+    }
+    if (lineas.some(l => l.producto_codigo)) INVENTARIO_PRODUCTOS = null;
   } catch (e) { $('msgCoForm').textContent = e.message; $('msgCoForm').classList.remove('oculto'); }
   finally { b.disabled = false; }
 }
