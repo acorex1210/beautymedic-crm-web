@@ -1859,7 +1859,7 @@ function pintarVenta() {
       if (c === 'J') return `<td class="num">${esc(v)}</td>`;
       return `<td>${esc(v)}</td>`;
     }).join('') + (Number.isInteger(f._fila)
-      ? `<td><a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> <button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
+      ? `<td>${esRealizado(f.N) ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> ` : ''}<button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
       : '<td></td>') + '</tr>').join('') + '</tbody>';
   $('veMas').innerHTML = filt.length > veLimite
     ? `<button onclick="veLimite+=400;pintarVenta()">Mostrar más (${filt.length - veLimite} restantes)</button>`
