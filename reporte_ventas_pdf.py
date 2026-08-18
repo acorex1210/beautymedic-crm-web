@@ -57,6 +57,11 @@ GRIS = '#595959'
 ROJO = '#c00000'
 FONDO_CLARO = '#eaf1f8'
 
+# Alto (fracción de página) de una fila de tabla a fontsize=9 cuando se usa
+# estilo_tabla(..., max_row_h=1.0), es decir cuando la tabla llena exactamente
+# el axes que se le da (sin el auto-ajuste proporcional de estilo_tabla).
+ALTO_FILA_TABLA = 0.032
+
 CRM_ORDEN = ['KOMMO', 'WHATSAPP', 'ORGANICO', 'SIN CRM']
 CANALES = ['KOMMO', 'WHATSAPP', 'ORGANICO']
 COLOR_CANAL = {'KOMMO': AZUL, 'WHATSAPP': VERDE, 'ORGANICO': NARANJA}
@@ -740,13 +745,13 @@ def pagina_campanas(pdf, agg):
 
     heading_y = 0.895
     axc_top = 0.87
-    alto_camp = min(0.50, max(0.12, 0.043 * (len(filas) + 1)))
+    alto_camp = min(0.55, max(0.09, ALTO_FILA_TABLA * (len(filas) + 1)))
     ax.text(0.08, heading_y, 'Por campana (principales)', fontsize=12,
             fontweight='bold', color=FONDO_TITULO)
     axc = fig.add_axes([0.08, axc_top - alto_camp, 0.84, alto_camp])
     estilo_tabla(axc, filas, [0.36, 0.13, 0.13, 0.13, 0.11, 0.17],
                  header=['Campana', 'Agend.', 'Asist.', 'Compr.', 'Conv.', 'Monto'],
-                 fontsize=9, scale=1.0)
+                 fontsize=9, scale=1.0, max_row_h=1.0)
 
     crm_activos = [c for c in CRM_ORDEN if c in por_crm]
     crm_filas = []
@@ -761,12 +766,12 @@ def pagina_campanas(pdf, agg):
                       f"{pct(camp_co, camp_as):.0f}%", monto(camp_mon)])
 
     crm_heading_y = axc_top - alto_camp - 0.05
-    alto_crm = min(0.30, max(0.10, 0.043 * (len(crm_filas) + 1)))
+    alto_crm = min(0.30, max(0.09, ALTO_FILA_TABLA * (len(crm_filas) + 1)))
     ax.text(0.08, crm_heading_y, 'Por CRM', fontsize=12, fontweight='bold', color=FONDO_TITULO)
     axd = fig.add_axes([0.08, crm_heading_y - 0.03 - alto_crm, 0.84, alto_crm])
     estilo_tabla(axd, crm_filas, [0.30, 0.15, 0.15, 0.13, 0.12, 0.18],
                  header=['CRM', 'Agend.', 'Asist.', 'Compr.', 'Conv.', 'Monto'],
-                 fontsize=9, scale=1.0)
+                 fontsize=9, scale=1.0, max_row_h=1.0)
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -806,12 +811,12 @@ def pagina_otros(pdf, agg_otros):
     filas.append(['TOTAL', tot['ag'], tot['as_'], f"{pct(tot['as_'], tot['ag']):.0f}%",
                   tot['co'], f"{pct(tot['co'], tot['as_']):.0f}%", monto(tot['mon'])])
 
-    alto = min(0.55, max(0.12, 0.043 * (len(filas) + 1)))
+    alto = min(0.55, max(0.09, ALTO_FILA_TABLA * (len(filas) + 1)))
     axc = fig.add_axes([0.08, 0.86 - alto, 0.84, alto])
-    estilo_tabla(axc, filas, [0.28, 0.11, 0.11, 0.11, 0.11, 0.11, 0.17],
+    estilo_tabla(axc, filas, [0.34, 0.11, 0.10, 0.10, 0.10, 0.10, 0.15],
                  header=['Categoria', 'Agend.', 'Asist.', '% Asist.', 'Compr.',
                          '% Conv.', 'Monto'],
-                 fontsize=9, scale=1.0)
+                 fontsize=9, scale=1.0, max_row_h=1.0)
     pdf.savefig(fig); plt.close(fig)
 
 
