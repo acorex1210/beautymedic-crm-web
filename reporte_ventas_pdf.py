@@ -24,6 +24,7 @@ Uso:
 """
 import argparse
 import os
+import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
@@ -69,6 +70,66 @@ def canales_desde_datos(agg):
         totales[crm] += d['ag']
     top = [c for c, _ in totales.most_common(3) if str(c).strip().upper() != 'SIN CRM']
     return top or ['WHATSAPP']
+
+
+# ============================================================
+# Campañas reales vs "Otros" (no son campañas de anuncios)
+# ============================================================
+# Valores que puede tener la columna CAMPAÑA del maestro sin ser una campaña
+# de verdad: tipos de venta que se registran por costumbre en esa celda, no
+# nombres de campaña de Meta Ads.
+CATEGORIAS_OTROS = {
+    'EVALUACION', 'RETOQUE', 'RECURRENTE', 'RECOMENDADO', 'SESION',
+    'ORGANICO REDES', 'VENTA SIN AGENDAR',
+}
+_RE_HORA = re.compile(r'^\d{1,2}[:.]\d{2}\s*(AM|PM)?$', re.I)
+
+
+def _normalizar_categoria(s):
+    s = unicodedata.normalize('NFKD', str(s or '').upper())
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r'[^A-Z0-9]+', ' ', s).strip()
+
+
+def campana_valida(nombre):
+    """False si ``nombre`` no es una campaña real: vacío, un tipo de venta
+    (evaluación, retoque, recurrente...) o un dato corrupto (p.ej. una hora
+    tipeada por error en la columna CAMPAÑA)."""
+    s = str(nombre or '').strip()
+    if not s or s == '(SIN CAMPANA)':
+        return False
+    if _RE_HORA.match(s):
+        return False
+    return _normalizar_categoria(s) not in CATEGORIAS_OTROS
+
+
+def categoria_otros(nombre):
+    """Nombre de categoría a mostrar en la tabla 'Otros' para un valor de
+    CAMPAÑA que no pasó ``campana_valida``."""
+    s = str(nombre or '').strip()
+    if not s or s == '(SIN CAMPANA)':
+        return 'SIN CAMPAÑA'
+    if _RE_HORA.match(s):
+        return 'SIN CAMPAÑA (dato inválido)'
+    return s
+
+
+def separar_campanas_otros(agg):
+    """Divide un agg {(campana, crm): datos} en (campanas_reales, otros),
+    agrupando en 'otros' lo que no es una campaña de anuncios (ver
+    ``campana_valida``) para que no ensucie las tablas de campañas."""
+    campanas, otros = {}, {}
+    for (camp, crm), d in agg.items():
+        if campana_valida(camp):
+            campanas[(camp, crm)] = d
+        else:
+            cat = categoria_otros(camp)
+            dest = otros.setdefault((cat, crm), dict(ag=0, as_=0, co=0, mon=0.0,
+                                                      no_fueron=0, fueron_sin_compra=0))
+            for k in dest:
+                dest[k] += d.get(k, 0)
+    return campanas, otros
+
 
 COL_BM = {
     'CRM': 2, 'RED_SOCIAL': 7, 'DIA': 3, 'MES': 4, 'ANIO': 5, 'TELEFONO': 9,
@@ -636,6 +697,8 @@ def pagina_flujo(pdf, tot):
 
 
 def pagina_campanas(pdf, agg):
+    """``agg`` debe ser solo campañas reales (ver ``separar_campanas_otros``);
+    los tipos de venta que no son campaña van en ``pagina_otros``."""
     fig = plt.figure(figsize=(8.27, 11.69))
     fig.patch.set_facecolor('white')
     ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
@@ -650,6 +713,10 @@ def pagina_campanas(pdf, agg):
         por_crm[crm][camp] = d
         for k in ('ag', 'as_', 'co', 'mon'):
             camps[camp][k] += d[k]
+    camp_ag = sum(d['ag'] for d in camps.values())
+    camp_as = sum(d['as_'] for d in camps.values())
+    camp_co = sum(d['co'] for d in camps.values())
+    camp_mon = sum(d['mon'] for d in camps.values())
 
     camp_list = sorted(camps.items(), key=lambda kv: -kv[1]['ag'])
     filas = [[c, d['ag'], d['as_'], d['co'], f"{pct(d['co'], d['as_']):.0f}%",
@@ -661,11 +728,22 @@ def pagina_campanas(pdf, agg):
                       sum(d['co'] for d in resto),
                       f"{pct(sum(d['co'] for d in resto), sum(d['as_'] for d in resto)):.0f}%",
                       monto(sum(d['mon'] for d in resto))])
-    filas.append(['TOTAL', tot_ag, tot_as, tot_co,
-                  f"{pct(tot_co, tot_as):.0f}%", monto(tot_mon)])
-    ax.text(0.08, 0.90, 'Por campana (principales)', fontsize=12,
+    filas.append(['TOTAL', camp_ag, camp_as, camp_co,
+                  f"{pct(camp_co, camp_as):.0f}%", monto(camp_mon)])
+
+    if not camps:
+        ax.text(0.5, 0.6, 'No hubo campañas de anuncios en este periodo.\n'
+                          'Ver "Otros" para evaluaciones, retoques, recurrentes, etc.',
+                ha='center', fontsize=10, color=GRIS, transform=fig.transFigure)
+        pdf.savefig(fig); plt.close(fig)
+        return
+
+    heading_y = 0.895
+    axc_top = 0.87
+    alto_camp = min(0.50, max(0.12, 0.043 * (len(filas) + 1)))
+    ax.text(0.08, heading_y, 'Por campana (principales)', fontsize=12,
             fontweight='bold', color=FONDO_TITULO)
-    axc = fig.add_axes([0.08, 0.42, 0.84, 0.46])
+    axc = fig.add_axes([0.08, axc_top - alto_camp, 0.84, alto_camp])
     estilo_tabla(axc, filas, [0.36, 0.13, 0.13, 0.13, 0.11, 0.17],
                  header=['Campana', 'Agend.', 'Asist.', 'Compr.', 'Conv.', 'Monto'],
                  fontsize=9, scale=1.0)
@@ -679,12 +757,60 @@ def pagina_campanas(pdf, agg):
         co = sum(d['co'] for d in v.values())
         mon = sum(d['mon'] for d in v.values())
         crm_filas.append([c, ag, as_, co, f"{pct(co, as_):.0f}%", monto(mon)])
-    crm_filas.append(['TOTAL', tot_ag, tot_as, tot_co,
-                      f"{pct(tot_co, tot_as):.0f}%", monto(tot_mon)])
-    ax.text(0.08, 0.38, 'Por CRM', fontsize=12, fontweight='bold', color=FONDO_TITULO)
-    axd = fig.add_axes([0.08, 0.08, 0.84, 0.27])
+    crm_filas.append(['TOTAL', camp_ag, camp_as, camp_co,
+                      f"{pct(camp_co, camp_as):.0f}%", monto(camp_mon)])
+
+    crm_heading_y = axc_top - alto_camp - 0.05
+    alto_crm = min(0.30, max(0.10, 0.043 * (len(crm_filas) + 1)))
+    ax.text(0.08, crm_heading_y, 'Por CRM', fontsize=12, fontweight='bold', color=FONDO_TITULO)
+    axd = fig.add_axes([0.08, crm_heading_y - 0.03 - alto_crm, 0.84, alto_crm])
     estilo_tabla(axd, crm_filas, [0.30, 0.15, 0.15, 0.13, 0.12, 0.18],
                  header=['CRM', 'Agend.', 'Asist.', 'Compr.', 'Conv.', 'Monto'],
+                 fontsize=9, scale=1.0)
+    pdf.savefig(fig); plt.close(fig)
+
+
+def pagina_otros(pdf, agg_otros):
+    """Tipos de venta que no son campañas de anuncios: evaluaciones, retoques,
+    recurrentes, recomendados, orgánico/redes, sesiones y filas con la
+    columna CAMPAÑA vacía o con un dato inválido. No tienen presupuesto ni
+    leads de Meta Ads porque no vienen de un anuncio pagado."""
+    fig = plt.figure(figsize=(8.27, 11.69))
+    fig.patch.set_facecolor('white')
+    ax = fig.add_axes([0, 0, 1, 1]); ax.axis('off')
+    ax.text(0.5, 0.955, 'Otros (no son campanas de anuncios)', ha='center', fontsize=15,
+            fontweight='bold', color=FONDO_TITULO)
+    ax.text(0.5, 0.925, f'{D1} al {D2} de {NOMBRES_MES[MES]} {ANIO}', ha='center',
+            fontsize=11, color=GRIS)
+    ax.text(0.5, 0.895, 'Evaluaciones, retoques, recurrentes, recomendados, organico/redes, '
+                        'sesiones y datos sin campana valida.', ha='center',
+            fontsize=8.5, color=GRIS, transform=fig.transFigure)
+
+    cats = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0))
+    for (cat, crm), d in agg_otros.items():
+        for k in ('ag', 'as_', 'co', 'mon'):
+            cats[cat][k] += d[k]
+
+    if not cats:
+        ax.text(0.5, 0.6, 'No hubo ventas sin campaña en este periodo: todo lo\n'
+                          'registrado corresponde a una campaña de anuncios real.',
+                ha='center', fontsize=10, color=GRIS, transform=fig.transFigure)
+        pdf.savefig(fig); plt.close(fig)
+        return
+
+    cat_list = sorted(cats.items(), key=lambda kv: -kv[1]['ag'])
+    filas = [[c, d['ag'], d['as_'], f"{pct(d['as_'], d['ag']):.0f}%", d['co'],
+              f"{pct(d['co'], d['as_']):.0f}%", monto(d['mon'])] for c, d in cat_list]
+    tot = dict(ag=sum(d['ag'] for d in cats.values()), as_=sum(d['as_'] for d in cats.values()),
+               co=sum(d['co'] for d in cats.values()), mon=sum(d['mon'] for d in cats.values()))
+    filas.append(['TOTAL', tot['ag'], tot['as_'], f"{pct(tot['as_'], tot['ag']):.0f}%",
+                  tot['co'], f"{pct(tot['co'], tot['as_']):.0f}%", monto(tot['mon'])])
+
+    alto = min(0.55, max(0.12, 0.043 * (len(filas) + 1)))
+    axc = fig.add_axes([0.08, 0.86 - alto, 0.84, alto])
+    estilo_tabla(axc, filas, [0.28, 0.11, 0.11, 0.11, 0.11, 0.11, 0.17],
+                 header=['Categoria', 'Agend.', 'Asist.', '% Asist.', 'Compr.',
+                         '% Conv.', 'Monto'],
                  fontsize=9, scale=1.0)
     pdf.savefig(fig); plt.close(fig)
 
@@ -760,6 +886,11 @@ def pagina_campana_canal(pdf, agg):
         for k in ('ag', 'as_', 'co', 'mon'):
             camps[camp][k] += d[k]
     camp_list = sorted(camps.items(), key=lambda kv: -kv[1]['ag'])
+    if not camp_list:
+        ax.text(0.5, 0.6, 'No hubo campañas de anuncios en este periodo.',
+                ha='center', fontsize=10, color=GRIS, transform=fig.transFigure)
+        pdf.savefig(fig); plt.close(fig)
+        return
     top = camp_list[:8]
     cero = dict(ag=0, as_=0, co=0, mon=0.0)
 
@@ -872,7 +1003,7 @@ def pagina_metricas(pdf, analitica):
 
     trat = analitica['trat'].most_common(8)
     if trat:
-        ax1 = fig.add_axes([0.30, 0.48, 0.62, 0.42])
+        ax1 = fig.add_axes([0.30, 0.52, 0.62, 0.30])
         names = [str(t[0])[:20] for t in trat]
         vals = [t[1] for t in trat]
         ypos = np.arange(len(names))[::-1]
@@ -1423,8 +1554,9 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
                                   no_fueron=sum(v['no_fueron'] for v in sel.values()),
                                   fueron_sin_compra=sum(v['fueron_sin_compra'] for v in sel.values()))
     tot_ag, tot_as, tot_co, tot_mon = tot['ag'], tot['as_'], tot['co'], tot['mon']
+    agg_campanas, agg_otros = separar_campanas_otros(agg)
     analitica = datos_analiticos()
-    filas_meta = build_campana_meta(agg)
+    filas_meta = build_campana_meta(agg_campanas)
     ejecutivas = datos_ejecutivas()
     motivos = datos_motivos()
     gasto_ads = _gasto_ads_total()
@@ -1454,10 +1586,11 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
         pagina_comparativo_historico(pdf, comp, historico)
         pagina_flujo(pdf, tot)
         pagina_evolucion_diaria(pdf, serie)
-        pagina_campanas(pdf, agg)
+        pagina_campanas(pdf, agg_campanas)
         if filas_meta:
             pagina_campanas_meta(pdf, filas_meta)
-        pagina_campana_canal(pdf, agg)
+        pagina_campana_canal(pdf, agg_campanas)
+        pagina_otros(pdf, agg_otros)
         if ejecutivas:
             pagina_ejecutivas(pdf, ejecutivas)
         pagina_metricas(pdf, analitica)
