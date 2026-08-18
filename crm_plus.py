@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -522,6 +523,27 @@ def leer_pacientes():
 # ============================================================
 # DASHBOARD
 # ============================================================
+def _status_normalizado(v):
+    s = unicodedata.normalize('NFD', str(v or ''))
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return s.strip().upper()
+
+
+def _es_no_realizado(v):
+    s = _status_normalizado(v)
+    return 'NO SE REALIZO' in s or 'NO ASISTIO' in s
+
+
+def _es_venta_registrada(v):
+    """Replica esVentaRegistrada() del frontend: cuenta como venta un status
+    REALIZO/COMPRO/COMPLETA/SESION/DEJO PAGADO, salvo que sea NO SE REALIZO
+    o NO ASISTIO."""
+    s = _status_normalizado(v)
+    if _es_no_realizado(v):
+        return False
+    return any(x in s for x in ('REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO'))
+
+
 def leer_dashboard():
     tar = leer_tarjetas()
     ag = cd.leer_agendados()['filas']
@@ -537,6 +559,8 @@ def leer_dashboard():
     ventas_registradas = 0
     for v in ve.values():
         for f in v['filas']:
+            if not _es_venta_registrada(f.get('N')):
+                continue
             monto = am.num(f.get('O')) or 0
             ventas_registradas += 1
             if monto:
