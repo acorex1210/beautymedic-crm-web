@@ -35,17 +35,20 @@ import analitica as ana                 # noqa: E402
 import crm_drive as crm                 # noqa: E402
 import crm_plus as cp                   # noqa: E402
 import meta_ads as mads                 # noqa: E402
+import recibo_pdf as rp                 # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
 import whatsapp_leads as wa             # noqa: E402
 
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
 REPORTES_DIR = os.environ.get('REPORTES_DIR', os.path.join(DATA_DIR, 'reportes'))
 BACKUP_DIR = os.environ.get('BACKUP_DIR', os.path.join(DATA_DIR, 'backups'))
+RECIBOS_DIR = os.environ.get('RECIBOS_DIR', os.path.join(DATA_DIR, 'recibos'))
 META_DIR = os.path.join(DATA_DIR, 'meta_ads')
 os.makedirs(META_DIR, exist_ok=True)
 MAX_BACKUPS = int(os.environ.get('MAX_BACKUPS', '12'))
 os.makedirs(REPORTES_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
+os.makedirs(RECIBOS_DIR, exist_ok=True)
 
 
 def _crear_backup():
@@ -1074,6 +1077,41 @@ async def crm_venta_borrar(fila: int, hoja: str):
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo borrar la venta en Drive: {e}')
+
+
+@app.get('/api/crm/venta/recibo')
+async def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
+    """Recibo interno en PDF de una venta (una o varias líneas consecutivas
+    de VENTA DIARIA que comparten la misma compra). No es una boleta o
+    factura electrónica válida ante SUNAT."""
+    try:
+        data = crm.leer_venta()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer VENTA DIARIA de Drive: {e}')
+    v = data['hojas'].get(hoja)
+    if not v:
+        raise HTTPException(404, f'Hoja "{hoja}" no encontrada')
+    objetivo = set(range(fila, fila + max(1, n)))
+    seleccionadas = sorted((f for f in v['filas'] if f.get('_fila') in objetivo),
+                           key=lambda f: f['_fila'])
+    if not seleccionadas:
+        raise HTTPException(404, 'No se encontraron filas de venta para ese recibo')
+    base = seleccionadas[0]
+    datos = {
+        'hoja': hoja, 'fila': fila,
+        'fecha': f"{base.get('B', '')}/{base.get('C', '')}/{base.get('D', '')}",
+        'paciente': base.get('G', ''), 'telefono': base.get('F', ''),
+        'doctor': base.get('M', ''), 'pago': base.get('P', ''),
+        'lineas': [{'tratamiento': f.get('L', ''), 'venta': am.num(f.get('O'))}
+                  for f in seleccionadas],
+    }
+    nombre_archivo = f"recibo_{hoja.replace(' ', '_')}_{fila}.pdf"
+    ruta = os.path.join(RECIBOS_DIR, nombre_archivo)
+    try:
+        rp.generar_recibo(datos, ruta, brand_nombre=BRAND['BRAND_NOMBRE'])
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f'No se pudo generar el recibo: {e}')
+    return FileResponse(ruta, media_type='application/pdf', filename=nombre_archivo)
 
 
 # ============================================================
