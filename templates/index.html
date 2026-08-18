@@ -1069,7 +1069,7 @@
 <!-- ============ MODAL NUEVA VENTA ============ -->
 <div class="modal-fondo" id="modalVenta">
   <div class="modal">
-    <div class="cab"><h3>Nueva venta diaria</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="veTitulo">Nueva venta diaria</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
     <form id="formVenta">
       <div class="form-grid">
         <div class="campo"><label>Día</label><input type="number" id="veDia" min="1" max="31" required></div>
@@ -1088,8 +1088,8 @@
         <div class="campo"><label>Venta (S/)</label><input type="number" id="veVenta" step="0.01" min="0"></div>
         <div class="campo"><label>Pago</label><select id="vePago"></select></div>
         <div class="campo"><label>Comisiona (S/)</label><input type="number" id="veComisiona" step="0.01" min="0"></div>
-        <div class="campo"><label>Producto (inventario)</label><select id="veProducto"><option value="">Sin producto (no descuenta stock)</option></select></div>
-        <div class="campo"><label>Cantidad</label><input type="number" id="veCantidad" step="1" min="1" value="1"></div>
+        <div class="campo" id="veProductoCampo"><label>Producto (inventario)</label><select id="veProducto"><option value="">Sin producto (no descuenta stock)</option></select></div>
+        <div class="campo" id="veCantidadCampo"><label>Cantidad</label><input type="number" id="veCantidad" step="1" min="1" value="1"></div>
         <div class="campo ancho"><label>Observación</label><input type="text" id="veObservacion"></div>
       </div>
       <div class="mensaje err oculto" id="msgVeForm"></div>
@@ -1353,6 +1353,7 @@ let AG = null, VE = null;
 let agLimite = 400, veLimite = 400;
 let agEditando = null;
 let veAnioActivo = `VENTA ${HOY_A}`;
+let veEditando = null;
 
 const ETAPAS = ['NUEVO', 'AGENDADO', 'CONFIRMADO', 'ATENDIDO', 'GANADO', 'PERDIDO'];
 const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
@@ -1961,7 +1962,7 @@ function pintarVenta() {
       if (c === 'J') return `<td class="num">${esc(v)}</td>`;
       return `<td>${esc(v)}</td>`;
     }).join('') + (Number.isInteger(f._fila)
-      ? `<td>${esRealizado(f.N) ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> ` : ''}<button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
+      ? `<td>${esRealizado(f.N) ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> ` : ''}<button class="btn borde pequeno" onclick="editarVenta(${f._fila}, '${veAnioActivo}')">Editar</button> <button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
       : '<td></td>') + '</tr>').join('') + '</tbody>';
   $('veMas').innerHTML = filt.length > veLimite
     ? `<button onclick="veLimite+=400;pintarVenta()">Mostrar más (${filt.length - veLimite} restantes)</button>`
@@ -1985,6 +1986,10 @@ async function borrarVenta(fila, hoja) {
 }
 
 async function abrirModalVenta() {
+  veEditando = null;
+  $('veTitulo').textContent = 'Nueva venta diaria';
+  $('btnVeGuardar').textContent = 'Guardar venta';
+  $('veProductoCampo').style.display = ''; $('veCantidadCampo').style.display = '';
   $('veDia').value = HOY_D; $('veMes').value = HOY_M; $('veAnio').value = HOY_A;
   $('veDni').value = ''; $('veCel').value = ''; $('veNombre').value = '';
   $('veEdad').value = ''; $('veVenta').value = ''; $('veComisiona').value = '';
@@ -1994,6 +1999,30 @@ async function abrirModalVenta() {
   $('veCantidad').value = 1;
   await asegurarInventario();
   $('veProducto').innerHTML = coOpcionesProducto();
+  $('msgVeForm').classList.add('oculto');
+  $('modalVenta').classList.add('abierto');
+  $('veNombre').focus();
+}
+
+function editarVenta(fila, hoja) {
+  const f = (VE.hojas[hoja] && VE.hojas[hoja].filas.find(x => x._fila === fila));
+  if (!f) { toast('No se encontró la venta.', 'err'); return; }
+  const tr = v => String(v ?? '').trim();
+  veEditando = { fila, hoja };
+  $('veTitulo').textContent = `Editar venta (fila ${fila})`;
+  $('btnVeGuardar').textContent = 'Guardar cambios';
+  $('veProductoCampo').style.display = 'none'; $('veCantidadCampo').style.display = 'none';
+  asegurarOpcion('veNuevo', tr(f.H)); asegurarOpcion('veDistrito', tr(f.I)); asegurarOpcion('veSexo', tr(f.K));
+  asegurarOpcion('veTratamiento', tr(f.L)); asegurarOpcion('veDoctor', tr(f.M)); asegurarOpcion('veStatus', tr(f.N));
+  asegurarOpcion('vePago', tr(f.P));
+  $('veDia').value = f.B ?? HOY_D; $('veMes').value = tr(f.C) || HOY_M; $('veAnio').value = f.D ?? HOY_A;
+  $('veDni').value = f.E ?? ''; $('veCel').value = f.F ?? ''; $('veNombre').value = tr(f.G);
+  $('veNuevo').value = tr(f.H); $('veDistrito').value = tr(f.I);
+  $('veEdad').value = f.J ?? ''; $('veSexo').value = tr(f.K);
+  $('veTratamiento').value = tr(f.L); $('veDoctor').value = tr(f.M);
+  $('veStatus').value = tr(f.N); $('veVenta').value = f.O ?? '';
+  $('vePago').value = tr(f.P); $('veComisiona').value = f.Q ?? '';
+  $('veObservacion').value = tr(f.R);
   $('msgVeForm').classList.add('oculto');
   $('modalVenta').classList.add('abierto');
   $('veNombre').focus();
@@ -2012,18 +2041,27 @@ $('formVenta').addEventListener('submit', async (e) => {
     status: $('veStatus').value, venta: $('veVenta').value ? +$('veVenta').value : null,
     pago: $('vePago').value, comisiona: $('veComisiona').value ? +$('veComisiona').value : null,
     observacion: $('veObservacion').value.trim(),
-    producto_codigo: $('veProducto').value,
+    producto_codigo: veEditando ? '' : $('veProducto').value,
     cantidad: $('veCantidad').value ? +$('veCantidad').value : 1,
   };
   try {
-    const res = await api('/api/crm/venta', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    });
-    cerrarModales();
-    toast(`Venta guardada en ${res.hoja} (fila ${res.fila})`, 'okm');
-    if (res.aviso_inventario) toast('Aviso de inventario: ' + res.aviso_inventario, 'err');
-    if (payload.producto_codigo) INVENTARIO_PRODUCTOS = null;
-    veAnioActivo = res.hoja; veLimite = 400; cargarVenta();
+    if (veEditando) {
+      const res = await api(`/api/crm/venta/${veEditando.fila}?hoja=${encodeURIComponent(veEditando.hoja)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      cerrarModales();
+      toast(`Venta actualizada (fila ${res.fila})`, 'okm');
+      veAnioActivo = res.hoja; veLimite = 400; cargarVenta();
+    } else {
+      const res = await api('/api/crm/venta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      cerrarModales();
+      toast(`Venta guardada en ${res.hoja} (fila ${res.fila})`, 'okm');
+      if (res.aviso_inventario) toast('Aviso de inventario: ' + res.aviso_inventario, 'err');
+      if (payload.producto_codigo) INVENTARIO_PRODUCTOS = null;
+      veAnioActivo = res.hoja; veLimite = 400; cargarVenta();
+    }
   } catch (err) {
     $('msgVeForm').textContent = err.message; $('msgVeForm').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = 'Guardar venta'; }
@@ -2693,7 +2731,6 @@ function chipHoyCita(c) {
 function accionesHoyCita(c) {
   if (estadoCita(c.estado) === 'CONFIRMADO') {
     return `
-          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">✓ COMPRÓ</button>
           <button class="btn gris mini" onclick="noComproCita(${c.fila})">◐ ASISTIÓ Y NO COMPRÓ</button>
           <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>`;
   }

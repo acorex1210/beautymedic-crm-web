@@ -1103,6 +1103,21 @@ async def crm_venta_borrar(fila: int, hoja: str):
             raise HTTPException(502, f'No se pudo borrar la venta en Drive: {e}')
 
 
+@app.put('/api/crm/venta/{fila}')
+async def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
+    d = data.model_dump()
+    _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
+    if not d.get('nombre'):
+        raise HTTPException(400, 'Indica el nombre del paciente')
+    with _bloqueo:
+        try:
+            return crm.editar_venta(hoja, fila, d)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo editar la venta en Drive: {e}')
+
+
 @app.get('/api/crm/venta/recibo')
 async def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
     """Recibo interno en PDF de una venta (una o varias líneas consecutivas

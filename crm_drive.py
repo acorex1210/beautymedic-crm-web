@@ -667,6 +667,23 @@ def normalizar_venta(d, hoja='VENTA 2026'):
     return out
 
 
+def normalizar_venta_edicion(d, hoja='VENTA 2026'):
+    """Todos los campos editables (letras canónicas) con valor o None para limpiar."""
+    out = {
+        'B': _int(d.get('dia')), 'C': _mes(d.get('mes')), 'D': _int(d.get('anio')),
+        'E': _int(d.get('dni')), 'F': _tel(d.get('cel')), 'G': _txt(d.get('nombre')),
+        'H': _txt(d.get('nuevo')), 'I': _txt(d.get('distrito')), 'J': _int(d.get('edad')),
+        'K': _txt(d.get('sexo')), 'L': _txt(d.get('tratamiento')), 'M': _txt(d.get('doctor')),
+        'N': _txt(d.get('status')), 'O': am.num(d.get('venta')), 'P': _txt(d.get('pago')),
+    }
+    if hoja == 'VENTA 2025':
+        out['Q'] = _txt(d.get('observacion'))
+    else:
+        out['Q'] = _int(d.get('comisiona'))
+        out['R'] = _txt(d.get('observacion'))
+    return out
+
+
 # ============================================================
 # AGREGAR FILAS (Google Sheet nativa: append atómico | xlsx: cirugía XML)
 # ============================================================
@@ -850,6 +867,61 @@ def _adaptador_edicion_agendados(ruta, fila_num, valores):
         if real:
             actual[real] = v
     return actual
+
+
+def _adaptador_edicion_venta(ruta, hoja, fila_num, valores):
+    """Construye {letra_real: valor} para reescribir una fila editada de VENTA
+    DIARIA. Parte de los valores actuales de la fila (así se conservan
+    columnas que el formulario no edita) y sobreescribe con los campos
+    editados; los campos editados a None quedan en blanco."""
+    _, campos, _ = _detectar_columnas(ruta, hoja, _HEADERS_VENTA)
+    inverso = _mapa_inverso(campos, VENTA_CANON)
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    ws = wb[hoja]
+    actual = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=fila_num, column=c).value
+        if v is not None and v != '':
+            actual[openpyxl.utils.get_column_letter(c)] = v
+    wb.close()
+    for cl, v in valores.items():
+        real = inverso.get(cl)
+        if real:
+            actual[real] = v
+    return actual
+
+
+def editar_venta(hoja, fila_num, datos):
+    if hoja not in ('VENTA 2026', 'VENTA 2025'):
+        raise ValueError('Hoja de venta no válida')
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    valores = normalizar_venta_edicion(datos, hoja)
+    if not valores.get('G'):
+        raise ValueError('Indica el nombre del paciente')
+    with _lock:
+        fid = am.VENTA_FID
+        if _es_sheets(fid):
+            ruta = descargar('VENTA_DIARIA', fid, forzar=True)
+            valores_hoja = _adaptador_edicion_venta(ruta, hoja, fila_num, valores)
+            letras = sorted(valores_hoja,
+                            key=openpyxl.utils.column_index_from_string)
+            ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
+            fila_row = [valores_hoja.get(openpyxl.utils.get_column_letter(c))
+                        for c in range(1, ncols + 1)]
+            fila_row = ['' if v is None else v for v in fila_row]
+            _sheets().spreadsheets().values().update(
+                spreadsheetId=fid,
+                range=f"'{hoja}'!A{fila_num}",
+                valueInputOption='RAW',
+                body={'values': [fila_row]}).execute()
+            invalidar('VENTA_DIARIA')
+            return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'valores': valores}
+        conflicto = _editar_xlsx_seguro('VENTA_DIARIA', fid, hoja, fila_num, valores,
+                                        adaptador=lambda ruta, v:
+                                        _adaptador_edicion_venta(ruta, hoja, fila_num, v))
+    return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'valores': valores,
+            'conflicto': conflicto}
 
 
 def _editar_xlsx_seguro(nombre, fid, hoja, fila_num, valores, adaptador=None):
