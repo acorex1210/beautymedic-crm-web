@@ -67,6 +67,14 @@
 
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
   .kpi { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(20,37,74,.05); }
+  .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .resumen-card { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: box-shadow .15s ease, transform .15s ease; }
+  .resumen-card:hover { box-shadow: 0 4px 14px rgba(20,37,74,.10); transform: translateY(-1px); }
+  .resumen-card h4 { margin: 0 0 10px; font-size: 12px; color: var(--gris); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
+  .resumen-card .fila { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
+  .resumen-card .fila:first-of-type { margin-top: 0; }
+  .resumen-card .fila .num { font-size: 20px; font-weight: 700; }
+  .resumen-card .fila .lab { font-size: 12px; color: var(--gris); }
   .kpi .eti { font-size: 11px; color: var(--gris); text-transform: uppercase; letter-spacing: .5px; font-weight: 700; }
   .kpi .num { font-size: 24px; font-weight: 800; color: var(--azul); margin-top: 4px; }
   .kpi .num small { font-size: 13px; color: var(--gris); font-weight: 600; }
@@ -483,6 +491,10 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
         <span class="lab">Panel</span>
       </a>
+      <a data-pagina="reportes">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h3"/></svg>
+        <span class="lab">Reportes</span>
+      </a>
       <a data-pagina="agendados">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
         <span class="lab">Agendados</span>
@@ -545,8 +557,39 @@
 
     <div class="contenido">
 
-      <!-- ============ PANEL ============ -->
+      <!-- ============ PANEL (resumen general) ============ -->
       <section id="pag-panel">
+        <div class="tarjeta">
+          <h3>Meta de ventas del mes</h3>
+          <div class="toolbar">
+            <span style="color:var(--gris);font-size:13px;" id="metaEtiquetaMes">Mes actual</span>
+            <input type="number" id="metaInput" placeholder="Meta en S/" min="0" step="100" style="width:140px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;">
+            <button class="btn borde pequeno" id="btnMetaGuardar">Guardar meta</button>
+          </div>
+          <div id="metaProgreso" class="oculto" style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--gris);margin-bottom:6px;">
+              <span id="metaMontoActual"></span><span id="metaMontoObjetivo"></span>
+            </div>
+            <div style="background:#eef1f6;border-radius:99px;height:14px;overflow:hidden;">
+              <div id="metaBarra" style="height:100%;border-radius:99px;background:linear-gradient(90deg,#2e9e5b,#57c785);width:0%;transition:width .4s;"></div>
+            </div>
+            <div style="margin-top:6px;font-size:13px;color:var(--gris);" id="metaPct"></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--borde);font-size:13px;" id="metaProyeccion"></div>
+          </div>
+          <div class="nota" id="metaNota" style="margin-top:10px;">Define una meta para ver el avance del mes contra las ventas registradas.</div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Resumen general</h3>
+          <p class="nota" style="margin:0 0 14px;">Un vistazo rápido a cada sección. Haz clic en una tarjeta para entrar.</p>
+          <div class="resumen-grid" id="panelResumen">
+            <div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ REPORTES ============ -->
+      <section id="pag-reportes" class="oculto">
         <div class="estado-line" id="estadoPanel"></div>
 
         <div class="tarjeta" style="margin-top:18px;">
@@ -588,27 +631,6 @@
           <div class="mensaje okm oculto" id="msgSyncOk">DATOS ACTUALIZADOS</div>
           <div class="mensaje err oculto" id="msgSync"></div>
         </div>
-
-        <div class="tarjeta">
-          <h3>Meta de ventas del mes</h3>
-          <div class="toolbar">
-            <span style="color:var(--gris);font-size:13px;" id="metaEtiquetaMes">Mes actual</span>
-            <input type="number" id="metaInput" placeholder="Meta en S/" min="0" step="100" style="width:140px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;">
-            <button class="btn borde pequeno" id="btnMetaGuardar">Guardar meta</button>
-          </div>
-          <div id="metaProgreso" class="oculto" style="margin-top:12px;">
-            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--gris);margin-bottom:6px;">
-              <span id="metaMontoActual"></span><span id="metaMontoObjetivo"></span>
-            </div>
-            <div style="background:#eef1f6;border-radius:99px;height:14px;overflow:hidden;">
-              <div id="metaBarra" style="height:100%;border-radius:99px;background:linear-gradient(90deg,#2e9e5b,#57c785);width:0%;transition:width .4s;"></div>
-            </div>
-            <div style="margin-top:6px;font-size:13px;color:var(--gris);" id="metaPct"></div>
-            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--borde);font-size:13px;" id="metaProyeccion"></div>
-          </div>
-          <div class="nota" id="metaNota" style="margin-top:10px;">Define una meta para ver el avance del mes contra las ventas registradas.</div>
-        </div>
-
       </section>
 
       <!-- ============ AGENDADOS ============ -->
@@ -1282,7 +1304,8 @@ async function api(url, opts = {}) {
 
 /* ---------------- Navegación ---------------- */
 const TITULOS = {
-  panel: ['Panel', 'Reportes de ventas'],
+  panel: ['Panel', 'Resumen general del negocio'],
+  reportes: ['Reportes', 'Genera reportes PDF y sincroniza los datos del maestro'],
   agendados: ['Agendados', 'Citas y pacientes agendados desde el CRM'],
   venta: ['Venta diaria', 'Registro diario de ventas desde el CRM'],
   caja: ['Caja', 'Apertura y cierre de caja del día'],
@@ -1305,7 +1328,8 @@ function pagina(nombre) {
   if (nombre === 'venta') cargarVenta();
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
-  if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); }
+  if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); cargarResumenPanel(); }
+  if (nombre === 'reportes') cargarEstado();
   if (nombre === 'hoy') cargarHoy();
   if (nombre === 'calendario') cargarCalendario();
   if (nombre === 'pipeline') cargarPipeline();
@@ -1401,6 +1425,73 @@ $('btnMetaGuardar').addEventListener('click', async () => {
     cargarMetaMensual();
   } catch (e) { toast(e.message, 'err'); }
 });
+
+/* ---------------- Panel: resumen general ---------------- */
+async function cargarResumenPanel() {
+  const cont = $('panelResumen');
+  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
+  const [hoyR, cajaR, invR, dashR] = await Promise.allSettled([
+    api('/api/crm/hoy'),
+    api('/api/crm/caja'),
+    api('/api/crm/inventario/productos'),
+    api('/api/crm/dashboard'),
+  ]);
+  const tarjetas = [];
+
+  if (hoyR.status === 'fulfilled') {
+    const h = hoyR.value;
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('hoy')">
+      <h4>Hoy</h4>
+      <div class="fila"><span class="lab">Citas de hoy</span><span class="num">${h.citas.length}</span></div>
+      <div class="fila"><span class="lab">Ventas de hoy</span><span class="num">${h.ventas.length}</span></div>
+    </div>`);
+  }
+
+  if (cajaR.status === 'fulfilled') {
+    const c = cajaR.value;
+    const estado = c.cerrada ? 'Cerrada' : c.abierta ? 'Abierta' : 'Sin abrir';
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('caja')">
+      <h4>Caja</h4>
+      <div class="fila"><span class="lab">Estado hoy</span><span class="num" style="font-size:16px;">${estado}</span></div>
+      <div class="fila"><span class="lab">Ventas del día</span><span class="num">${fmtMon(c.ventas.total)}</span></div>
+    </div>`);
+  }
+
+  if (invR.status === 'fulfilled') {
+    const productos = invR.value.productos;
+    const bajo = productos.filter(p => p.stock_bajo).length;
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('inventario')">
+      <h4>Inventario</h4>
+      <div class="fila"><span class="lab">Productos</span><span class="num">${productos.length}</span></div>
+      <div class="fila"><span class="lab">Stock bajo</span><span class="num"${bajo ? ' style="color:var(--rojo);"' : ''}>${bajo}</span></div>
+    </div>`);
+  }
+
+  if (dashR.status === 'fulfilled') {
+    const d = dashR.value;
+    const leads = Object.entries(d.funnel)
+      .filter(([k]) => !['GANADO', 'PERDIDO'].includes(k))
+      .reduce((s, [, v]) => s + v, 0);
+    const totalAg = Object.values(d.ag_por_crm).reduce((s, v) => s + v, 0);
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('dashboard')">
+      <h4>Pipeline CRM</h4>
+      <div class="fila"><span class="lab">Leads en proceso</span><span class="num">${leads}</span></div>
+      <div class="fila"><span class="lab">Conversión</span><span class="num">${d.conversion}%</span></div>
+    </div>`);
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
+      <h4>Agendados</h4>
+      <div class="fila"><span class="lab">Total en el maestro</span><span class="num">${totalAg}</span></div>
+      <div class="fila"><span class="lab">Fuentes CRM</span><span class="num">${Object.keys(d.ag_por_crm).length}</span></div>
+    </div>`);
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('venta')">
+      <h4>Venta diaria</h4>
+      <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${d.ventas_registradas}</span></div>
+      <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(d.total_ventas)}</span></div>
+    </div>`);
+  }
+
+  cont.innerHTML = tarjetas.length ? tarjetas.join('') : '<div class="vacio">No se pudo cargar el resumen.</div>';
+}
 
 /* ---------------- Panel: reporte ---------------- */
 $('btnReporte').addEventListener('click', async () => {
