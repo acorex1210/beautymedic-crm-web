@@ -5,11 +5,13 @@ Funciones estilo CRM (tipo KOMMO) sobre Google Drive: pipeline kanban,
 tareas/recordatorios y notas de seguimiento por paciente.
 
 Guarda todo en un workbook propio ``CRM.xlsx`` (hojas TARJETAS, TAREAS,
-NOTAS, CUOTAS, CAJA, PRODUCTOS y MOVIMIENTOS_STOCK) que se busca por nombre
-en Drive. Además agrega vistas derivadas: directorio de pacientes, dashboard
-de métricas, panel de actividades de hoy (combinando AGENDADOS y VENTA
-DIARIA) y el catálogo/kardex de inventario.
+NOTAS, CUOTAS, CAJA, PRODUCTOS, MOVIMIENTOS_STOCK, TRABAJADORES y PLANILLA)
+que se busca por nombre en Drive. Además agrega vistas derivadas: directorio
+de pacientes, dashboard de métricas, panel de actividades de hoy (combinando
+AGENDADOS y VENTA DIARIA), el catálogo/kardex de inventario y la planilla
+quincenal de sueldos.
 """
+import calendar
 import io
 import json
 import os
@@ -54,6 +56,11 @@ HOJAS = {
                   'STOCK_MINIMO', 'UNIDAD', 'FECHA_ALTA', 'ACTUALIZADO'],
     'MOVIMIENTOS_STOCK': ['ID', 'FECHA', 'CODIGO', 'PRODUCTO', 'TIPO', 'CANTIDAD',
                           'STOCK_RESULTANTE', 'REFERENCIA', 'NOTA'],
+    'TRABAJADORES': ['ID', 'NOMBRE', 'CARGO', 'SUELDO_QUINCENA', 'PORCENTAJE_COMISION',
+                     'METODO_PAGO', 'CUENTA', 'ESTADO', 'FECHA_ALTA'],
+    'PLANILLA': ['ID', 'TRABAJADOR_ID', 'NOMBRE', 'ANIO', 'MES', 'QUINCENA',
+                'SUELDO_BASE', 'COMISION', 'MONTO_TOTAL', 'ESTADO', 'FECHA_PAGO',
+                'METODO_PAGO', 'NOTA'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -78,6 +85,15 @@ MOVIMIENTO_COLS = {'id': 'A', 'fecha': 'B', 'codigo': 'C', 'producto': 'D',
                    'tipo': 'E', 'cantidad': 'F', 'stock_resultante': 'G',
                    'referencia': 'H', 'nota': 'I'}
 TIPO_MOVIMIENTO = ['ENTRADA', 'SALIDA', 'AJUSTE']
+TRABAJADOR_COLS = {'id': 'A', 'nombre': 'B', 'cargo': 'C', 'sueldo_quincena': 'D',
+                   'porcentaje_comision': 'E', 'metodo_pago': 'F', 'cuenta': 'G',
+                   'estado': 'H', 'fecha_alta': 'I'}
+ESTADO_TRABAJADOR = ['ACTIVO', 'INACTIVO']
+PLANILLA_COLS = {'id': 'A', 'trabajador_id': 'B', 'nombre': 'C', 'anio': 'D',
+                 'mes': 'E', 'quincena': 'F', 'sueldo_base': 'G', 'comision': 'H',
+                 'monto_total': 'I', 'estado': 'J', 'fecha_pago': 'K',
+                 'metodo_pago': 'L', 'nota': 'M'}
+ESTADO_PAGO = ['PENDIENTE', 'PAGADO']
 # Denominaciones del arqueo (formato de recepción/caja)
 BILLETES_SOLES = [200, 100, 50, 20, 10]
 MONEDAS_SOLES = [5, 2, 1, 0.5, 0.2, 0.1]
@@ -1153,3 +1169,229 @@ def registrar_salida_stock(codigo, cantidad, referencia='', nota=''):
 
 def ajustar_stock(codigo, stock_nuevo, nota=''):
     return registrar_movimiento_stock(codigo, 'AJUSTE', stock_nuevo, 'Ajuste manual', nota)
+
+
+# ============================================================
+# CRM Plus: Planilla (trabajadores + pagos quincenales)
+# ============================================================
+def _trabajador_named(f):
+    return {
+        'id': am.num(f.get('A')),
+        'nombre': f.get('B'),
+        'cargo': f.get('C'),
+        'sueldo_quincena': am.num(f.get('D')) or 0,
+        'porcentaje_comision': am.num(f.get('E')) or 0,
+        'metodo_pago': f.get('F'),
+        'cuenta': f.get('G'),
+        'estado': f.get('H') or 'ACTIVO',
+        'fecha_alta': f.get('I'),
+    }
+
+
+def leer_trabajadores(solo_activos=False):
+    out = [_trabajador_named(f) for f in _leer_hoja('TRABAJADORES')]
+    if solo_activos:
+        out = [t for t in out if t['estado'] == 'ACTIVO']
+    out.sort(key=lambda t: str(t['nombre'] or '').upper())
+    return out
+
+
+def crear_trabajador(datos):
+    with _lock:
+        filas = _leer_hoja('TRABAJADORES')
+        nombre = str(datos.get('nombre') or '').strip()
+        if not nombre:
+            raise ValueError('Indica el nombre del trabajador')
+        f = {
+            'A': _siguiente_id(filas), 'B': nombre,
+            'C': str(datos.get('cargo') or '').strip(),
+            'D': am.num(datos.get('sueldo_quincena')) or 0,
+            'E': am.num(datos.get('porcentaje_comision')) or 0,
+            'F': str(datos.get('metodo_pago') or '').strip(),
+            'G': str(datos.get('cuenta') or '').strip(),
+            'H': 'ACTIVO', 'I': _ahora(),
+        }
+        filas.append(f)
+        _reescribir('TRABAJADORES', filas)
+        return _trabajador_named(f)
+
+
+def actualizar_trabajador(tid, cambios):
+    with _lock:
+        filas = _leer_hoja('TRABAJADORES')
+        for f in filas:
+            if am.num(f.get('A')) == tid:
+                if cambios.get('nombre'):
+                    f['B'] = str(cambios['nombre']).strip()
+                if 'cargo' in cambios:
+                    f['C'] = str(cambios.get('cargo') or '').strip()
+                if 'sueldo_quincena' in cambios and cambios['sueldo_quincena'] not in (None, ''):
+                    f['D'] = am.num(cambios['sueldo_quincena']) or 0
+                if 'porcentaje_comision' in cambios and cambios['porcentaje_comision'] not in (None, ''):
+                    f['E'] = am.num(cambios['porcentaje_comision']) or 0
+                if 'metodo_pago' in cambios:
+                    f['F'] = str(cambios.get('metodo_pago') or '').strip()
+                if 'cuenta' in cambios:
+                    f['G'] = str(cambios.get('cuenta') or '').strip()
+                if cambios.get('estado') in ESTADO_TRABAJADOR:
+                    f['H'] = cambios['estado']
+                _reescribir('TRABAJADORES', filas)
+                return _trabajador_named(f)
+    return None
+
+
+def borrar_trabajador(tid):
+    with _lock:
+        filas = _leer_hoja('TRABAJADORES')
+        nuevas = [f for f in filas if am.num(f.get('A')) != tid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('TRABAJADORES', nuevas)
+        return True
+
+
+def _rango_quincena(anio, mes_num, quincena):
+    ultimo = calendar.monthrange(anio, mes_num)[1]
+    return (1, 15) if quincena == 1 else (16, ultimo)
+
+
+def calcular_comision(nombre, anio, mes, quincena, porcentaje):
+    """Comisión = % del monto de VENTA DIARIA (columna VENTA) de las ventas
+    realizadas (excluye NO SE REALIZO) atribuidas a ``nombre`` por la columna
+    DOCTOR, dentro de la quincena dada. Requiere que el nombre del trabajador
+    coincida (sin distinguir mayúsculas) con lo escrito en esa columna."""
+    porcentaje = am.num(porcentaje) or 0
+    if not porcentaje:
+        return 0.0
+    mes = str(mes or '').strip().upper()
+    mes_num = _MM_IDX.get(mes)
+    nombre_u = str(nombre or '').strip().upper()
+    if not mes_num or not nombre_u:
+        return 0.0
+    d1, d2 = _rango_quincena(int(anio), mes_num, int(quincena))
+    total = 0.0
+    for v in cd.leer_venta()['hojas'].values():
+        for f in v['filas']:
+            if str(f.get('M') or '').strip().upper() != nombre_u:
+                continue
+            if str(f.get('C') or '').strip().upper() != mes:
+                continue
+            if am.num(f.get('D')) != int(anio):
+                continue
+            dia = am.num(f.get('B'))
+            if dia is None or not (d1 <= dia <= d2):
+                continue
+            if not _es_venta_registrada(f.get('N')):
+                continue
+            total += am.num(f.get('O')) or 0
+    return round(total * porcentaje / 100.0, 2)
+
+
+def _pago_named(f):
+    return {
+        'id': am.num(f.get('A')),
+        'trabajador_id': am.num(f.get('B')),
+        'nombre': f.get('C'),
+        'anio': am.num(f.get('D')),
+        'mes': f.get('E'),
+        'quincena': am.num(f.get('F')),
+        'sueldo_base': am.num(f.get('G')) or 0,
+        'comision': am.num(f.get('H')) or 0,
+        'monto_total': am.num(f.get('I')) or 0,
+        'estado': f.get('J') or 'PENDIENTE',
+        'fecha_pago': f.get('K'),
+        'metodo_pago': f.get('L'),
+        'nota': f.get('M'),
+    }
+
+
+def leer_planilla(anio=None, mes=None, quincena=None):
+    out = [_pago_named(f) for f in _leer_hoja('PLANILLA')]
+    if anio:
+        out = [p for p in out if p['anio'] == int(anio)]
+    if mes:
+        out = [p for p in out if str(p['mes'] or '').strip().upper() == str(mes).strip().upper()]
+    if quincena:
+        out = [p for p in out if p['quincena'] == int(quincena)]
+    out.sort(key=lambda p: str(p['nombre'] or '').upper())
+    return out
+
+
+def generar_planilla_quincena(anio, mes, quincena):
+    """Crea (o refresca) el pago de la quincena para cada trabajador ACTIVO.
+    No toca los pagos que ya están marcados como PAGADO."""
+    anio = int(anio)
+    mes = str(mes).strip().upper()
+    quincena = int(quincena)
+    if quincena not in (1, 2):
+        raise ValueError('La quincena debe ser 1 o 2')
+    if mes not in _MM_IDX:
+        raise ValueError(f'Mes inválido: {mes}')
+    with _lock:
+        todo = {n: _leer_hoja(n) for n in HOJAS}
+        trabajadores = [_trabajador_named(f) for f in todo['TRABAJADORES']
+                        if (f.get('H') or 'ACTIVO') == 'ACTIVO']
+        if not trabajadores:
+            raise ValueError('No hay trabajadores activos en el catálogo')
+        existentes = {}
+        for f in todo['PLANILLA']:
+            clave = (am.num(f.get('B')), am.num(f.get('D')),
+                     str(f.get('E') or '').strip().upper(), am.num(f.get('F')))
+            existentes[clave] = f
+        creados = actualizados = sin_tocar = 0
+        for t in trabajadores:
+            comision = calcular_comision(t['nombre'], anio, mes, quincena, t['porcentaje_comision'])
+            sueldo = t['sueldo_quincena']
+            total = round(sueldo + comision, 2)
+            clave = (t['id'], anio, mes, quincena)
+            f = existentes.get(clave)
+            if f is not None:
+                if (f.get('J') or 'PENDIENTE') == 'PAGADO':
+                    sin_tocar += 1
+                    continue
+                f['G'] = sueldo; f['H'] = comision; f['I'] = total
+                actualizados += 1
+            else:
+                f = {'A': _siguiente_id(todo['PLANILLA']), 'B': t['id'], 'C': t['nombre'],
+                     'D': anio, 'E': mes, 'F': quincena, 'G': sueldo, 'H': comision,
+                     'I': total, 'J': 'PENDIENTE'}
+                todo['PLANILLA'].append(f)
+                creados += 1
+        _guardar(todo)
+        return {'creados': creados, 'actualizados': actualizados, 'sin_tocar': sin_tocar}
+
+
+def actualizar_pago_planilla(pid, cambios):
+    with _lock:
+        filas = _leer_hoja('PLANILLA')
+        for f in filas:
+            if am.num(f.get('A')) == pid:
+                if 'sueldo_base' in cambios and cambios['sueldo_base'] not in (None, ''):
+                    f['G'] = am.num(cambios['sueldo_base']) or 0
+                if 'comision' in cambios and cambios['comision'] not in (None, ''):
+                    f['H'] = am.num(cambios['comision']) or 0
+                if 'sueldo_base' in cambios or 'comision' in cambios:
+                    f['I'] = round((am.num(f.get('G')) or 0) + (am.num(f.get('H')) or 0), 2)
+                if cambios.get('estado') in ESTADO_PAGO:
+                    f['J'] = cambios['estado']
+                    if cambios['estado'] == 'PAGADO':
+                        f['K'] = f.get('K') or _fecha_hoy_str()
+                    else:
+                        f['K'] = None
+                if 'metodo_pago' in cambios:
+                    f['L'] = str(cambios.get('metodo_pago') or '').strip()
+                if 'nota' in cambios:
+                    f['M'] = str(cambios.get('nota') or '').strip()
+                _reescribir('PLANILLA', filas)
+                return _pago_named(f)
+    return None
+
+
+def borrar_pago_planilla(pid):
+    with _lock:
+        filas = _leer_hoja('PLANILLA')
+        nuevas = [f for f in filas if am.num(f.get('A')) != pid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('PLANILLA', nuevas)
+        return True

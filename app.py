@@ -316,6 +316,30 @@ class MovimientoStockReq(BaseModel):
     nota: str = ''
 
 
+class TrabajadorReq(BaseModel):
+    nombre: str = ''
+    cargo: str = ''
+    sueldo_quincena: Optional[float] = None
+    porcentaje_comision: Optional[float] = None
+    metodo_pago: str = ''
+    cuenta: str = ''
+    estado: str = ''
+
+
+class GenerarPlanillaReq(BaseModel):
+    anio: int
+    mes: str
+    quincena: int
+
+
+class PagoPlanillaReq(BaseModel):
+    sueldo_base: Optional[float] = None
+    comision: Optional[float] = None
+    estado: str = ''
+    metodo_pago: str = ''
+    nota: str = ''
+
+
 MESES_VALIDOS = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
                  'SET', 'SEP', 'OCT', 'NOV', 'DIC'}
 
@@ -1439,6 +1463,107 @@ async def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo registrar el movimiento (Drive): {e}')
     return {'ok': True, **res}
+
+
+# ============================================================
+# CRM Plus: Planilla (trabajadores + pagos quincenales)
+# ============================================================
+@app.get('/api/crm/planilla/trabajadores')
+async def planilla_trabajadores(solo_activos: bool = False):
+    try:
+        return {'ok': True, 'trabajadores': cp.leer_trabajadores(solo_activos)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer los trabajadores (Drive): {e}')
+
+
+@app.post('/api/crm/planilla/trabajadores')
+async def planilla_trabajador_nuevo(data: TrabajadorReq):
+    try:
+        t = cp.crear_trabajador(data.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo crear el trabajador (Drive): {e}')
+    return {'ok': True, 'trabajador': t}
+
+
+@app.patch('/api/crm/planilla/trabajadores/{tid}')
+async def planilla_trabajador_editar(tid: int, data: TrabajadorReq):
+    try:
+        t = cp.actualizar_trabajador(tid, data.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo editar el trabajador (Drive): {e}')
+    if not t:
+        raise HTTPException(404, 'Trabajador no encontrado')
+    return {'ok': True, 'trabajador': t}
+
+
+@app.delete('/api/crm/planilla/trabajadores/{tid}')
+async def planilla_trabajador_borrar(tid: int):
+    try:
+        ok = cp.borrar_trabajador(tid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el trabajador (Drive): {e}')
+    if not ok:
+        raise HTTPException(404, 'Trabajador no encontrado')
+    return {'ok': True}
+
+
+@app.get('/api/crm/planilla')
+async def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
+    try:
+        pagos = cp.leer_planilla(anio or None, mes or None, quincena or None)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer la planilla (Drive): {e}')
+    tot = {'sueldo_base': 0.0, 'comision': 0.0, 'monto_total': 0.0,
+           'pendiente': 0.0, 'pagado': 0.0}
+    for p in pagos:
+        tot['sueldo_base'] += p['sueldo_base']
+        tot['comision'] += p['comision']
+        tot['monto_total'] += p['monto_total']
+        tot['pagado' if p['estado'] == 'PAGADO' else 'pendiente'] += p['monto_total']
+    return {'ok': True, 'pagos': pagos, 'totales': {k: round(v, 2) for k, v in tot.items()}}
+
+
+@app.post('/api/crm/planilla/generar')
+async def planilla_generar(data: GenerarPlanillaReq):
+    _validar_fecha(None, data.mes, data.anio, requerido_mes=True)
+    if data.quincena not in (1, 2):
+        raise HTTPException(400, 'La quincena debe ser 1 o 2')
+    try:
+        res = cp.generar_planilla_quincena(data.anio, data.mes, data.quincena)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo generar la planilla (Drive): {e}')
+    return {'ok': True, **res}
+
+
+@app.patch('/api/crm/planilla/{pid}')
+async def planilla_pago_editar(pid: int, data: PagoPlanillaReq):
+    cambios = data.model_dump()
+    if cambios.get('estado') and cambios['estado'] not in cp.ESTADO_PAGO:
+        raise HTTPException(400, f"Estado inválido: {cambios['estado']}")
+    try:
+        p = cp.actualizar_pago_planilla(pid, cambios)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo actualizar el pago (Drive): {e}')
+    if not p:
+        raise HTTPException(404, 'Pago de planilla no encontrado')
+    return {'ok': True, 'pago': p}
+
+
+@app.delete('/api/crm/planilla/{pid}')
+async def planilla_pago_borrar(pid: int):
+    try:
+        ok = cp.borrar_pago_planilla(pid)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el pago (Drive): {e}')
+    if not ok:
+        raise HTTPException(404, 'Pago de planilla no encontrado')
+    return {'ok': True}
 
 
 # ============================================================

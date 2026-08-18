@@ -511,6 +511,10 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
         <span class="lab">Inventario</span>
       </a>
+      <a data-pagina="planilla">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 13h6M9 17h4"/></svg>
+        <span class="lab">Planillas</span>
+      </a>
       <div class="sub">CRM</div>
       <a data-pagina="hoy">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
@@ -783,6 +787,38 @@
         <div class="tarjeta" style="margin-top:18px;">
           <h3>Kardex &middot; últimos movimientos</h3>
           <div class="tabla-wrap"><table class="drive" id="tablaInvMovimientos"></table></div>
+        </div>
+      </section>
+
+      <!-- ============ PLANILLA ============ -->
+      <section id="pag-planilla" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Trabajadores</div><div class="num" id="kpiPlTrabajadores">-</div></div>
+          <div class="kpi verde"><div class="eti">Total quincena</div><div class="num" id="kpiPlTotal">-</div></div>
+          <div class="kpi naranja"><div class="eti">Pendiente</div><div class="num" id="kpiPlPendiente">-</div></div>
+          <div class="kpi"><div class="eti">Pagado</div><div class="num" id="kpiPlPagado">-</div></div>
+        </div>
+
+        <div class="tarjeta">
+          <div class="toolbar">
+            <select id="plMes" style="width:auto;"></select>
+            <input type="number" id="plAnio" value="2026" min="2020" max="2100" style="width:90px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;">
+            <select id="plQuincena" style="width:auto;">
+              <option value="1">Quincena 1 (1-15)</option>
+              <option value="2">Quincena 2 (16-fin)</option>
+            </select>
+            <button class="btn gris" id="btnPlRecargar">Actualizar</button>
+            <button class="btn" id="btnPlGenerar">Generar / actualizar planilla</button>
+            <button class="btn verde" id="btnPlTrabNuevo" style="margin-left:auto;">+ Nuevo trabajador</button>
+          </div>
+          <p class="nota" style="margin:0 0 12px;">"Generar / actualizar" crea el pago de la quincena para cada trabajador
+            activo (sueldo + comisión calculada de VENTA DIARIA) sin tocar los que ya están marcados como Pagado.</p>
+          <div class="tabla-wrap"><table class="drive" id="tablaPlanilla"></table></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
+          <h3>Catálogo de trabajadores</h3>
+          <div class="tabla-wrap"><table class="drive" id="tablaTrabajadores"></table></div>
         </div>
       </section>
 
@@ -1211,6 +1247,58 @@
   </div>
 </div>
 
+<!-- ============ MODAL TRABAJADOR (planilla) ============ -->
+<div class="modal-fondo" id="modalTrabajador">
+  <div class="modal">
+    <div class="cab"><h3 id="trabTitulo">Nuevo trabajador</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formTrabajador">
+      <div class="form-grid">
+        <div class="campo ancho"><label>Nombre</label><input type="text" id="trabNombre" placeholder="ej. DR. BORIS" required></div>
+        <div class="campo"><label>Cargo / puesto</label><input type="text" id="trabCargo" placeholder="ej. Médico, Ejecutiva de ventas"></div>
+        <div class="campo"><label>Sueldo por quincena (S/)</label><input type="number" id="trabSueldo" step="0.01" min="0" value="0"></div>
+        <div class="campo"><label>% Comisión sobre ventas</label><input type="number" id="trabComision" step="0.1" min="0" max="100" value="0"></div>
+        <div class="campo"><label>Método de pago</label><input type="text" id="trabMetodoPago" placeholder="ej. Transferencia, Efectivo, Yape"></div>
+        <div class="campo"><label>Cuenta / banco</label><input type="text" id="trabCuenta" placeholder="opcional"></div>
+        <div class="campo" id="trabEstadoCampo"><label>Estado</label>
+          <select id="trabEstado"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select>
+        </div>
+      </div>
+      <p class="nota" style="margin:0 0 12px;">El % de comisión se calcula sobre las ventas de VENTA DIARIA cuya columna
+        Doctor coincida exactamente con este nombre (solo ventas con status realizado). Déjalo en 0 si el trabajador no gana comisión.</p>
+      <div class="mensaje err oculto" id="msgTrabForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnTrabBorrar" style="margin-right:auto;">Borrar</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnTrabGuardar">Guardar trabajador</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL PAGO PLANILLA ============ -->
+<div class="modal-fondo" id="modalPago">
+  <div class="modal">
+    <div class="cab"><h3 id="pagoTitulo">Pago de planilla</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formPago">
+      <div class="form-grid">
+        <div class="campo"><label>Sueldo base (S/)</label><input type="number" id="pagoSueldo" step="0.01" min="0"></div>
+        <div class="campo"><label>Comisión (S/)</label><input type="number" id="pagoComision" step="0.01" min="0"></div>
+        <div class="campo"><label>Estado</label>
+          <select id="pagoEstado"><option value="PENDIENTE">Pendiente</option><option value="PAGADO">Pagado</option></select>
+        </div>
+        <div class="campo"><label>Método de pago</label><input type="text" id="pagoMetodoPago" placeholder="ej. Transferencia BCP"></div>
+        <div class="campo ancho"><label>Nota</label><input type="text" id="pagoNota"></div>
+      </div>
+      <div class="mensaje err oculto" id="msgPagoForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnPagoBorrar" style="margin-right:auto;">Borrar</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnPagoGuardar">Guardar pago</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ============ MODAL REPROGRAMAR CITA ============ -->
@@ -1272,6 +1360,7 @@ const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
 let TARJETAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
 let INVENTARIO_PRODUCTOS = null, INV_MOVIMIENTOS = null, productoEditando = null, movStockCodigo = null;
+let PLANILLA_TRABAJADORES = null, PLANILLA_PAGOS = null, trabajadorEditando = null, pagoEditando = null;
 let hoyFilaActiva = null;
 let HOY_ACCIONES = {};
 let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
@@ -1310,6 +1399,7 @@ const TITULOS = {
   venta: ['Venta diaria', 'Registro diario de ventas desde el CRM'],
   caja: ['Caja', 'Apertura y cierre de caja del día'],
   inventario: ['Inventario', 'Catálogo de productos y kardex de stock'],
+  planilla: ['Planillas', 'Sueldos y pagos quincenales de los trabajadores'],
   hoy: ['Hoy', 'Actividades y citas del día'],
   calendario: ['Calendario', 'Vista general de citas agendadas'],
   pipeline: ['Pipeline', 'Tablero de ventas estilo kanban'],
@@ -1328,6 +1418,7 @@ function pagina(nombre) {
   if (nombre === 'venta') cargarVenta();
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
+  if (nombre === 'planilla') cargarPlanilla();
   if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); cargarResumenPanel(); }
   if (nombre === 'reportes') cargarEstado();
   if (nombre === 'hoy') cargarHoy();
@@ -1430,11 +1521,13 @@ $('btnMetaGuardar').addEventListener('click', async () => {
 async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
-  const [hoyR, cajaR, invR, dashR] = await Promise.allSettled([
+  const qNow = HOY_D <= 15 ? 1 : 2;
+  const [hoyR, cajaR, invR, dashR, plR] = await Promise.allSettled([
     api('/api/crm/hoy'),
     api('/api/crm/caja'),
     api('/api/crm/inventario/productos'),
     api('/api/crm/dashboard'),
+    api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`),
   ]);
   const tarjetas = [];
 
@@ -1487,6 +1580,15 @@ async function cargarResumenPanel() {
       <h4>Venta diaria</h4>
       <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${d.ventas_registradas}</span></div>
       <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(d.total_ventas)}</span></div>
+    </div>`);
+  }
+
+  if (plR.status === 'fulfilled') {
+    const t = plR.value.totales;
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('planilla')">
+      <h4>Planilla · Q${qNow} ${HOY_M}</h4>
+      <div class="fila"><span class="lab">Total quincena</span><span class="num">${fmtMon(t.monto_total)}</span></div>
+      <div class="fila"><span class="lab">Pendiente</span><span class="num"${t.pendiente ? ' style="color:var(--naranja);"' : ''}>${fmtMon(t.pendiente)}</span></div>
     </div>`);
   }
 
@@ -2377,6 +2479,189 @@ $('formMovStock').addEventListener('submit', async (e) => {
   } catch (err) {
     $('msgMovStockForm').textContent = err.message; $('msgMovStockForm').classList.remove('oculto');
   } finally { b.disabled = false; }
+});
+
+/* ---------------- CRM PLUS: PLANILLA ---------------- */
+$('plMes').innerHTML = MESES.map(m => `<option value="${m}">${m}</option>`).join('');
+$('plMes').value = HOY_M;
+$('plAnio').value = HOY_A;
+$('plQuincena').value = HOY_D <= 15 ? '1' : '2';
+
+async function cargarPlanilla() {
+  await cargarTrabajadores();
+  await cargarPagosPlanilla();
+}
+async function cargarTrabajadores() {
+  const tbody = $('tablaTrabajadores');
+  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando trabajadores&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/crm/planilla/trabajadores');
+    PLANILLA_TRABAJADORES = r.trabajadores;
+  } catch (e) {
+    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  $('kpiPlTrabajadores').textContent = PLANILLA_TRABAJADORES.filter(t => t.estado === 'ACTIVO').length;
+  tbody.innerHTML = PLANILLA_TRABAJADORES.length
+    ? '<thead><tr><th>Nombre</th><th>Cargo</th><th class="der">Sueldo/quincena</th><th class="der">% Comisión</th><th>Pago</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' +
+      PLANILLA_TRABAJADORES.map(t => `<tr${t.estado === 'INACTIVO' ? ' style="opacity:.55;"' : ''}>
+        <td>${esc(t.nombre)}</td>
+        <td>${esc(t.cargo || '')}</td>
+        <td class="der">${fmtMon(t.sueldo_quincena)}</td>
+        <td class="der">${t.porcentaje_comision}%</td>
+        <td>${esc(t.metodo_pago || '')}</td>
+        <td><span class="chip ${t.estado === 'ACTIVO' ? 'ok' : 'bad'}">${esc(t.estado)}</span></td>
+        <td><button class="btn borde pequeno" onclick="abrirModalTrabajador(${t.id})">Editar</button></td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td><div class="vacio">Sin trabajadores registrados. Crea el primero con "+ Nuevo trabajador".</div></td></tr>';
+}
+async function cargarPagosPlanilla() {
+  const tbody = $('tablaPlanilla');
+  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando planilla&hellip;</div></td></tr>';
+  const anio = +$('plAnio').value, mes = $('plMes').value, quincena = +$('plQuincena').value;
+  try {
+    const r = await api(`/api/crm/planilla?anio=${anio}&mes=${mes}&quincena=${quincena}`);
+    PLANILLA_PAGOS = r.pagos;
+    $('kpiPlTotal').textContent = fmtMon(r.totales.monto_total);
+    $('kpiPlPendiente').textContent = fmtMon(r.totales.pendiente);
+    $('kpiPlPagado').textContent = fmtMon(r.totales.pagado);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = PLANILLA_PAGOS.length
+    ? '<thead><tr><th>Nombre</th><th class="der">Sueldo base</th><th class="der">Comisión</th><th class="der">Total</th><th>Estado</th><th>Fecha pago</th><th>Acciones</th></tr></thead><tbody>' +
+      PLANILLA_PAGOS.map(p => `<tr>
+        <td>${esc(p.nombre)}</td>
+        <td class="der">${fmtMon(p.sueldo_base)}</td>
+        <td class="der">${fmtMon(p.comision)}</td>
+        <td class="der"><b>${fmtMon(p.monto_total)}</b></td>
+        <td><span class="chip ${p.estado === 'PAGADO' ? 'ok' : 'ambar'}">${esc(p.estado)}</span></td>
+        <td>${esc(p.fecha_pago || '')}</td>
+        <td><button class="btn borde pequeno" onclick="abrirModalPago(${p.id})">${p.estado === 'PAGADO' ? 'Ver' : 'Registrar pago'}</button></td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td><div class="vacio">Sin pagos generados para esta quincena. Usa "Generar / actualizar planilla".</div></td></tr>';
+}
+$('btnPlRecargar').addEventListener('click', cargarPagosPlanilla);
+$('plMes').addEventListener('change', cargarPagosPlanilla);
+$('plAnio').addEventListener('change', cargarPagosPlanilla);
+$('plQuincena').addEventListener('change', cargarPagosPlanilla);
+$('btnPlGenerar').addEventListener('click', async () => {
+  const b = $('btnPlGenerar'); b.disabled = true;
+  try {
+    const r = await api('/api/crm/planilla/generar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ anio: +$('plAnio').value, mes: $('plMes').value, quincena: +$('plQuincena').value }),
+    });
+    toast(`Planilla generada: ${r.creados} nuevo(s), ${r.actualizados} actualizado(s), ${r.sin_tocar} ya pagados sin tocar`, 'okm');
+    cargarPagosPlanilla();
+  } catch (e) { toast(e.message, 'err'); } finally { b.disabled = false; }
+});
+$('btnPlTrabNuevo').addEventListener('click', () => abrirModalTrabajador(null));
+
+function abrirModalTrabajador(tid) {
+  trabajadorEditando = tid;
+  const t = tid ? PLANILLA_TRABAJADORES.find(x => x.id === tid) : null;
+  $('trabTitulo').textContent = t ? 'Editar trabajador' : 'Nuevo trabajador';
+  $('trabNombre').value = t ? t.nombre : '';
+  $('trabCargo').value = t ? (t.cargo || '') : '';
+  $('trabSueldo').value = t ? t.sueldo_quincena : 0;
+  $('trabComision').value = t ? t.porcentaje_comision : 0;
+  $('trabMetodoPago').value = t ? (t.metodo_pago || '') : '';
+  $('trabCuenta').value = t ? (t.cuenta || '') : '';
+  $('trabEstado').value = t ? t.estado : 'ACTIVO';
+  $('trabEstadoCampo').style.display = t ? '' : 'none';
+  $('btnTrabBorrar').classList.toggle('oculto', !t);
+  $('msgTrabForm').classList.add('oculto');
+  $('modalTrabajador').classList.add('abierto');
+  $('trabNombre').focus();
+}
+$('formTrabajador').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnTrabGuardar'); b.disabled = true;
+  $('msgTrabForm').classList.add('oculto');
+  const payload = {
+    nombre: $('trabNombre').value.trim(),
+    cargo: $('trabCargo').value.trim(),
+    sueldo_quincena: $('trabSueldo').value ? +$('trabSueldo').value : 0,
+    porcentaje_comision: $('trabComision').value ? +$('trabComision').value : 0,
+    metodo_pago: $('trabMetodoPago').value.trim(),
+    cuenta: $('trabCuenta').value.trim(),
+  };
+  if (trabajadorEditando) payload.estado = $('trabEstado').value;
+  try {
+    if (trabajadorEditando) {
+      await api(`/api/crm/planilla/trabajadores/${trabajadorEditando}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      toast('Trabajador actualizado', 'okm');
+    } else {
+      await api('/api/crm/planilla/trabajadores', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      toast('Trabajador creado', 'okm');
+    }
+    cerrarModales();
+    cargarTrabajadores();
+  } catch (err) {
+    $('msgTrabForm').textContent = err.message; $('msgTrabForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+$('btnTrabBorrar').addEventListener('click', async () => {
+  if (!trabajadorEditando) return;
+  if (!confirm('¿Borrar este trabajador del catálogo? El historial de pagos ya generados se conserva.')) return;
+  try {
+    await api(`/api/crm/planilla/trabajadores/${trabajadorEditando}`, { method: 'DELETE' });
+    cerrarModales();
+    toast('Trabajador borrado', 'okm');
+    cargarTrabajadores();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+function abrirModalPago(pid) {
+  const p = PLANILLA_PAGOS.find(x => x.id === pid);
+  if (!p) return;
+  pagoEditando = pid;
+  $('pagoTitulo').textContent = `Pago de planilla · ${p.nombre} — ${p.mes} ${p.anio} Q${p.quincena}`;
+  $('pagoSueldo').value = p.sueldo_base;
+  $('pagoComision').value = p.comision;
+  $('pagoEstado').value = p.estado;
+  $('pagoMetodoPago').value = p.metodo_pago || '';
+  $('pagoNota').value = p.nota || '';
+  $('msgPagoForm').classList.add('oculto');
+  $('modalPago').classList.add('abierto');
+}
+$('formPago').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnPagoGuardar'); b.disabled = true;
+  $('msgPagoForm').classList.add('oculto');
+  try {
+    await api(`/api/crm/planilla/${pagoEditando}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sueldo_base: $('pagoSueldo').value ? +$('pagoSueldo').value : 0,
+        comision: $('pagoComision').value ? +$('pagoComision').value : 0,
+        estado: $('pagoEstado').value,
+        metodo_pago: $('pagoMetodoPago').value.trim(),
+        nota: $('pagoNota').value.trim(),
+      }),
+    });
+    cerrarModales();
+    toast('Pago actualizado', 'okm');
+    cargarPagosPlanilla();
+  } catch (err) {
+    $('msgPagoForm').textContent = err.message; $('msgPagoForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+$('btnPagoBorrar').addEventListener('click', async () => {
+  if (!pagoEditando) return;
+  if (!confirm('¿Borrar este pago de la planilla?')) return;
+  try {
+    await api(`/api/crm/planilla/${pagoEditando}`, { method: 'DELETE' });
+    cerrarModales();
+    toast('Pago borrado', 'okm');
+    cargarPagosPlanilla();
+  } catch (e) { toast(e.message, 'err'); }
 });
 
 /* ---------------- CRM PLUS: HOY ---------------- */
