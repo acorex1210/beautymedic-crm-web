@@ -826,9 +826,9 @@
       <section id="pag-hoy" class="oculto">
         <div class="kpis">
           <div class="kpi"><div class="eti">Citas de hoy</div><div class="num" id="hoyCitas">-</div></div>
-          <div class="kpi verde"><div class="eti">Ventas de hoy</div><div class="num" id="hoyVentas">-</div></div>
-          <div class="kpi naranja"><div class="eti">Tareas de hoy</div><div class="num" id="hoyTareas">-</div></div>
-          <div class="kpi rojo"><div class="eti">Tareas vencidas</div><div class="num" id="hoyVencidas">-</div></div>
+          <div class="kpi azul"><div class="eti">Confirmadas</div><div class="num" id="hoyConfirmadas">-</div></div>
+          <div class="kpi verde"><div class="eti">Asistieron</div><div class="num" id="hoyAsistieron">-</div></div>
+          <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="hoyVentas">-</div></div>
         </div>
         <div class="dos">
           <div class="tarjeta caja-hoy">
@@ -836,16 +836,13 @@
             <div id="hoyListaCitas"></div>
           </div>
           <div class="tarjeta caja-hoy">
-            <h3>Tareas de hoy <button class="btn borde pequeno" style="float:right;" id="btnHoyTareaNueva">+ Tarea</button></h3>
-            <div id="hoyListaTareas"></div>
+            <h3>Confirmados · ¿asistió?</h3>
+            <div class="nota" style="margin:0 0 8px;">Pacientes que confirmaron su cita. Al marcar <b>Asistió</b> se abre su historia clínica.</div>
+            <div id="hoyListaConfirmados"></div>
           </div>
           <div class="tarjeta caja-hoy">
             <h3>Ventas de hoy</h3>
             <div id="hoyListaVentas"></div>
-          </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Tareas vencidas</h3>
-            <div id="hoyListaVencidas"></div>
           </div>
         </div>
       </section>
@@ -1131,6 +1128,38 @@
         <button type="button" class="btn rojo" id="btnTarBorrar" style="margin-right:auto;">Borrar</button>
         <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
         <button type="submit" class="btn verde" id="btnTarGuardar">Guardar tarjeta</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL HISTORIA CLINICA ============ -->
+<div class="modal-fondo" id="modalHistoria">
+  <div class="modal" style="max-width: 780px;">
+    <div class="cab"><h3 id="hisTitulo">Historia clínica</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formHistoriaClinica">
+      <div class="form-grid">
+        <div class="campo"><label>Paciente</label><input type="text" id="hisPaciente" required></div>
+        <div class="campo"><label>Teléfono</label><input type="text" id="hisTelefono"></div>
+        <div class="campo"><label>DNI</label><input type="text" id="hisDni"></div>
+        <div class="campo"><label>Edad</label><input type="number" id="hisEdad" min="0" max="120"></div>
+        <div class="campo"><label>Fecha</label><input type="date" id="hisFecha" required></div>
+        <div class="campo"><label>Hora</label><input type="text" id="hisHora" placeholder="Ej. 4:00 PM"></div>
+        <div class="campo"><label>Doctor</label><input type="text" id="hisDoctor"></div>
+        <div class="campo"><label>Próximo control</label><input type="date" id="hisProximoControl"></div>
+        <div class="campo ancho"><label>Motivo de consulta</label><input type="text" id="hisMotivo" placeholder="Por qué vino el paciente&hellip;"></div>
+        <div class="campo ancho"><label>Antecedentes</label><input type="text" id="hisAntecedentes" placeholder="Enfermedades, cirugías, tratamientos previos&hellip;"></div>
+        <div class="campo ancho"><label>Alergias</label><input type="text" id="hisAlergias" placeholder="Medicamentos, anestésicos, látex&hellip;"></div>
+        <div class="campo ancho"><label>Diagnóstico</label><input type="text" id="hisDiagnostico"></div>
+        <div class="campo ancho"><label>Tratamiento realizado</label><input type="text" id="hisTratamiento" placeholder="Producto, zona, dosis / unidades&hellip;"></div>
+        <div class="campo ancho"><label>Indicaciones</label><input type="text" id="hisIndicaciones" placeholder="Cuidados posteriores, receta&hellip;"></div>
+        <div class="campo ancho"><label>Observaciones</label><input type="text" id="hisObservacion"></div>
+      </div>
+      <div class="msg err oculto" id="msgHisForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo oculto" id="btnHisBorrar">Borrar</button>
+        <button type="button" class="btn borde" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnHisGuardar">Guardar historia</button>
       </div>
     </form>
   </div>
@@ -2753,28 +2782,45 @@ async function cargarHoy() {
   $('hoyFecha').textContent = '· ' + h.fecha;
   $('hoyCitas').textContent = h.citas.length;
   $('hoyVentas').textContent = h.ventas.length;
-  $('hoyTareas').textContent = h.tareas_hoy.length;
-  $('hoyVencidas').textContent = h.tareas_vencidas.length;
+  $('hoyConfirmadas').textContent = h.citas.filter(c => estadoHoy(c) === 'CONFIRMADO').length;
+  $('hoyAsistieron').textContent = h.citas.filter(c => estadoHoy(c) === 'ASISTIO').length;
   renderCitasHoy();
+  renderConfirmadosHoy();
   renderVentasHoy();
-  $('hoyListaTareas').innerHTML = h.tareas_hoy.length
-    ? h.tareas_hoy.map(t => tareaItemHoy(t)).join('') : '<div class="vacio">Sin tareas para hoy.</div>';
-  $('hoyListaVencidas').innerHTML = h.tareas_vencidas.length
-    ? h.tareas_vencidas.map(tareaItemHoy).join('') : '<div class="vacio">Sin tareas vencidas.</div>';
 }
 
+/* Estado del flujo del día. Se apoya en lo guardado en AGENDADOS, así el
+   bloqueo sobrevive a recargar la página, y en HOY_ACCIONES para reflejar
+   al instante lo que se acaba de marcar. */
+function estadoHoy(c) {
+  const acc = HOY_ACCIONES[c.fila];
+  if (acc && acc.estado) return acc.estado;
+  const s = String(c.estado || '').trim().toUpperCase();
+  if (!s) return 'PENDIENTE';
+  if (s.includes('NO ASISTIO')) return 'NO_ASISTIO';
+  if (s.includes('ASISTIO')) return 'ASISTIO';
+  if (s.includes('CANCEL')) return 'CANCELADA';
+  if (s.includes('NO CONTEST')) return 'NO_CONTESTO';
+  if (s.includes('NO CONFIRM')) return 'PENDIENTE';
+  if (s.includes('CONFIRM')) return 'CONFIRMADO';
+  return 'PENDIENTE';
+}
+const CHIP_HOY = {
+  CONFIRMADO: ['ok', '✓ Cita confirmada'],
+  ASISTIO: ['ok', '✓ Asistió'],
+  NO_ASISTIO: ['bad', '✕ No asistió'],
+  CANCELADA: ['bad', '✕ Cita cancelada'],
+  NO_CONTESTO: ['warn', '☎ No contestó'],
+};
 function chipHoyCita(c) {
   const acc = HOY_ACCIONES[c.fila];
-  if (acc) return `<span class="chip ${acc.cls}">${esc(acc.txt)}</span>`;
+  if (acc && acc.txt) return `<span class="chip ${acc.cls}">${esc(acc.txt)}</span>`;
+  const e = CHIP_HOY[estadoHoy(c)];
+  if (e) return `<span class="chip ${e[0]}">${esc(e[1])}</span>`;
   return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
 }
 
 function accionesHoyCita(c) {
-  if (estadoCita(c.estado) === 'CONFIRMADO') {
-    return `
-          <button class="btn gris mini" onclick="noComproCita(${c.fila})">◐ ASISTIÓ Y NO COMPRÓ</button>
-          <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>`;
-  }
   return `
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
           <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
@@ -2786,11 +2832,29 @@ function renderCitasHoy() {
   $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
     <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
       <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
-        ${HOY_ACCIONES[c.fila] ? '' : `
+        ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
         <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
       </div>
       ${chipHoyCita(c)}
     </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
+}
+function renderConfirmadosHoy() {
+  const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'NO_ASISTIO'].includes(estadoHoy(c)));
+  $('hoyListaConfirmados').innerHTML = lista.length ? lista.map(c => {
+    const e = estadoHoy(c);
+    const acciones = e === 'CONFIRMADO' ? `
+        <div class="acciones-hoy">
+          <button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
+          <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
+        </div>` : (e === 'ASISTIO' ? `
+        <div class="acciones-hoy">
+          <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
+        </div>` : '');
+    return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small>${acciones}</div>
+      ${chipHoyCita(c)}
+    </div>`;
+  }).join('') : '<div class="vacio">Nadie ha confirmado cita todavía.</div>';
 }
 
 function renderVentasHoy() {
@@ -2802,45 +2866,30 @@ function renderVentasHoy() {
     </div>`).join('') : '<div class="vacio">Sin ventas hoy.</div>';
 }
 
-async function confirmarCita(fila) {
+/* Marca una cita y repinta ambos cuadros; el estado queda guardado en
+   AGENDADOS, así que el bloqueo persiste aunque se recargue la página. */
+async function marcarCita(fila, ruta, estado, aviso) {
   try {
-    await api(`/api/crm/agendados/${fila}/confirmar`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'ok', txt: '✓ Cita confirmada' };
+    await api(`/api/crm/agendados/${fila}/${ruta}`, { method: 'POST' });
+    HOY_ACCIONES[fila] = { estado, cls: CHIP_HOY[estado][0], txt: CHIP_HOY[estado][1] };
+    const c = HOY_DATA.citas.find(x => x.fila === fila);
+    if (c) c.estado = estado === 'NO_ASISTIO' ? 'NO ASISTIO' : estado.replace('_', ' ');
     renderCitasHoy();
-    toast('Cita confirmada', 'okm');
-  } catch (e) { toast(e.message, 'err'); }
+    renderConfirmadosHoy();
+    $('hoyConfirmadas').textContent = HOY_DATA.citas.filter(x => estadoHoy(x) === 'CONFIRMADO').length;
+    $('hoyAsistieron').textContent = HOY_DATA.citas.filter(x => estadoHoy(x) === 'ASISTIO').length;
+    toast(aviso, 'okm');
+    return true;
+  } catch (e) { toast(e.message, 'err'); return false; }
 }
-async function cancelarCita(fila) {
-  try {
-    await api(`/api/crm/agendados/${fila}/cancelar`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'bad', txt: '✕ CITA CANCELADA' };
-    renderCitasHoy();
-    toast('Cita cancelada', 'okm');
-  } catch (e) { toast(e.message, 'err'); }
-}
-async function noComproCita(fila) {
-  try {
-    await api(`/api/crm/agendados/${fila}/nocompro`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'gris', txt: '◐ Asistió y no compró' };
-    renderCitasHoy();
-    toast('Registrado: asistió y no compró', 'okm');
-  } catch (e) { toast(e.message, 'err'); }
-}
-async function noAsistioCita(fila) {
-  try {
-    await api(`/api/crm/agendados/${fila}/noasistio`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'bad', txt: '✕ No asistió' };
-    renderCitasHoy();
-    toast('Registrado: no asistió', 'okm');
-  } catch (e) { toast(e.message, 'err'); }
-}
-async function noContestoCita(fila) {
-  try {
-    await api(`/api/crm/agendados/${fila}/nocontesto`, { method: 'POST' });
-    HOY_ACCIONES[fila] = { cls: 'warn', txt: '☎ No contestó' };
-    renderCitasHoy();
-    toast('Registrado: no contestó', 'okm');
-  } catch (e) { toast(e.message, 'err'); }
+const confirmarCita = (fila) => marcarCita(fila, 'confirmar', 'CONFIRMADO', 'Cita confirmada');
+const cancelarCita = (fila) => marcarCita(fila, 'cancelar', 'CANCELADA', 'Cita cancelada');
+const noAsistioCita = (fila) => marcarCita(fila, 'noasistio', 'NO_ASISTIO', 'Registrado: no asistió');
+const noContestoCita = (fila) => marcarCita(fila, 'nocontesto', 'NO_CONTESTO', 'Registrado: no contestó');
+async function asistioCita(fila) {
+  if (await marcarCita(fila, 'asistio', 'ASISTIO', 'Registrado: asistió')) {
+    abrirHistoriaCita(fila);
+  }
 }
 function abrirReprogramar(fila) {
   const c = HOY_DATA.citas.find(x => x.fila === fila);
@@ -2956,27 +3005,6 @@ async function guardarCompro() {
   } catch (e) { $('msgCoForm').textContent = e.message; $('msgCoForm').classList.remove('oculto'); }
   finally { b.disabled = false; }
 }
-function tareaItemHoy(t) {
-  return `<div class="item-hoy"><span class="hora">${esc(t.hora || '—')}</span>
-    <div class="info"><b>${esc(t.titulo)}</b><small>${esc(t.tipo)} ${t.contacto ? '· ' + esc(t.contacto) : ''}</small></div>
-    <button class="btn pequeno borde" onclick="editarTareaHoy(${t.id})">Editar</button>
-    <button class="btn pequeno verde" onclick="completarTareaHoy(${t.id})">Completar</button>
-  </div>`;
-}
-async function completarTareaHoy(id) {
-  try {
-    await api('/api/crm/tareas/' + id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: 'COMPLETADA' }),
-    });
-    toast('Tarea completada', 'okm');
-    cargarHoy();
-  } catch (err) { toast(err.message, 'err'); }
-}
-function editarTareaHoy(id) {
-  const t = [...(HOY_DATA?.tareas_hoy || []), ...(HOY_DATA?.tareas_vencidas || [])].find(x => x.id === id);
-  if (t) abrirModalTarea(t);
-}
-
 /* ---------------- CRM PLUS: CALENDARIO ---------------- */
 let CAL_AG = null;
 let calMes = HOY.getMonth(), calAnio = HOY_A, calDiaSel = null;
@@ -3495,7 +3523,94 @@ $('btnTareaBorrar').addEventListener('click', async () => {
     cerrarModales(); toast('Tarea borrada', 'okm'); cargarHoy();
   } catch (err) { toast(err.message, 'err'); }
 });
-$('btnHoyTareaNueva').addEventListener('click', () => abrirModalTarea(null));
+
+/* ---------------- CRM PLUS: HISTORIA CLÍNICA ---------------- */
+let historiaEditando = null;
+/* Fecha de hoy en horario local. No se usa toISOString() porque devuelve UTC
+   y en Lima (UTC-5) adelantaría un día desde las 7 de la noche. */
+function hoyIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const HIS_CAMPOS = {
+  hisPaciente: 'paciente', hisTelefono: 'telefono', hisDni: 'dni', hisEdad: 'edad',
+  hisFecha: 'fecha', hisHora: 'hora', hisDoctor: 'doctor',
+  hisProximoControl: 'proximo_control', hisMotivo: 'motivo',
+  hisAntecedentes: 'antecedentes', hisAlergias: 'alergias',
+  hisDiagnostico: 'diagnostico', hisTratamiento: 'tratamiento',
+  hisIndicaciones: 'indicaciones', hisObservacion: 'observacion',
+};
+function limpiarFormHistoria() {
+  Object.keys(HIS_CAMPOS).forEach(id => { $(id).value = ''; });
+  $('msgHisForm').classList.add('oculto');
+}
+function abrirModalHistoria(h, base) {
+  limpiarFormHistoria();
+  historiaEditando = h ? h.id : null;
+  const d = h || base || {};
+  Object.entries(HIS_CAMPOS).forEach(([id, campo]) => {
+    if (d[campo] !== undefined && d[campo] !== null) $(id).value = d[campo];
+  });
+  if (!$('hisFecha').value) $('hisFecha').value = hoyIso();
+  $('hisTitulo').textContent = h ? `Historia clínica · ${h.paciente || ''}` : 'Nueva historia clínica';
+  $('btnHisGuardar').textContent = h ? 'Guardar cambios' : 'Guardar historia';
+  $('btnHisBorrar').classList.toggle('oculto', !h);
+  $('modalHistoria').classList.add('abierto');
+  $('hisMotivo').focus();
+}
+/* Abre la historia del paciente de una cita: si ya tiene una de hoy la edita,
+   si no crea una nueva prellenada con sus datos. */
+async function abrirHistoriaCita(fila) {
+  const c = HOY_DATA.citas.find(x => x.fila === fila);
+  if (!c) return;
+  const hoy = hoyIso();
+  const base = {
+    paciente: c.nombre || '', telefono: c.telefono || '', hora: c.hora || '',
+    fecha: hoy, agendado_fila: fila,
+  };
+  try {
+    const qs = new URLSearchParams();
+    if (c.telefono) qs.set('telefono', c.telefono);
+    if (c.nombre) qs.set('paciente', c.nombre);
+    const r = await api('/api/crm/historias?' + qs);
+    const dehoy = r.historias.find(h => h.fecha === hoy);
+    abrirModalHistoria(dehoy || null, base);
+    if (!dehoy) HISTORIA_BASE = base;
+  } catch (e) { toast(e.message, 'err'); abrirModalHistoria(null, base); HISTORIA_BASE = base; }
+}
+let HISTORIA_BASE = null;
+$('formHistoriaClinica').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnHisGuardar'); b.disabled = true; b.textContent = 'Guardando…';
+  $('msgHisForm').classList.add('oculto');
+  const payload = { agendado_fila: HISTORIA_BASE ? HISTORIA_BASE.agendado_fila : null };
+  Object.entries(HIS_CAMPOS).forEach(([id, campo]) => {
+    payload[campo] = campo === 'edad' ? ($(id).value ? +$(id).value : null) : $(id).value.trim();
+  });
+  try {
+    if (historiaEditando) {
+      await api('/api/crm/historias/' + historiaEditando, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+    } else {
+      await api('/api/crm/historias', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+    }
+    cerrarModales();
+    HISTORIA_BASE = null;
+    toast('Historia clínica guardada', 'okm');
+  } catch (err) {
+    $('msgHisForm').textContent = err.message; $('msgHisForm').classList.remove('oculto');
+  } finally { b.disabled = false; b.textContent = historiaEditando ? 'Guardar cambios' : 'Guardar historia'; }
+});
+$('btnHisBorrar').addEventListener('click', async () => {
+  if (!historiaEditando || !confirm('¿Borrar esta historia clínica? Esta acción no se puede deshacer.')) return;
+  try {
+    await api('/api/crm/historias/' + historiaEditando, { method: 'DELETE' });
+    cerrarModales(); toast('Historia clínica borrada', 'okm');
+  } catch (err) { toast(err.message, 'err'); }
+});
 
 /* ---------------- CRM PLUS: DASHBOARD ---------------- */
 function tablaDatos(datos, prefijo, sufijo) {

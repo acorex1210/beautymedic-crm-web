@@ -61,6 +61,10 @@ HOJAS = {
     'PLANILLA': ['ID', 'TRABAJADOR_ID', 'NOMBRE', 'ANIO', 'MES', 'QUINCENA',
                 'SUELDO_BASE', 'COMISION', 'MONTO_TOTAL', 'ESTADO', 'FECHA_PAGO',
                 'METODO_PAGO', 'NOTA'],
+    'HISTORIAS': ['ID', 'FECHA', 'HORA', 'PACIENTE', 'TELEFONO', 'DNI', 'EDAD',
+                  'DOCTOR', 'MOTIVO', 'ANTECEDENTES', 'ALERGIAS', 'DIAGNOSTICO',
+                  'TRATAMIENTO', 'INDICACIONES', 'PROXIMO_CONTROL',
+                  'OBSERVACION', 'AGENDADO_FILA'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -1469,4 +1473,124 @@ def borrar_pago_planilla(pid):
         if len(nuevas) == len(filas):
             return False
         _reescribir('PLANILLA', nuevas)
+        return True
+
+
+# ============================================================
+# CRM Plus: Historia clínica
+# ============================================================
+# Campos de texto de la historia: letra en la hoja -> nombre lógico.
+HISTORIA_TEXTOS = {
+    'I': 'motivo', 'J': 'antecedentes', 'K': 'alergias', 'L': 'diagnostico',
+    'M': 'tratamiento', 'N': 'indicaciones', 'O': 'proximo_control',
+    'P': 'observacion',
+}
+
+
+def _historia_named(f):
+    d = {
+        'id': am.num(f.get('A')),
+        'fecha': f.get('B'), 'hora': f.get('C'),
+        'paciente': f.get('D'), 'telefono': f.get('E'),
+        'dni': f.get('F'), 'edad': am.num(f.get('G')),
+        'doctor': f.get('H'),
+        'agendado_fila': am.num(f.get('Q')),
+    }
+    for letra, campo in HISTORIA_TEXTOS.items():
+        d[campo] = f.get(letra)
+    return d
+
+
+def _tel_digitos(v):
+    return re.sub(r'\D', '', str(v if v is not None else ''))
+
+
+def leer_historias(telefono=None, paciente=None, desde=None, hasta=None):
+    """Historias clínicas, de la más reciente a la más antigua.
+
+    ``telefono`` y ``paciente`` filtran al paciente; si se pasan ambos, basta
+    con que coincida uno (el teléfono es el criterio fuerte).
+    """
+    out = [_historia_named(f) for f in _leer_hoja('HISTORIAS')]
+    tel = _tel_digitos(telefono)
+    nom = _status_normalizado(paciente)
+    if tel or nom:
+        out = [h for h in out
+               if (tel and _tel_digitos(h['telefono']) == tel)
+               or (nom and _status_normalizado(h['paciente']) == nom)]
+    if desde:
+        out = [h for h in out if (h['fecha'] or '') >= desde]
+    if hasta:
+        out = [h for h in out if (h['fecha'] or '') <= hasta]
+    out.sort(key=lambda h: (h['fecha'] or '', h['hora'] or ''), reverse=True)
+    return out
+
+
+def _fila_historia(datos, base=None):
+    """Construye la fila de la hoja a partir de los datos del formulario.
+
+    Con ``base`` (edición) sólo toca los campos presentes en ``datos``, así un
+    PATCH parcial no borra lo que no envía; un campo enviado vacío sí se limpia.
+    """
+    f = dict(base or {})
+    parcial = base is not None
+
+    def poner(letra, campo, valor):
+        if not parcial or campo in datos:
+            f[letra] = valor
+
+    poner('B', 'fecha', str(datos.get('fecha') or '').strip())
+    poner('C', 'hora', str(datos.get('hora') or '').strip())
+    poner('D', 'paciente', str(datos.get('paciente') or '').strip())
+    poner('E', 'telefono', _tel_digitos(datos.get('telefono')))
+    poner('F', 'dni', str(datos.get('dni') or '').strip())
+    poner('G', 'edad', am.num(datos.get('edad')))
+    poner('H', 'doctor', str(datos.get('doctor') or '').strip())
+    for letra, campo in HISTORIA_TEXTOS.items():
+        poner(letra, campo, str(datos.get(campo) or '').strip())
+    if am.num(datos.get('agendado_fila')):
+        f['Q'] = am.num(datos['agendado_fila'])
+    if not f.get('B'):
+        f['B'] = _hoy_iso()
+    return f
+
+
+def _hoy_iso():
+    return datetime.now(TZ).strftime('%Y-%m-%d')
+
+
+def crear_historia(datos):
+    if not str(datos.get('paciente') or '').strip():
+        raise ValueError('Indica el nombre del paciente')
+    with _lock:
+        filas = _leer_hoja('HISTORIAS')
+        f = _fila_historia(datos)
+        f['A'] = _siguiente_id(filas)
+        filas.append(f)
+        _reescribir('HISTORIAS', filas)
+        return _historia_named(f)
+
+
+def actualizar_historia(hid, cambios):
+    with _lock:
+        filas = _leer_hoja('HISTORIAS')
+        for f in filas:
+            if am.num(f.get('A')) != hid:
+                continue
+            nueva = _fila_historia(cambios, base=f)
+            nueva['A'] = f.get('A')
+            f.clear()
+            f.update(nueva)
+            _reescribir('HISTORIAS', filas)
+            return _historia_named(f)
+        return None
+
+
+def borrar_historia(hid):
+    with _lock:
+        filas = _leer_hoja('HISTORIAS')
+        nuevas = [f for f in filas if am.num(f.get('A')) != hid]
+        if len(nuevas) == len(filas):
+            return False
+        _reescribir('HISTORIAS', nuevas)
         return True

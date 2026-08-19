@@ -202,6 +202,25 @@ class VentaReq(BaseModel):
     forzar: bool = False
 
 
+class HistoriaReq(BaseModel):
+    fecha: str = ''
+    hora: str = ''
+    paciente: str = ''
+    telefono: str = ''
+    dni: str = ''
+    edad: Optional[int] = None
+    doctor: str = ''
+    motivo: str = ''
+    antecedentes: str = ''
+    alergias: str = ''
+    diagnostico: str = ''
+    tratamiento: str = ''
+    indicaciones: str = ''
+    proximo_control: str = ''
+    observacion: str = ''
+    agendado_fila: Optional[int] = None
+
+
 class ReprogramarReq(BaseModel):
     dia: Optional[int] = None
     mes: str = ''
@@ -1015,6 +1034,18 @@ async def crm_agendados_compro(fila: int, data: ComproReq):
             'avisos_inventario': avisos_inventario}
 
 
+@app.post('/api/crm/agendados/{fila}/asistio')
+async def crm_agendados_asistio(fila: int):
+    """Marca que el paciente vino al consultorio (sin registrar venta)."""
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'ASISTIO'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar la asistencia en Drive: {e}')
+
+
 @app.post('/api/crm/agendados/{fila}/nocompro')
 async def crm_agendados_nocompro(fila: int):
     with _bloqueo:
@@ -1609,6 +1640,56 @@ async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
     for p in pacientes:
         p['historias'] = docs.get(hist.carpeta(p['clave']), 0)
     return {'ok': True, 'pacientes': pacientes}
+
+
+@app.get('/api/crm/historias')
+async def crm_historias_clinicas(telefono: str = '', paciente: str = '',
+                                 desde: str = '', hasta: str = ''):
+    try:
+        return {'ok': True,
+                'historias': cp.leer_historias(telefono=telefono or None,
+                                               paciente=paciente or None,
+                                               desde=desde or None,
+                                               hasta=hasta or None)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudieron leer las historias clínicas: {e}')
+
+
+@app.post('/api/crm/historias')
+async def crm_historia_nueva(data: HistoriaReq):
+    with _bloqueo:
+        try:
+            return {'ok': True, 'historia': cp.crear_historia(data.model_dump())}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo guardar la historia clínica: {e}')
+
+
+@app.patch('/api/crm/historias/{hid}')
+async def crm_historia_editar(hid: int, data: HistoriaReq):
+    with _bloqueo:
+        try:
+            h = cp.actualizar_historia(hid, data.model_dump(exclude_unset=True))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo editar la historia clínica: {e}')
+    if not h:
+        raise HTTPException(404, 'Historia clínica no encontrada')
+    return {'ok': True, 'historia': h}
+
+
+@app.delete('/api/crm/historias/{hid}')
+async def crm_historia_borrar(hid: int):
+    with _bloqueo:
+        try:
+            ok = cp.borrar_historia(hid)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo borrar la historia clínica: {e}')
+    if not ok:
+        raise HTTPException(404, 'Historia clínica no encontrada')
+    return {'ok': True}
 
 
 @app.get('/api/crm/pacientes/historias')
