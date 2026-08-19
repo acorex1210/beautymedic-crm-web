@@ -46,6 +46,13 @@
   .nav a .ico { width: 20px; height: 20px; flex: 0 0 20px; }
   .nav .sub { font-size: 11px; color: #6d80a8; text-transform: uppercase; letter-spacing: .6px; padding: 14px 12px 6px; }
   .side-pies { padding: 12px 16px 18px; border-top: 1px solid rgba(255,255,255,.08); font-size: 11px; color: #8fa3c8; }
+  .side-usuario { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 10px; }
+  .side-usuario .av { width: 32px; height: 32px; border-radius: 9px; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
+  .side-usuario .dat { min-width: 0; flex: 1; }
+  .side-usuario .dat b { display: block; font-size: 12.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-usuario .dat span { font-size: 11px; color: #8fa3c8; }
+  .side-usuario .salir { background: none; border: 0; color: #8fa3c8; cursor: pointer; padding: 5px; border-radius: 7px; display: flex; }
+  .side-usuario .salir:hover { color: #fff; background: rgba(255,255,255,.1); }
 
   /* ---------- Main ---------- */
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -305,7 +312,8 @@
     .nav { display: flex; padding: 0; }
     .nav a { width: auto; padding: 8px 12px; }
     .nav a span.lab { display: none; }
-    .nav .sub, .side-pies { display: none; }
+    .nav .sub, .side-pies, .side-usuario .dat { display: none; }
+    .side-usuario { border: 0; padding: 4px 8px; }
     .contenido { padding: 14px; }
     .topbar { padding: 12px 16px; }
   }
@@ -432,7 +440,8 @@
     .nav a { flex: 0 0 auto; width: auto; margin: 0; padding: 8px 10px; gap: 6px; }
     .nav a span.lab { display: inline; font-size: 12px; }
     .nav a .ico { width: 18px; height: 18px; flex-basis: 18px; }
-    .nav .sub, .side-pies { display: none; }
+    .nav .sub, .side-pies, .side-usuario .dat { display: none; }
+    .side-usuario { border: 0; padding: 4px 8px; }
     .main { min-width: 0; }
     .topbar { min-height: auto; padding: 13px 16px; align-items: flex-start; }
     .topbar h2 { font-size: 18px; }
@@ -545,7 +554,13 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         <span class="lab">Meta Ads</span>
       </a>
+      <div class="sub" id="subCuenta">Cuenta</div>
+      <a data-pagina="usuarios">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6M19 8v6"/></svg>
+        <span class="lab">Usuarios</span>
+      </a>
     </nav>
+    <div class="side-usuario" id="sideUsuario"></div>
     <div class="side-pies" id="estadoPie"></div>
   </aside>
 
@@ -1033,7 +1048,62 @@
           <div id="meCuerpo"><div class="vacio">Sube un reporte exportado de Meta Ads Manager (CSV o Excel). No usa API: descargas el archivo desde Ads Manager y lo subes aquí.</div></div>
         </div>
       </section>
+
+      <!-- ============ USUARIOS ============ -->
+      <section id="pag-usuarios" class="oculto">
+        <div class="tarjeta">
+          <div class="toolbar">
+            <button class="btn gris" id="btnUsRecargar">Actualizar</button>
+            <button class="btn verde" id="btnUsNuevo" style="margin-left:auto;">+ Nuevo usuario</button>
+          </div>
+          <p class="nota" style="margin:0 0 12px;">Cada usuario entra con su propia contraseña y sólo ve las secciones
+            de su rol. Los permisos se validan en el servidor, no sólo escondiendo botones.</p>
+          <div class="tabla-wrap"><table class="drive" id="tablaUsuarios"></table></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
+          <h3>Roles disponibles</h3>
+          <div class="tabla-wrap"><table class="drive" id="tablaRoles"></table></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
+          <h3>Cambiar mi contraseña</h3>
+          <form id="formMiClave">
+            <div class="form-grid">
+              <div class="campo"><label>Contraseña actual</label><input type="password" id="miClaveActual" autocomplete="current-password" required></div>
+              <div class="campo"><label>Contraseña nueva</label><input type="password" id="miClaveNueva" autocomplete="new-password" required></div>
+            </div>
+            <div class="mensaje err oculto" id="msgMiClave"></div>
+            <div class="pies"><button type="submit" class="btn verde" id="btnMiClave">Cambiar contraseña</button></div>
+          </form>
+        </div>
+      </section>
     </div>
+  </div>
+</div>
+
+<!-- ============ MODAL USUARIO ============ -->
+<div class="modal-fondo" id="modalUsuario">
+  <div class="modal">
+    <div class="cab"><h3 id="usTitulo">Nuevo usuario</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formUsuario">
+      <div class="form-grid">
+        <div class="campo"><label>Usuario</label><input type="text" id="usUsuario" placeholder="ej. CRM1" autocapitalize="characters" required></div>
+        <div class="campo"><label>Nombre de la persona</label><input type="text" id="usNombre" placeholder="opcional"></div>
+        <div class="campo"><label>Rol</label><select id="usRol"></select></div>
+        <div class="campo"><label id="usClaveEtiqueta">Contraseña</label><input type="password" id="usClave" autocomplete="new-password"></div>
+        <div class="campo" id="usActivoCampo"><label>Estado</label>
+          <select id="usActivo"><option value="1">Activo</option><option value="0">Desactivado</option></select>
+        </div>
+      </div>
+      <p class="nota" style="margin:0 0 12px;" id="usNotaRol"></p>
+      <div class="mensaje err oculto" id="msgUsForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnUsBorrar" style="margin-right:auto;">Borrar</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnUsGuardar">Guardar usuario</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1454,11 +1524,59 @@ async function api(url, opts = {}) {
   let j = null;
   try { j = await r.json(); } catch (e) { j = { ok: false }; }
   if (!r.ok) {
+    // Si la sesión caducó no tiene sentido mostrar el error: se vuelve al login.
+    if (r.status === 401 && !url.startsWith('/api/login')) { location.href = '/login'; }
     const err = new Error(typeof j.detail === 'string' ? j.detail : (j.detail ? JSON.stringify(j.detail) : 'Error del servidor'));
     err.status = r.status; err.data = j.detail;
     throw err;
   }
   return j;
+}
+
+/* ---------------- Sesión y permisos ---------------- */
+let YO = null, ROLES_DISP = {};
+const puedeVer = (sec) => !!YO && YO.secciones.includes(sec);
+/* El servidor manda la lista de recursos donde el rol puede escribir; aquí sólo
+   se usa para no mostrar botones que igual serían rechazados con 403. */
+const puedeEditar = (rec) => !!YO && (YO.escritura === '*' || YO.escritura.includes(rec));
+
+async function cargarSesion() {
+  const r = await api('/api/yo');
+  YO = r.usuario;
+  ROLES_DISP = r.roles || {};
+  document.querySelectorAll('.nav a[data-pagina]').forEach(a => {
+    a.style.display = puedeVer(a.dataset.pagina) ? '' : 'none';
+  });
+  // Un separador sin ninguna sección visible debajo sobra.
+  document.querySelectorAll('.nav .sub').forEach(sub => {
+    let vis = false;
+    for (let n = sub.nextElementSibling; n && !n.classList.contains('sub'); n = n.nextElementSibling) {
+      if (n.matches('a[data-pagina]') && n.style.display !== 'none') { vis = true; break; }
+    }
+    sub.style.display = vis ? '' : 'none';
+  });
+  $('sideUsuario').innerHTML = `
+    <div class="av">${esc((YO.nombre || YO.usuario).slice(0, 2).toUpperCase())}</div>
+    <div class="dat"><b>${esc(YO.nombre || YO.usuario)}</b><span>${esc(YO.rol_nombre)}</span></div>
+    <button class="salir" id="btnSalir" title="Cerrar sesión">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+    </button>`;
+  $('btnSalir').addEventListener('click', async () => {
+    try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* igual salimos */ }
+    location.href = '/login';
+  });
+  aplicarPermisos();
+  return YO;
+}
+
+/* Oculta las acciones que el rol no puede ejecutar. Es sólo cosmética: quien
+   llame la API igual se topa con el 403 del middleware. */
+function aplicarPermisos() {
+  const ocultar = (id, ok) => { const el = $(id); if (el) el.classList.toggle('oculto', !ok); };
+  ocultar('btnVeNuevo', puedeEditar('venta'));
+  document.querySelectorAll('[data-permiso]').forEach(el => {
+    el.classList.toggle('oculto', !puedeEditar(el.dataset.permiso));
+  });
 }
 
 /* ---------------- Navegación ---------------- */
@@ -1477,8 +1595,10 @@ const TITULOS = {
   dashboard: ['Dashboard', 'Métricas del negocio'],
   analitica: ['Analítica', 'KPIs y métricas del maestro'],
   metaads: ['Meta Ads', 'Presupuestos y rendimiento de publicidad (import manual)'],
+  usuarios: ['Usuarios', 'Accesos al sistema y permisos por rol'],
 };
 function pagina(nombre) {
+  if (YO && !puedeVer(nombre)) nombre = YO.secciones[0] || 'panel';
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('activo', a.dataset.pagina === nombre));
   document.querySelectorAll('.main section[id^=pag-]').forEach(s => s.classList.add('oculto'));
   $('pag-' + nombre).classList.remove('oculto');
@@ -1489,6 +1609,7 @@ function pagina(nombre) {
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
   if (nombre === 'planilla') cargarPlanilla();
+  if (nombre === 'usuarios') cargarUsuarios();
   if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); cargarResumenPanel(); }
   if (nombre === 'reportes') cargarEstado();
   if (nombre === 'hoy') cargarHoy();
@@ -2034,7 +2155,9 @@ function pintarVenta() {
       if (c === 'J') return `<td class="num">${esc(v)}</td>`;
       return `<td>${esc(v)}</td>`;
     }).join('') + (Number.isInteger(f._fila)
-      ? `<td>${esRealizado(f.N) ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> ` : ''}<button class="btn borde pequeno" onclick="editarVenta(${f._fila}, '${veAnioActivo}')">Editar</button> <button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button></td>`
+      ? `<td>${esRealizado(f.N) ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(veAnioActivo)}&fila=${f._fila}" target="_blank" rel="noopener">🧾 Recibo</a> ` : ''}${puedeEditar('venta')
+          ? `<button class="btn borde pequeno" onclick="editarVenta(${f._fila}, '${veAnioActivo}')">Editar</button> <button class="btn rojo pequeno" onclick="borrarVenta(${f._fila}, veAnioActivo)">Borrar</button>`
+          : ''}</td>`
       : '<td></td>') + '</tr>').join('') + '</tbody>';
   $('veMas').innerHTML = filt.length > veLimite
     ? `<button onclick="veLimite+=400;pintarVenta()">Mostrar más (${filt.length - veLimite} restantes)</button>`
@@ -2810,6 +2933,127 @@ $('btnPagoBorrar').addEventListener('click', async () => {
     toast('Pago borrado', 'okm');
     cargarPagosPlanilla();
   } catch (e) { toast(e.message, 'err'); }
+});
+
+/* ---------------- USUARIOS ---------------- */
+let USUARIOS = [], usuarioEditando = null;
+
+async function cargarUsuarios() {
+  const tbody = $('tablaUsuarios');
+  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando usuarios&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/usuarios');
+    USUARIOS = r.usuarios;
+    ROLES_DISP = r.roles || ROLES_DISP;
+  } catch (e) {
+    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '<thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Secciones</th><th>Estado</th><th>Último ingreso</th><th>Acciones</th></tr></thead><tbody>' +
+    USUARIOS.map(u => {
+      const rol = ROLES_DISP[u.rol] || {};
+      const secs = (rol.secciones || []).map(s => (TITULOS[s] || [s])[0]);
+      return `<tr${u.activo ? '' : ' style="opacity:.55;"'}>
+        <td><b>${esc(u.usuario)}</b>${u.usuario === YO.usuario ? ' <span class="nota">(tú)</span>' : ''}</td>
+        <td>${esc(u.nombre || '')}</td>
+        <td>${esc(u.rol_nombre || u.rol)}</td>
+        <td class="nota">${secs.length >= Object.keys(TITULOS).length ? 'Todas' : esc(secs.join(', '))}</td>
+        <td><span class="chip ${u.activo ? 'ok' : 'bad'}">${u.activo ? 'ACTIVO' : 'DESACTIVADO'}</span></td>
+        <td>${esc(u.ultimo_ingreso || 'nunca')}</td>
+        <td><button class="btn borde pequeno" onclick="abrirModalUsuario('${esc(u.usuario)}')">Editar</button></td>
+      </tr>`;
+    }).join('') + '</tbody>';
+
+  $('tablaRoles').innerHTML = '<thead><tr><th>Rol</th><th>Qué ve</th><th>Qué puede cambiar</th></tr></thead><tbody>' +
+    Object.entries(ROLES_DISP).map(([clave, r]) => `<tr>
+      <td><b>${esc(r.nombre)}</b><div class="nota">${esc(clave)}</div></td>
+      <td class="nota">${esc(r.descripcion || '')}</td>
+      <td class="nota">${r.escritura === '*' ? 'Todo' : esc((r.escritura || []).filter(x => x !== 'comun').join(', ') || 'Nada')}</td>
+    </tr>`).join('') + '</tbody>';
+}
+
+function abrirModalUsuario(usuario) {
+  usuarioEditando = usuario || null;
+  const u = usuario ? USUARIOS.find(x => x.usuario === usuario) : null;
+  $('usTitulo').textContent = u ? `Editar usuario · ${u.usuario}` : 'Nuevo usuario';
+  $('usRol').innerHTML = Object.entries(ROLES_DISP)
+    .map(([c, r]) => `<option value="${esc(c)}">${esc(r.nombre)}</option>`).join('');
+  $('usUsuario').value = u ? u.usuario : '';
+  $('usUsuario').disabled = !!u;
+  $('usNombre').value = u ? (u.nombre || '') : '';
+  $('usRol').value = u ? u.rol : 'CRM';
+  $('usClave').value = '';
+  $('usClave').required = !u;
+  $('usClaveEtiqueta').textContent = u ? 'Contraseña nueva (opcional)' : 'Contraseña';
+  $('usActivo').value = u ? (u.activo ? '1' : '0') : '1';
+  $('usActivoCampo').style.display = u ? '' : 'none';
+  $('btnUsBorrar').classList.toggle('oculto', !u || u.usuario === YO.usuario);
+  pintarNotaRol();
+  $('msgUsForm').classList.add('oculto');
+  $('modalUsuario').classList.add('abierto');
+}
+function pintarNotaRol() {
+  const r = ROLES_DISP[$('usRol').value] || {};
+  $('usNotaRol').textContent = r.descripcion || '';
+}
+$('usRol').addEventListener('change', pintarNotaRol);
+$('btnUsNuevo').addEventListener('click', () => abrirModalUsuario(null));
+$('btnUsRecargar').addEventListener('click', cargarUsuarios);
+
+$('formUsuario').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnUsGuardar'); b.disabled = true;
+  $('msgUsForm').classList.add('oculto');
+  const clave = $('usClave').value;
+  try {
+    if (usuarioEditando) {
+      const payload = { rol: $('usRol').value, nombre: $('usNombre').value.trim(),
+                        activo: $('usActivo').value === '1' };
+      if (clave) payload.clave = clave;
+      await api(`/api/usuarios/${encodeURIComponent(usuarioEditando)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      toast('Usuario actualizado', 'okm');
+    } else {
+      await api('/api/usuarios', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario: $('usUsuario').value.trim(), clave,
+                               rol: $('usRol').value, nombre: $('usNombre').value.trim() }),
+      });
+      toast('Usuario creado', 'okm');
+    }
+    cerrarModales();
+    cargarUsuarios();
+  } catch (err) {
+    $('msgUsForm').textContent = err.message; $('msgUsForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+
+$('btnUsBorrar').addEventListener('click', async () => {
+  if (!usuarioEditando) return;
+  if (!confirm(`¿Borrar el usuario ${usuarioEditando}? Dejará de poder entrar al sistema.`)) return;
+  try {
+    await api(`/api/usuarios/${encodeURIComponent(usuarioEditando)}`, { method: 'DELETE' });
+    cerrarModales();
+    toast('Usuario borrado', 'okm');
+    cargarUsuarios();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+$('formMiClave').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnMiClave'); b.disabled = true;
+  $('msgMiClave').classList.add('oculto');
+  try {
+    await api('/api/yo/clave', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actual: $('miClaveActual').value, nueva: $('miClaveNueva').value }),
+    });
+    $('miClaveActual').value = ''; $('miClaveNueva').value = '';
+    toast('Contraseña cambiada', 'okm');
+  } catch (err) {
+    $('msgMiClave').textContent = err.message; $('msgMiClave').classList.remove('oculto');
+  } finally { b.disabled = false; }
 });
 
 /* ---------------- CRM PLUS: HOY ---------------- */
@@ -4122,7 +4366,12 @@ $('meFile').addEventListener('change', e => { if (e.target.files[0]) subirMeta(e
 $('meSelect').addEventListener('change', mostrarMeta);
 $('btnMeRecargar').addEventListener('click', () => { meActual = null; cargarMeta(); });
 $('btnMeBorrar').addEventListener('click', borrarMeta);
-pagina('panel');
+
+/* Arranque: primero se sabe quién entró, y recién ahí se abre una sección.
+   Sin esto un rol limitado vería el Panel un instante antes de que lo tapen. */
+cargarSesion()
+  .then(() => pagina(YO.secciones.includes('panel') ? 'panel' : YO.secciones[0]))
+  .catch(() => { location.href = '/login'; });
 </script>
 </body>
 </html>

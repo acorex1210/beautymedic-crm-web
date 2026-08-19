@@ -22,7 +22,8 @@ from typing import Dict, Optional
 import openpyxl
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -37,6 +38,7 @@ import crm_plus as cp                   # noqa: E402
 import historias as hist                # noqa: E402
 import meta_ads as mads                 # noqa: E402
 import recibo_pdf as rp                 # noqa: E402
+import usuarios as usr                  # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
 import whatsapp_leads as wa             # noqa: E402
 
@@ -99,8 +101,55 @@ def _sync_diario_loop():
 threading.Thread(target=_sync_diario_loop, daemon=True).start()
 
 app = FastAPI(title='Reportes Derma Essenza', version='1.0.0')
-app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'],
-                   allow_headers=['*'])
+
+# Con sesión por cookie ya no se puede abrir el CORS a todo el mundo: sólo el
+# propio dominio (y localhost para desarrollo) pueden llamar a la API.
+_ORIGENES = [o.strip() for o in os.environ.get('ORIGENES_PERMITIDOS', '').split(',') if o.strip()]
+if not _ORIGENES:
+    _dominio = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()
+    _ORIGENES = ([f'https://{_dominio}'] if _dominio else []) + \
+                ['http://localhost:8077', 'http://127.0.0.1:8077']
+app.add_middleware(CORSMiddleware, allow_origins=_ORIGENES, allow_credentials=True,
+                   allow_methods=['*'], allow_headers=['*'])
+
+COOKIE_SESION = 'de_sesion'
+_sembrados = usr.sembrar()
+if _sembrados:
+    print(f'[usuarios] {_sembrados} usuario(s) creados desde SEMILLA_USUARIOS')
+
+
+def _usuario_de(request: Request):
+    return usr.leer_token(request.cookies.get(COOKIE_SESION))
+
+
+@app.middleware('http')
+async def control_de_acceso(request: Request, call_next):
+    """Puerta única de entrada: toda ruta pide sesión salvo las públicas, y el
+    rol decide qué puede leer y qué puede escribir. Se hace aquí y no endpoint
+    por endpoint para que ninguno se quede sin proteger por olvido."""
+    ruta = request.url.path
+    # Una ruta con '..' podría mapearse a un recurso permitido y apuntar a otro:
+    # no se normaliza, se rechaza.
+    if '/../' in ruta or ruta.endswith('/..'):
+        return JSONResponse({'detail': 'Ruta inválida'}, status_code=400)
+    if request.method == 'OPTIONS' or usr.es_publica(ruta):
+        return await call_next(request)
+
+    perfil = _usuario_de(request)
+    if not perfil:
+        if ruta.startswith('/api/'):
+            return JSONResponse({'detail': 'Sesión expirada o no iniciada'}, status_code=401)
+        return RedirectResponse('/login', status_code=302)
+
+    # La página en sí la sirve el front filtrando secciones; la API se valida
+    # aquí, que es lo que de verdad protege los datos.
+    if ruta.startswith('/api/') and not usr.puede(perfil['rol'], request.method, ruta):
+        return JSONResponse(
+            {'detail': f"Tu usuario ({perfil['rol_nombre']}) no tiene permiso para esta acción"},
+            status_code=403)
+
+    request.state.usuario = perfil
+    return await call_next(request)
 
 BRAND = {
     'BRAND_NOMBRE': os.environ.get('BRAND_NOMBRE', 'Derma Essenza'),
@@ -108,13 +157,20 @@ BRAND = {
 }
 
 
-def _html_index():
-    with open(os.path.join(BASE_DIR, 'templates', 'index.html'),
-              encoding='utf-8') as f:
+def _html(nombre):
+    with open(os.path.join(BASE_DIR, 'templates', nombre), encoding='utf-8') as f:
         html = f.read()
     for k, v in BRAND.items():
         html = html.replace('{{' + k + '}}', v)
     return html
+
+
+def _html_index():
+    return _html('index.html')
+
+
+def _html_login():
+    return _html('login.html')
 
 
 app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'static')),
@@ -387,6 +443,129 @@ def _validar_fecha(dia, mes, anio, requerido_mes=False):
 @app.get('/', response_class=HTMLResponse)
 async def index():
     return HTMLResponse(_html_index())
+
+
+@app.get('/salud')
+async def salud():
+    """Healthcheck de Railway: '/' ahora redirige al login y un 302 no sirve
+    para comprobar que la app está viva."""
+    return {'ok': True}
+
+
+# ============================================================
+# Sesión y usuarios
+# ============================================================
+class LoginReq(BaseModel):
+    usuario: str = ''
+    clave: str = ''
+
+
+class CambioClaveReq(BaseModel):
+    actual: str = ''
+    nueva: str = ''
+
+
+class UsuarioReq(BaseModel):
+    usuario: str = ''
+    clave: str = ''
+    rol: str = ''
+    nombre: str = ''
+    activo: Optional[bool] = None
+
+
+@app.get('/login', response_class=HTMLResponse)
+async def login_pagina(request: Request):
+    if _usuario_de(request):
+        return RedirectResponse('/', status_code=302)
+    return HTMLResponse(_html_login())
+
+
+@app.post('/api/login')
+async def login(data: LoginReq, request: Request):
+    try:
+        perfil = usr.autenticar(data.usuario, data.clave)
+    except ValueError as e:
+        raise HTTPException(401, str(e))
+    r = JSONResponse({'ok': True, 'usuario': perfil})
+    # No se mira request.url.scheme: detrás del proxy de Railway llega como
+    # http y la cookie se quedaría sin Secure. Sólo en local va sin él.
+    local = (request.url.hostname or '') in ('localhost', '127.0.0.1')
+    r.set_cookie(COOKIE_SESION, usr.crear_token(perfil['usuario']),
+                 max_age=usr.SESION_HORAS * 3600, httponly=True, samesite='lax',
+                 secure=not local, path='/')
+    return r
+
+
+@app.post('/api/logout')
+async def logout():
+    r = JSONResponse({'ok': True})
+    r.delete_cookie(COOKIE_SESION, path='/')
+    return r
+
+
+@app.get('/api/yo')
+async def yo(request: Request):
+    perfil = _usuario_de(request)
+    if not perfil:
+        raise HTTPException(401, 'Sesión expirada o no iniciada')
+    return {'ok': True, 'usuario': perfil, 'roles': usr.ROLES}
+
+
+@app.post('/api/yo/clave')
+async def cambiar_mi_clave(data: CambioClaveReq, request: Request):
+    """Cambio de contraseña propia: pide la actual para que una sesión robada
+    no baste para dejar al dueño fuera de su cuenta."""
+    perfil = request.state.usuario
+    try:
+        usr.autenticar(perfil['usuario'], data.actual)
+        usr.actualizar(perfil['usuario'], {'clave': data.nueva})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {'ok': True}
+
+
+@app.get('/api/usuarios')
+async def usuarios_listar():
+    return {'ok': True, 'usuarios': usr.listar(), 'roles': usr.ROLES}
+
+
+@app.post('/api/usuarios')
+async def usuarios_crear(data: UsuarioReq):
+    try:
+        u = usr.crear(data.usuario, data.clave, data.rol or usr.ROL_POR_DEFECTO, data.nombre)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {'ok': True, 'usuario': u}
+
+
+@app.patch('/api/usuarios/{usuario}')
+async def usuarios_editar(usuario: str, data: UsuarioReq, request: Request):
+    cambios = data.model_dump(exclude_unset=True)
+    cambios.pop('usuario', None)
+    # Nadie puede desactivarse a sí mismo y quedarse fuera del sistema.
+    if (cambios.get('activo') is False
+            and usr.normalizar_usuario(usuario) == request.state.usuario['usuario']):
+        raise HTTPException(400, 'No puedes desactivar tu propio usuario')
+    try:
+        u = usr.actualizar(usuario, cambios)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not u:
+        raise HTTPException(404, 'Usuario no encontrado')
+    return {'ok': True, 'usuario': u}
+
+
+@app.delete('/api/usuarios/{usuario}')
+async def usuarios_borrar(usuario: str, request: Request):
+    if usr.normalizar_usuario(usuario) == request.state.usuario['usuario']:
+        raise HTTPException(400, 'No puedes borrar tu propio usuario')
+    try:
+        ok = usr.borrar(usuario)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, 'Usuario no encontrado')
+    return {'ok': True}
 
 
 @app.get('/api/estado')
