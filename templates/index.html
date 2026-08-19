@@ -932,7 +932,7 @@
           <div class="kpi verde"><div class="eti">Con compras</div><div class="num" id="paCompras">-</div></div>
           <div class="kpi naranja"><div class="eti">Monto total</div><div class="num" id="paMonto">-</div></div>
         </div>
-        <div class="dos">
+        <div class="dos" id="paBloqueAnalitica">
           <div class="tarjeta">
             <h3>Buscar historial por teléfono o DNI</h3>
             <div class="toolbar">
@@ -1597,6 +1597,8 @@ function aplicarPermisos() {
   const ocultar = (id, ok) => { const el = $(id); if (el) el.classList.toggle('oculto', !ok); };
   ocultar('btnVeNuevo', puedeEditar('venta'));
   ocultar('panelMeta', puedeVerMeta());
+  // Buscar historial y Pacientes para reactivar salen de Analítica.
+  ocultar('paBloqueAnalitica', puedeVer('analitica'));
   document.querySelectorAll('[data-permiso]').forEach(el => {
     el.classList.toggle('oculto', !puedeEditar(el.dataset.permiso));
   });
@@ -3688,7 +3690,7 @@ async function cargarPacientes() {
     ? `${PACIENTES.pacientes.length} contactos${rango} (incluye agendados que aún no asistieron).`
     : `${PACIENTES.pacientes.length} pacientes${rango}: solo quienes fueron al consultorio, hayan comprado o no.`;
   pintarPacientes();
-  cargarReactivar();
+  if (puedeVer('analitica')) cargarReactivar();
 }
 async function buscarHistorial() {
   const q = $('paBuscarHist').value.trim();
