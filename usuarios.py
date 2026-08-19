@@ -63,7 +63,9 @@ RECURSOS = {
     'caja': ['/api/crm/caja', '/api/crm/cuotas'],
     'inventario': ['/api/crm/inventario'],
     'planilla': ['/api/crm/planilla'],
-    'pipeline': ['/api/crm/pipeline', '/api/crm/notas'],
+    'pipeline': ['/api/crm/pipeline'],
+    # Las notas se ven dentro de la ficha del paciente, no sólo en el pipeline.
+    'notas': ['/api/crm/notas'],
     'pacientes': ['/api/crm/pacientes'],
     'historias': ['/api/crm/historias'],
     'dashboard': ['/api/crm/dashboard'],
@@ -96,8 +98,8 @@ ROLES = {
         'secciones': ['panel', 'hoy', 'calendario', 'pacientes'],
         # 'agendados' no es una sección suya, pero Hoy y Calendario leen y
         # marcan citas ahí: sin ese permiso no podría atender su propio día.
-        'lectura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias'],
-        'escritura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias'],
+        'lectura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias', 'notas'],
+        'escritura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias', 'notas'],
         # Igual que CRM: "compró" escribe en VENTA DIARIA y el médico no
         # registra ventas.
         'denegar': [('POST', '/api/crm/agendados/*/compro')],

@@ -64,7 +64,8 @@ HOJAS = {
     'HISTORIAS': ['ID', 'FECHA', 'HORA', 'PACIENTE', 'TELEFONO', 'DNI', 'EDAD',
                   'DOCTOR', 'MOTIVO', 'ANTECEDENTES', 'ALERGIAS', 'DIAGNOSTICO',
                   'TRATAMIENTO', 'INDICACIONES', 'PROXIMO_CONTROL',
-                  'OBSERVACION', 'AGENDADO_FILA'],
+                  'OBSERVACION', 'AGENDADO_FILA', 'DIRECCION', 'PATOLOGICO',
+                  'PIEL', 'ANATOMIA', 'CITAS'],
 }
 
 TARJETA_COLS = {'id': 'A', 'nombre': 'B', 'telefono': 'C', 'etapa': 'D',
@@ -1660,6 +1661,109 @@ HISTORIA_TEXTOS = {
     'P': 'observacion',
 }
 
+# Estructura de la ficha en papel "HISTORIA MEDICA DEL PACIENTE". Vive aquí y
+# se le envía al navegador para que el formulario y lo que se guarda no puedan
+# quedar desalineados. Cada bloque se guarda como JSON en una sola celda.
+HISTORIA_PATOLOGICO = [
+    ('alergias', 'Alergias'),
+    ('int_quirurgica', 'Int. quirúrgica'),
+    ('trata_anteriores', 'Tratamientos anteriores'),
+    ('antec_cancerigenos', 'Antec. cancerígenos'),
+    ('articulaciones', 'Articulaciones'),
+    ('protesis', 'Prótesis'),
+    ('varices', 'Várices'),
+    ('enfermedad_renal', 'Enfermedad renal'),
+    ('columna', 'Columna'),
+    ('glandular', 'Glandular'),
+    ('medicamentos', 'Medicamentos'),
+    ('tiroides', 'Tiroides'),
+    ('enfermedad_cardiaca', 'Enfer. cardiaca'),
+    ('hipo', 'Hipo'),
+    ('digestion', 'Digestión'),
+    ('hiper', 'Hiper'),
+    ('menopausia', 'Menopausia'),
+    ('menstruaciones_regulares', 'Menstruaciones regulares'),
+    ('actividad_fisica', 'Actividad física'),
+    ('fuma', 'Fuma'),
+    ('aumento_peso_menstrual', '¿Advierte aumento de peso en periodo menstrual?'),
+    ('anticonceptivos', '¿Toma anticonceptivos o medicamento hormonal?'),
+]
+HISTORIA_PIEL = [
+    ('piel_seca', 'Piel seca'),
+    ('piel_grasa', 'Piel grasa'),
+    ('levemente_seca', 'Levemente seca'),
+    ('levemente_grasa', 'Levemente grasa'),
+    ('medianamente_seca', 'Medianamente seca'),
+    ('medianamente_grasa', 'Medianamente grasa'),
+    ('muy_seca', 'Piel muy seca'),
+    ('muy_grasa', 'Piel muy grasa'),
+]
+HISTORIA_ANATOMIA = [
+    ('tox_rostro', 'Tox. botulínica rostro'),
+    ('tox_masetero', 'Tox. botulínica masetero'),
+    ('ah_labios', 'A.H. en labios'),
+    ('ah_nasogenianos', 'A.H. surcos nasogenianos'),
+    ('ah_anclaje', 'A.H. puntos de anclaje'),
+    ('ah_ojeras', 'A.H. ojeras'),
+    ('ah_maxilar', 'A.H. maxilar'),
+    ('prp_facial', 'PRP facial'),
+    ('prp_capilar', 'PRP capilar'),
+    ('bioestimulador', 'Bioestimulador'),
+    ('otros', 'Otros (especificar)'),
+]
+HISTORIA_CITA_COLS = ['fecha', 'tratamiento', 'cita', 'monto', 'saldo']
+# Bloque estructurado -> letra de la celda donde se guarda su JSON.
+HISTORIA_BLOQUES = {'patologico': 'S', 'piel': 'T', 'anatomia': 'U', 'citas': 'V'}
+
+CATALOGO_HISTORIA = {
+    'patologico': [{'clave': c, 'etiqueta': e} for c, e in HISTORIA_PATOLOGICO],
+    'piel': [{'clave': c, 'etiqueta': e} for c, e in HISTORIA_PIEL],
+    'anatomia': [{'clave': c, 'etiqueta': e} for c, e in HISTORIA_ANATOMIA],
+    'cita_columnas': HISTORIA_CITA_COLS,
+}
+
+
+def _leer_json(valor, por_defecto):
+    """Las celdas de bloques guardan JSON; una celda vacía o corrupta no debe
+    tumbar la lectura de toda la historia."""
+    if not valor:
+        return por_defecto
+    try:
+        d = json.loads(valor)
+    except (json.JSONDecodeError, TypeError):
+        return por_defecto
+    return d if isinstance(d, type(por_defecto)) else por_defecto
+
+
+def _limpiar_sino(datos, catalogo):
+    """Sólo se guardan las claves del catálogo y sólo SI/NO: nada de texto
+    libre entrando por la puerta de atrás del JSON."""
+    validas = {c for c, _ in catalogo}
+    out = {}
+    for k, v in (datos or {}).items():
+        if k in validas:
+            s = str(v or '').strip().upper()
+            if s in ('SI', 'NO'):
+                out[k] = s
+    return out
+
+
+def _limpiar_anatomia(datos):
+    validas = {c for c, _ in HISTORIA_ANATOMIA}
+    return {k: str(v or '').strip()[:300] for k, v in (datos or {}).items()
+            if k in validas and str(v or '').strip()}
+
+
+def _limpiar_citas(filas):
+    out = []
+    for f in (filas or [])[:40]:
+        if not isinstance(f, dict):
+            continue
+        fila = {c: str(f.get(c) or '').strip()[:120] for c in HISTORIA_CITA_COLS}
+        if any(fila.values()):
+            out.append(fila)
+    return out
+
 
 def _historia_named(f):
     d = {
@@ -1669,6 +1773,11 @@ def _historia_named(f):
         'dni': f.get('F'), 'edad': am.num(f.get('G')),
         'doctor': f.get('H'),
         'agendado_fila': am.num(f.get('Q')),
+        'direccion': f.get('R'),
+        'patologico': _leer_json(f.get('S'), {}),
+        'piel': _leer_json(f.get('T'), {}),
+        'anatomia': _leer_json(f.get('U'), {}),
+        'citas': _leer_json(f.get('V'), []),
     }
     for letra, campo in HISTORIA_TEXTOS.items():
         d[campo] = f.get(letra)
@@ -1722,6 +1831,18 @@ def _fila_historia(datos, base=None):
     poner('H', 'doctor', str(datos.get('doctor') or '').strip())
     for letra, campo in HISTORIA_TEXTOS.items():
         poner(letra, campo, str(datos.get(campo) or '').strip())
+    poner('R', 'direccion', str(datos.get('direccion') or '').strip())
+    # Los bloques van como JSON en una celda: se guardan enteros o no se tocan.
+    limpiadores = {
+        'patologico': lambda v: _limpiar_sino(v, HISTORIA_PATOLOGICO),
+        'piel': lambda v: _limpiar_sino(v, HISTORIA_PIEL),
+        'anatomia': _limpiar_anatomia,
+        'citas': _limpiar_citas,
+    }
+    for campo, letra in HISTORIA_BLOQUES.items():
+        if not parcial or campo in datos:
+            valor = limpiadores[campo](datos.get(campo))
+            f[letra] = json.dumps(valor, ensure_ascii=False) if valor else ''
     if am.num(datos.get('agendado_fila')):
         f['Q'] = am.num(datos['agendado_fila'])
     if not f.get('B'):

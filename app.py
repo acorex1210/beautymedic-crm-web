@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import openpyxl
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -275,6 +275,12 @@ class HistoriaReq(BaseModel):
     proximo_control: str = ''
     observacion: str = ''
     agendado_fila: Optional[int] = None
+    direccion: str = ''
+    # Bloques de la ficha en papel; el servidor filtra sus claves y valores.
+    patologico: Optional[Dict[str, str]] = None
+    piel: Optional[Dict[str, str]] = None
+    anatomia: Optional[Dict[str, str]] = None
+    citas: Optional[List[Dict[str, str]]] = None
 
 
 class ReprogramarReq(BaseModel):
@@ -1883,7 +1889,8 @@ async def crm_historias_clinicas(telefono: str = '', paciente: str = '',
                 'historias': cp.leer_historias(telefono=telefono or None,
                                                paciente=paciente or None,
                                                desde=desde or None,
-                                               hasta=hasta or None)}
+                                               hasta=hasta or None),
+                'catalogo': cp.CATALOGO_HISTORIA}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudieron leer las historias clínicas: {e}')
 

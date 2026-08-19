@@ -46,6 +46,17 @@
   .nav a .ico { width: 20px; height: 20px; flex: 0 0 20px; }
   .nav .sub { font-size: 11px; color: #6d80a8; text-transform: uppercase; letter-spacing: .6px; padding: 14px 12px 6px; }
   .side-pies { padding: 12px 16px 18px; border-top: 1px solid rgba(255,255,255,.08); font-size: 11px; color: #8fa3c8; }
+  /* Ficha clínica: bloques de SÍ/NO en dos columnas, como el papel. */
+  .his-grupo { margin: 20px 0 10px; }
+  .sino-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
+  .sino { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; }
+  .sino:hover { background: #f6f8fc; }
+  .sino .et { flex: 1; font-size: 13.5px; min-width: 0; }
+  .sino .ops { display: flex; gap: 4px; flex: none; }
+  .sino .ops label { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--gris); cursor: pointer; padding: 3px 8px; border: 1px solid var(--borde); border-radius: 7px; margin: 0; text-transform: none; letter-spacing: 0; }
+  .sino .ops input { width: auto; margin: 0; accent-color: var(--azul); cursor: pointer; }
+  .sino .ops label:has(input:checked) { border-color: var(--azul); background: #eef3fc; color: var(--azul); }
+  @media (max-width: 620px) { .sino-grid { grid-template-columns: 1fr; } }
   .side-usuario { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 10px; }
   .side-usuario .av { width: 32px; height: 32px; border-radius: 9px; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex: none; }
   .side-usuario .dat { min-width: 0; flex: 1; }
@@ -159,6 +170,9 @@
     position: fixed; inset: 0; background: rgba(16,32,66,.55); display: none; align-items: flex-start;
     justify-content: center; z-index: 50; padding: 40px 16px; overflow: auto;
   }
+  /* La ficha clínica se abre encima de la del paciente: sin esto quedaría
+     debajo, porque el modal de paciente va después en el documento. */
+  #modalHistoria { z-index: 60; }
   .modal-fondo.abierto { display: flex; }
   .modal {
     background: #fff; border-radius: 14px; width: 100%; max-width: 780px; box-shadow: 0 20px 50px rgba(0,0,0,.3);
@@ -1231,8 +1245,26 @@
         <div class="campo ancho"><label>Diagnóstico</label><input type="text" id="hisDiagnostico"></div>
         <div class="campo ancho"><label>Tratamiento realizado</label><input type="text" id="hisTratamiento" placeholder="Producto, zona, dosis / unidades&hellip;"></div>
         <div class="campo ancho"><label>Indicaciones</label><input type="text" id="hisIndicaciones" placeholder="Cuidados posteriores, receta&hellip;"></div>
-        <div class="campo ancho"><label>Observaciones</label><input type="text" id="hisObservacion"></div>
+        <div class="campo ancho"><label>Dirección</label><input type="text" id="hisDireccion"></div>
       </div>
+
+      <div class="grupo his-grupo">Informe patológico</div>
+      <div class="sino-grid" id="hisPatologico"></div>
+
+      <div class="grupo his-grupo">Calidad de piel <span class="nota">(la llena el médico tratante)</span></div>
+      <div class="sino-grid" id="hisPiel"></div>
+
+      <div class="grupo his-grupo">Anatomía facial</div>
+      <div class="form-grid" id="hisAnatomia"></div>
+
+      <div class="grupo his-grupo">Observaciones</div>
+      <textarea id="hisObservacion" rows="4" placeholder="Notas del médico&hellip;"
+        style="width:100%;padding:10px 12px;border:1px solid var(--borde);border-radius:9px;font-family:inherit;font-size:14px;resize:vertical;"></textarea>
+
+      <div class="grupo his-grupo">Programación de citas</div>
+      <div class="tabla-wrap"><table class="drive" id="hisCitas"></table></div>
+      <button type="button" class="btn borde pequeno" id="btnHisCitaFila" style="margin-top:8px;">+ Agregar fila</button>
+
       <div class="msg err oculto" id="msgHisForm"></div>
       <div class="pies">
         <button type="button" class="btn rojo oculto" id="btnHisBorrar">Borrar</button>
@@ -1274,7 +1306,13 @@
     <div class="resumen" id="paDetKpis"></div>
     <div class="grupo" style="margin:6px 0 10px;">Tratamientos realizados</div>
     <div class="tabla-wrap"><table class="drive" id="paDetTratamientos"></table></div>
-    <div class="grupo" style="margin:16px 0 10px;">Historia clínica (PDF)</div>
+    <div class="grupo" style="margin:16px 0 10px;display:flex;align-items:center;gap:10px;">
+      Historia clínica
+      <button type="button" class="btn verde pequeno" id="btnPaHistoriaNueva" style="margin-left:auto;">+ Nueva historia clínica</button>
+    </div>
+    <div id="paDetFichas"></div>
+
+    <div class="grupo" style="margin:16px 0 10px;">Documentos escaneados (PDF)</div>
     <div id="paDetHistorias"></div>
     <form id="formHistoria" style="margin-top:10px;">
       <div class="form-grid">
@@ -3791,8 +3829,44 @@ async function abrirModalPaciente(pidx) {
   $('notaTexto').value = '';
   $('hcArchivo').value = ''; $('hcNota').value = '';
   $('modalPaciente').classList.add('abierto');
-  await Promise.all([cargarNotasPaciente(), cargarHistoriasPaciente()]);
+  await Promise.all([cargarNotasPaciente(), cargarHistoriasPaciente(), cargarFichasPaciente()]);
 }
+
+/* Fichas clínicas estructuradas del paciente (las que se llenan en el
+   formulario, no los PDF escaneados). */
+let FICHAS_PACIENTE = [];
+async function cargarFichasPaciente() {
+  const cont = $('paDetFichas');
+  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
+  try {
+    const qs = new URLSearchParams();
+    if (pacienteActual.telefono) qs.set('telefono', pacienteActual.telefono);
+    if (pacienteActual.nombre) qs.set('paciente', pacienteActual.nombre);
+    const r = await api('/api/crm/historias?' + qs);
+    HIS_CATALOGO = r.catalogo || HIS_CATALOGO;
+    if (HIS_CATALOGO) pintarBloquesHistoria();
+    FICHAS_PACIENTE = r.historias;
+    cont.innerHTML = FICHAS_PACIENTE.length ? FICHAS_PACIENTE.map((h, i) => `
+      <div class="item-hoy">
+        <span class="chip ok">FICHA</span>
+        <div class="info"><b>${esc(h.fecha || '')}${h.hora ? ' · ' + esc(h.hora) : ''}</b>
+          <small>${esc(h.diagnostico || h.motivo || 'Sin diagnóstico anotado')}${h.doctor ? ' · ' + esc(h.doctor) : ''}</small></div>
+        <button class="btn borde pequeno" onclick="abrirFichaPaciente(${i})">Abrir</button>
+      </div>`).join('') : '<div class="vacio">Sin historias clínicas registradas. Crea la primera con "+ Nueva historia clínica".</div>';
+  } catch (e) { cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; }
+}
+function abrirFichaPaciente(i) {
+  HISTORIA_BASE = null;
+  abrirModalHistoria(FICHAS_PACIENTE[i], null);
+}
+$('btnPaHistoriaNueva').addEventListener('click', () => {
+  if (!pacienteActual) return;
+  HISTORIA_BASE = null;
+  abrirModalHistoria(null, {
+    paciente: pacienteActual.nombre || '', telefono: pacienteActual.telefono || '',
+    fecha: hoyISO(),
+  });
+});
 function pintarTratamientosPaciente(p) {
   const ts = p.tratamientos || [];
   if (!ts.length) {
@@ -3948,18 +4022,96 @@ const HIS_CAMPOS = {
   hisAntecedentes: 'antecedentes', hisAlergias: 'alergias',
   hisDiagnostico: 'diagnostico', hisTratamiento: 'tratamiento',
   hisIndicaciones: 'indicaciones', hisObservacion: 'observacion',
+  hisDireccion: 'direccion',
 };
+
+/* Estructura de la ficha en papel. La manda el servidor junto con las
+   historias, así el formulario y lo que se guarda no pueden desalinearse. */
+let HIS_CATALOGO = null;
+
+async function asegurarCatalogoHistoria() {
+  if (HIS_CATALOGO) return HIS_CATALOGO;
+  const r = await api('/api/crm/historias?paciente=__catalogo__');
+  HIS_CATALOGO = r.catalogo;
+  pintarBloquesHistoria();
+  return HIS_CATALOGO;
+}
+function pintarBloquesHistoria() {
+  const sino = (pre, items) => items.map(it => `
+    <div class="sino">
+      <span class="et">${esc(it.etiqueta)}</span>
+      <span class="ops">
+        <label><input type="radio" name="${pre}_${it.clave}" value="SI"> SÍ</label>
+        <label><input type="radio" name="${pre}_${it.clave}" value="NO"> NO</label>
+      </span>
+    </div>`).join('');
+  $('hisPatologico').innerHTML = sino('pat', HIS_CATALOGO.patologico);
+  $('hisPiel').innerHTML = sino('piel', HIS_CATALOGO.piel);
+  $('hisAnatomia').innerHTML = HIS_CATALOGO.anatomia.map(it => `
+    <div class="campo"><label>${esc(it.etiqueta)}</label>
+      <input type="text" data-anat="${esc(it.clave)}"></div>`).join('');
+}
+function leerSino(pre, items) {
+  const out = {};
+  items.forEach(it => {
+    const m = document.querySelector(`input[name="${pre}_${it.clave}"]:checked`);
+    if (m) out[it.clave] = m.value;
+  });
+  return out;
+}
+function ponerSino(pre, items, datos) {
+  items.forEach(it => {
+    const v = (datos || {})[it.clave];
+    document.querySelectorAll(`input[name="${pre}_${it.clave}"]`).forEach(r => {
+      r.checked = r.value === v;
+    });
+  });
+}
+function filaCita(c) {
+  const celda = (campo, tipo) => `<td><input type="${tipo}" data-cita="${campo}"
+    value="${esc((c || {})[campo] || '')}" style="width:100%;padding:6px 8px;border:1px solid var(--borde);border-radius:7px;font-size:13px;"></td>`;
+  return `<tr>${celda('fecha', 'date')}${celda('tratamiento', 'text')}${celda('cita', 'text')}${celda('monto', 'text')}${celda('saldo', 'text')}
+    <td><button type="button" class="btn rojo pequeno" onclick="this.closest('tr').remove()">Quitar</button></td></tr>`;
+}
+function pintarCitasHistoria(citas) {
+  const filas = (citas && citas.length ? citas : [null]).map(filaCita).join('');
+  $('hisCitas').innerHTML = '<thead><tr><th>Fecha</th><th>Tratamiento</th><th>Cita</th><th>Monto</th><th>Saldo</th><th></th></tr></thead><tbody>' + filas + '</tbody>';
+}
+function leerCitasHistoria() {
+  return [...$('hisCitas').querySelectorAll('tbody tr')].map(tr => {
+    const f = {};
+    tr.querySelectorAll('[data-cita]').forEach(i => { f[i.dataset.cita] = i.value.trim(); });
+    return f;
+  }).filter(f => Object.values(f).some(v => v));
+}
+$('btnHisCitaFila').addEventListener('click', () => {
+  $('hisCitas').querySelector('tbody').insertAdjacentHTML('beforeend', filaCita(null));
+});
+
 function limpiarFormHistoria() {
   Object.keys(HIS_CAMPOS).forEach(id => { $(id).value = ''; });
+  if (HIS_CATALOGO) {
+    ponerSino('pat', HIS_CATALOGO.patologico, {});
+    ponerSino('piel', HIS_CATALOGO.piel, {});
+    $('hisAnatomia').querySelectorAll('[data-anat]').forEach(i => { i.value = ''; });
+  }
+  pintarCitasHistoria([]);
   $('msgHisForm').classList.add('oculto');
 }
-function abrirModalHistoria(h, base) {
+async function abrirModalHistoria(h, base) {
+  await asegurarCatalogoHistoria();
   limpiarFormHistoria();
   historiaEditando = h ? h.id : null;
   const d = h || base || {};
   Object.entries(HIS_CAMPOS).forEach(([id, campo]) => {
     if (d[campo] !== undefined && d[campo] !== null) $(id).value = d[campo];
   });
+  ponerSino('pat', HIS_CATALOGO.patologico, d.patologico);
+  ponerSino('piel', HIS_CATALOGO.piel, d.piel);
+  $('hisAnatomia').querySelectorAll('[data-anat]').forEach(i => {
+    i.value = (d.anatomia || {})[i.dataset.anat] || '';
+  });
+  pintarCitasHistoria(d.citas);
   if (!$('hisFecha').value) $('hisFecha').value = hoyISO();
   $('hisTitulo').textContent = h ? `Historia clínica · ${h.paciente || ''}` : 'Nueva historia clínica';
   $('btnHisGuardar').textContent = h ? 'Guardar cambios' : 'Guardar historia';
@@ -3996,6 +4148,13 @@ $('formHistoriaClinica').addEventListener('submit', async (e) => {
   Object.entries(HIS_CAMPOS).forEach(([id, campo]) => {
     payload[campo] = campo === 'edad' ? ($(id).value ? +$(id).value : null) : $(id).value.trim();
   });
+  payload.patologico = leerSino('pat', HIS_CATALOGO.patologico);
+  payload.piel = leerSino('piel', HIS_CATALOGO.piel);
+  payload.anatomia = {};
+  $('hisAnatomia').querySelectorAll('[data-anat]').forEach(i => {
+    if (i.value.trim()) payload.anatomia[i.dataset.anat] = i.value.trim();
+  });
+  payload.citas = leerCitasHistoria();
   try {
     if (historiaEditando) {
       await api('/api/crm/historias/' + historiaEditando, {
@@ -4006,9 +4165,13 @@ $('formHistoriaClinica').addEventListener('submit', async (e) => {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
     }
-    cerrarModales();
+    // Se cierra sólo esta ventana: si se abrió desde la ficha del paciente,
+    // esa queda visible detrás y se le refresca la lista.
+    $('modalHistoria').classList.remove('abierto');
     HISTORIA_BASE = null;
     toast('Historia clínica guardada', 'okm');
+    if ($('modalPaciente').classList.contains('abierto')) cargarFichasPaciente();
+    else cerrarModales();
   } catch (err) {
     $('msgHisForm').textContent = err.message; $('msgHisForm').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = historiaEditando ? 'Guardar cambios' : 'Guardar historia'; }
@@ -4017,7 +4180,10 @@ $('btnHisBorrar').addEventListener('click', async () => {
   if (!historiaEditando || !confirm('¿Borrar esta historia clínica? Esta acción no se puede deshacer.')) return;
   try {
     await api('/api/crm/historias/' + historiaEditando, { method: 'DELETE' });
-    cerrarModales(); toast('Historia clínica borrada', 'okm');
+    $('modalHistoria').classList.remove('abierto');
+    toast('Historia clínica borrada', 'okm');
+    if ($('modalPaciente').classList.contains('abierto')) cargarFichasPaciente();
+    else cerrarModales();
   } catch (err) { toast(err.message, 'err'); }
 });
 
