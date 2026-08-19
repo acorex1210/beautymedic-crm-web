@@ -900,6 +900,18 @@ async def crm_agendados():
     for campo in ('campana', 'red_social'):
         if extra.get(campo):
             valores[campo] = sorted(set(valores.get(campo, [])) | set(extra[campo]))
+    # Marca de asistencia/compra para los filtros. Si VENTA DIARIA falla, la
+    # lista de agendados se sigue mostrando: sólo se pierden esos filtros.
+    try:
+        asistencia = cp.asistencia_agendados(data['filas'])
+    except Exception:  # noqa: BLE001
+        asistencia = {}
+    for f in data['filas']:
+        a = asistencia.get(f.get('_fila'))
+        if a:
+            f['_asistio'] = a['asistio']
+            f['_compro'] = a['compro']
+            f['_fecha_cita'] = a['fecha_cita']
     return {
         'ok': True,
         'filas': data['filas'],

@@ -489,6 +489,64 @@ def _vino_a_consulta(v):
     return 'NO ASISTIO' not in _status_normalizado(v)
 
 
+def _claves_persona(tel, nombre):
+    """Claves para cruzar a una misma persona: por teléfono y por nombre."""
+    claves = []
+    t = _tel_digitos(tel)
+    if t:
+        claves.append('t' + t)
+    n = _status_normalizado(nombre)
+    if n:
+        claves.append('n' + n)
+    return claves
+
+
+def asistencia_agendados(filas=None):
+    """Cruza AGENDADOS con VENTA DIARIA para saber quién fue y quién compró.
+
+    No basta con la columna CONFIRMADO: en la práctica casi nunca se marca, así
+    que la asistencia se deduce también de tener una venta el mismo día de la
+    cita. Devuelve {fila: {'asistio', 'compro', 'monto', 'fecha_cita'}}.
+    """
+    if filas is None:
+        filas = cd.leer_agendados()['filas']
+
+    ventas = {}
+    for v in cd.leer_venta()['hojas'].values():
+        for f in v['filas']:
+            iso = _fecha_iso(f.get('B'), f.get('C'), f.get('D'))
+            if not iso:
+                continue
+            for k in _claves_persona(f.get('F'), f.get('G')):
+                d = ventas.setdefault((k, iso),
+                                      {'vino': False, 'compro': False, 'monto': 0.0})
+                if _vino_a_consulta(f.get('N')):
+                    d['vino'] = True
+                if _es_venta_registrada(f.get('N')):
+                    d['compro'] = True
+                    d['monto'] += am.num(f.get('O')) or 0
+
+    out = {}
+    for f in filas:
+        fila = f.get('_fila')
+        if not isinstance(fila, int):
+            continue
+        iso = _fecha_iso(f.get('L'), f.get('M'), f.get('N'))
+        asistio = _asistio_agendado(f.get('Q'))
+        compro, monto = False, 0.0
+        if iso:
+            for k in _claves_persona(f.get('I'), f.get('G')):
+                d = ventas.get((k, iso))
+                if not d:
+                    continue
+                asistio = asistio or d['vino']
+                compro = compro or d['compro']
+                monto = max(monto, d['monto'])
+        out[fila] = {'asistio': asistio, 'compro': compro, 'monto': monto,
+                     'fecha_cita': iso}
+    return out
+
+
 def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
     """Directorio de pacientes.
 

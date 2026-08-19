@@ -649,9 +649,13 @@
         <div class="tarjeta">
           <div class="toolbar">
             <div class="buscar"><input type="search" id="agBuscar" placeholder="Buscar por nombre, teléfono, campaña, CRM&hellip;"></div>
-            <select id="agFiltroCrm"><option value="">CRM: todos</option></select>
             <select id="agFiltroCampana"><option value="">Campaña: todas</option></select>
             <select id="agFiltroMes"><option value="">Mes cita: todos</option></select>
+            <select id="agFiltroEstado">
+              <option value="">Estado: todos</option>
+              <option value="no_fueron">Agendaron pero no fueron</option>
+              <option value="sin_compra">Asistieron pero no compraron</option>
+            </select>
             <button class="btn gris" id="btnAgRecargar">Actualizar</button>
             <button class="btn verde" id="btnAgNuevo">+ Nuevo agendado</button>
           </div>
@@ -1745,7 +1749,6 @@ async function cargarAgendados() {
   }
   const col = AG.columnas, orden = Object.keys(col);
   const v = AG.valores;
-  llenarSelect($('agFiltroCrm'), v.crm, 'CRM: todos');
   llenarSelect($('agFiltroCampana'), v.campana, 'Campaña: todas');
   llenarSelect($('agFiltroMes'), MESES, 'Mes cita: todos');
   llenarSelect($('agCrm'), v.crm);
@@ -1785,11 +1788,15 @@ function limpiarConfirmado(lista) {
 
 function agFiltradas() {
   const q = $('agBuscar').value.trim().toLowerCase();
-  const crm = $('agFiltroCrm').value, camp = $('agFiltroCampana').value, mes = $('agFiltroMes').value;
+  const camp = $('agFiltroCampana').value, mes = $('agFiltroMes').value;
+  const estado = $('agFiltroEstado').value;
+  const hoy = hoyISO();
   return AG.filas.filter(f => {
-    if (crm && String(f.B || '').trim() !== crm) return false;
     if (camp && String(f.O || '').trim() !== camp) return false;
     if (mes && String(f.M || '').trim() !== mes) return false;
+    // Sólo cuenta como "no fue" si la cita ya pasó; una cita futura aún no falló.
+    if (estado === 'no_fueron' && (f._asistio || !f._fecha_cita || f._fecha_cita >= hoy)) return false;
+    if (estado === 'sin_compra' && (!f._asistio || f._compro)) return false;
     if (q) {
       const hay = ['G','I','O','B','H','K'].some(c => String(f[c] ?? '').toLowerCase().includes(q));
       if (!hay) return false;
@@ -1830,9 +1837,9 @@ function pintarAgendados() {
 }
 
 $('agBuscar').addEventListener('input', pintarAgendados);
-$('agFiltroCrm').addEventListener('change', pintarAgendados);
 $('agFiltroCampana').addEventListener('change', pintarAgendados);
 $('agFiltroMes').addEventListener('change', pintarAgendados);
+$('agFiltroEstado').addEventListener('change', pintarAgendados);
 $('btnAgRecargar').addEventListener('click', () => { agLimite = 400; cargarAgendados(); });
 $('btnAgNuevo').addEventListener('click', abrirModalAgendado);
 
@@ -3526,12 +3533,6 @@ $('btnTareaBorrar').addEventListener('click', async () => {
 
 /* ---------------- CRM PLUS: HISTORIA CLÍNICA ---------------- */
 let historiaEditando = null;
-/* Fecha de hoy en horario local. No se usa toISOString() porque devuelve UTC
-   y en Lima (UTC-5) adelantaría un día desde las 7 de la noche. */
-function hoyIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 const HIS_CAMPOS = {
   hisPaciente: 'paciente', hisTelefono: 'telefono', hisDni: 'dni', hisEdad: 'edad',
   hisFecha: 'fecha', hisHora: 'hora', hisDoctor: 'doctor',
@@ -3551,7 +3552,7 @@ function abrirModalHistoria(h, base) {
   Object.entries(HIS_CAMPOS).forEach(([id, campo]) => {
     if (d[campo] !== undefined && d[campo] !== null) $(id).value = d[campo];
   });
-  if (!$('hisFecha').value) $('hisFecha').value = hoyIso();
+  if (!$('hisFecha').value) $('hisFecha').value = hoyISO();
   $('hisTitulo').textContent = h ? `Historia clínica · ${h.paciente || ''}` : 'Nueva historia clínica';
   $('btnHisGuardar').textContent = h ? 'Guardar cambios' : 'Guardar historia';
   $('btnHisBorrar').classList.toggle('oculto', !h);
@@ -3563,7 +3564,7 @@ function abrirModalHistoria(h, base) {
 async function abrirHistoriaCita(fila) {
   const c = HOY_DATA.citas.find(x => x.fila === fila);
   if (!c) return;
-  const hoy = hoyIso();
+  const hoy = hoyISO();
   const base = {
     paciente: c.nombre || '', telefono: c.telefono || '', hora: c.hora || '',
     fecha: hoy, agendado_fila: fila,
