@@ -1567,6 +1567,48 @@ def generar_planilla_quincena(anio, mes, quincena):
         return {'creados': creados, 'actualizados': actualizados, 'sin_tocar': sin_tocar}
 
 
+def registrar_extra(trabajador_id, anio, mes, quincena, extra, motivo=''):
+    """Anota un monto extra (horas extra, feriados, bonos) a un trabajador.
+
+    Si esa quincena todavía no estaba generada crea sólo la fila de ese
+    trabajador, para no tener que generar la planilla entera nada más que para
+    apuntar un extra. No toca un pago ya marcado como PAGADO."""
+    anio, quincena = int(anio), int(quincena)
+    mes = str(mes).strip().upper()
+    if quincena not in (1, 2):
+        raise ValueError('La quincena debe ser 1 o 2')
+    if mes not in _MM_IDX:
+        raise ValueError(f'Mes inválido: {mes}')
+    extra = am.num(extra) or 0
+    with _lock:
+        todo = {n: _leer_hoja(n) for n in HOJAS}
+        trabajador = next((_trabajador_named(f) for f in todo['TRABAJADORES']
+                           if am.num(f.get('A')) == int(trabajador_id)), None)
+        if not trabajador:
+            raise ValueError('No se encontró ese trabajador')
+        fila = next((f for f in todo['PLANILLA']
+                     if am.num(f.get('B')) == trabajador['id']
+                     and am.num(f.get('D')) == anio
+                     and str(f.get('E') or '').strip().upper() == mes
+                     and am.num(f.get('F')) == quincena), None)
+        if fila is not None and (fila.get('J') or 'PENDIENTE') == 'PAGADO':
+            raise ValueError('Ese pago ya está marcado como pagado: reábrelo antes de cambiarlo')
+        if fila is None:
+            comision = calcular_comision(trabajador['nombre'], anio, mes, quincena,
+                                         trabajador['porcentaje_comision'],
+                                         trabajador['nombre_ventas'])
+            fila = {'A': _siguiente_id(todo['PLANILLA']), 'B': trabajador['id'],
+                    'C': trabajador['nombre'], 'D': anio, 'E': mes, 'F': quincena,
+                    'G': trabajador['sueldo_quincena'], 'H': comision,
+                    'J': 'PENDIENTE'}
+            todo['PLANILLA'].append(fila)
+        fila['N'] = extra
+        fila['O'] = str(motivo or '').strip()
+        fila['I'] = round((am.num(fila.get('G')) or 0) + (am.num(fila.get('H')) or 0) + extra, 2)
+        _guardar(todo)
+        return _pago_named(fila)
+
+
 def actualizar_pago_planilla(pid, cambios):
     with _lock:
         filas = _leer_hoja('PLANILLA')

@@ -834,8 +834,8 @@
           <p class="nota" style="margin:0 0 12px;">Las filas en gris con estado <b>ESTIMADO</b> son el cálculo de lo que
             le tocaría a cada trabajador activo; aún no están guardadas. "Generar / actualizar" las convierte en pagos reales
             sin tocar los que ya están marcados como Pagado. La <b>comisión</b> se paga una sola vez al mes, en la
-            <b>quincena 2</b>, calculada sobre las ventas de todo el mes. El <b>extra</b> (horas extra, feriados, bonos)
-            se agrega a mano desde "Registrar pago".</p>
+            <b>quincena 2</b>, calculada sobre las ventas de todo el mes. Para horas extra, feriados o bonos usa
+            <b>"+ Monto"</b> en la fila del trabajador: funciona aunque la quincena todavía no esté generada.</p>
           <div class="tabla-wrap"><table class="drive" id="tablaPlanilla"></table></div>
         </div>
 
@@ -1401,6 +1401,26 @@
         <button type="button" class="btn rojo" id="btnTrabBorrar" style="margin-right:auto;">Borrar</button>
         <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
         <button type="submit" class="btn verde" id="btnTrabGuardar">Guardar trabajador</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL MONTO EXTRA ============ -->
+<div class="modal-fondo" id="modalExtra">
+  <div class="modal" style="max-width:520px;">
+    <div class="cab"><h3 id="extraTitulo">Agregar monto</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <form id="formExtra">
+      <div class="form-grid">
+        <div class="campo"><label>Monto extra (S/)</label><input type="number" id="extraMonto" step="0.01" value="0" required></div>
+        <div class="campo"><label>Motivo</label><input type="text" id="extraMotivo" placeholder="ej. 4 h extra + feriado 28 jul"></div>
+      </div>
+      <p class="nota" style="margin:0 0 12px;" id="extraNota"></p>
+      <div class="mensaje err oculto" id="msgExtraForm"></div>
+      <div class="pies">
+        <button type="button" class="btn rojo" id="btnExtraQuitar" style="margin-right:auto;">Quitar monto</button>
+        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+        <button type="submit" class="btn verde" id="btnExtraGuardar">Guardar monto</button>
       </div>
     </form>
   </div>
@@ -2794,8 +2814,8 @@ async function cargarPagosPlanilla() {
         <td class="der"><b>${fmtMon(p.monto_total)}</b></td>
         <td><span class="chip ${p.estado === 'PAGADO' ? 'ok' : (p.estimado ? '' : 'ambar')}">${esc(p.estado)}</span></td>
         <td>${esc(p.fecha_pago || '')}</td>
-        <td>${p.estimado
-              ? '<span class="nota">Genera la planilla para registrarlo</span>'
+        <td>${p.estado === 'PAGADO' ? '' : `<button class="btn borde pequeno" onclick="abrirModalExtra(${p.trabajador_id})">+ Monto</button> `}${p.estimado
+              ? '<span class="nota">Genera la planilla para pagarlo</span>'
               : `<button class="btn borde pequeno" onclick="abrirModalPago(${p.id})">${p.estado === 'PAGADO' ? 'Ver' : 'Registrar pago'}</button>`}</td>
       </tr>`).join('') + '</tbody>'
     : '<tr><td><div class="vacio">Sin trabajadores activos. Agrega uno con "+ Nuevo trabajador".</div></td></tr>';
@@ -2875,6 +2895,52 @@ $('btnTrabBorrar').addEventListener('click', async () => {
     cerrarModales();
     toast('Trabajador borrado', 'okm');
     cargarTrabajadores();
+  } catch (e) { toast(e.message, 'err'); }
+});
+
+let extraEditando = null;
+function abrirModalExtra(trabajadorId) {
+  const p = PLANILLA_PAGOS.concat(PLANILLA_ESTIMADOS).find(x => x.trabajador_id === trabajadorId);
+  if (!p) return;
+  extraEditando = trabajadorId;
+  $('extraTitulo').textContent = `Agregar monto · ${p.nombre} — ${p.mes} ${p.anio} Q${p.quincena}`;
+  $('extraMonto').value = p.extra || 0;
+  $('extraMotivo').value = p.motivo_extra || '';
+  $('extraNota').textContent = p.estimado
+    ? `Se sumará a su sueldo de S/ ${p.sueldo_base}${p.comision ? ' + comisión de S/ ' + p.comision : ''}. Como esta quincena aún no está generada, se creará el pago de ${p.nombre} al guardar.`
+    : `Se suma al sueldo base y la comisión ya calculados (S/ ${p.sueldo_base + p.comision}).`;
+  $('btnExtraQuitar').classList.toggle('oculto', !p.extra);
+  $('msgExtraForm').classList.add('oculto');
+  $('modalExtra').classList.add('abierto');
+  $('extraMonto').focus();
+  $('extraMonto').select();
+}
+async function guardarExtra(monto, motivo) {
+  const p = PLANILLA_PAGOS.concat(PLANILLA_ESTIMADOS).find(x => x.trabajador_id === extraEditando);
+  await api('/api/crm/planilla/extra', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trabajador_id: extraEditando, anio: p.anio, mes: p.mes,
+                           quincena: p.quincena, extra: monto, motivo_extra: motivo }),
+  });
+  cerrarModales();
+  cargarPagosPlanilla();
+}
+$('formExtra').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('btnExtraGuardar'); b.disabled = true;
+  $('msgExtraForm').classList.add('oculto');
+  try {
+    await guardarExtra(+$('extraMonto').value || 0, $('extraMotivo').value.trim());
+    toast('Monto extra guardado', 'okm');
+  } catch (err) {
+    $('msgExtraForm').textContent = err.message; $('msgExtraForm').classList.remove('oculto');
+  } finally { b.disabled = false; }
+});
+$('btnExtraQuitar').addEventListener('click', async () => {
+  if (!confirm('¿Quitar el monto extra de esta quincena?')) return;
+  try {
+    await guardarExtra(0, '');
+    toast('Monto extra quitado', 'okm');
   } catch (e) { toast(e.message, 'err'); }
 });
 

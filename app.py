@@ -412,6 +412,15 @@ class GenerarPlanillaReq(BaseModel):
     quincena: int
 
 
+class ExtraPlanillaReq(BaseModel):
+    trabajador_id: int
+    anio: int
+    mes: str
+    quincena: int
+    extra: float = 0
+    motivo_extra: str = ''
+
+
 class PagoPlanillaReq(BaseModel):
     sueldo_base: Optional[float] = None
     comision: Optional[float] = None
@@ -1805,6 +1814,19 @@ async def planilla_generar(data: GenerarPlanillaReq):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo generar la planilla (Drive): {e}')
     return {'ok': True, **res}
+
+
+@app.post('/api/crm/planilla/extra')
+async def planilla_extra(data: ExtraPlanillaReq):
+    _validar_fecha(None, data.mes, data.anio, requerido_mes=True)
+    try:
+        pago = cp.registrar_extra(data.trabajador_id, data.anio, data.mes,
+                                  data.quincena, data.extra, data.motivo_extra)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo guardar el monto extra (Drive): {e}')
+    return {'ok': True, 'pago': pago}
 
 
 @app.patch('/api/crm/planilla/{pid}')
