@@ -346,6 +346,7 @@ class TrabajadorReq(BaseModel):
     porcentaje_comision: Optional[float] = None
     metodo_pago: str = ''
     cuenta: str = ''
+    nombre_ventas: str = ''
     estado: str = ''
 
 
@@ -358,6 +359,8 @@ class GenerarPlanillaReq(BaseModel):
 class PagoPlanillaReq(BaseModel):
     sueldo_base: Optional[float] = None
     comision: Optional[float] = None
+    extra: Optional[float] = None
+    motivo_extra: str = ''
     estado: str = ''
     metodo_pago: str = ''
     nota: str = ''
@@ -1584,14 +1587,27 @@ async def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
         pagos = cp.leer_planilla(anio or None, mes or None, quincena or None)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo leer la planilla (Drive): {e}')
-    tot = {'sueldo_base': 0.0, 'comision': 0.0, 'monto_total': 0.0,
-           'pendiente': 0.0, 'pagado': 0.0}
+    # Estimado de los que aún no tienen pago generado, para que la pantalla
+    # muestre cuánto se les debería pagar antes de generar la planilla.
+    estimados = []
+    if anio and mes and quincena:
+        try:
+            estimados = cp.previsualizar_planilla(anio, mes, quincena)
+        except Exception:  # noqa: BLE001
+            estimados = []
+    tot = {'sueldo_base': 0.0, 'comision': 0.0, 'extra': 0.0, 'monto_total': 0.0,
+           'pendiente': 0.0, 'pagado': 0.0, 'estimado': 0.0}
     for p in pagos:
         tot['sueldo_base'] += p['sueldo_base']
         tot['comision'] += p['comision']
+        tot['extra'] += p['extra']
         tot['monto_total'] += p['monto_total']
         tot['pagado' if p['estado'] == 'PAGADO' else 'pendiente'] += p['monto_total']
-    return {'ok': True, 'pagos': pagos, 'totales': {k: round(v, 2) for k, v in tot.items()}}
+    for p in estimados:
+        tot['estimado'] += p['monto_total']
+    tot['total_general'] = tot['monto_total'] + tot['estimado']
+    return {'ok': True, 'pagos': pagos, 'estimados': estimados,
+            'totales': {k: round(v, 2) for k, v in tot.items()}}
 
 
 @app.post('/api/crm/planilla/generar')

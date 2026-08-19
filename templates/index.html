@@ -799,6 +799,7 @@
         <div class="kpis">
           <div class="kpi"><div class="eti">Trabajadores</div><div class="num" id="kpiPlTrabajadores">-</div></div>
           <div class="kpi verde"><div class="eti">Total quincena</div><div class="num" id="kpiPlTotal">-</div></div>
+          <div class="kpi"><div class="eti">Por generar (estimado)</div><div class="num" id="kpiPlEstimado">-</div></div>
           <div class="kpi naranja"><div class="eti">Pendiente</div><div class="num" id="kpiPlPendiente">-</div></div>
           <div class="kpi"><div class="eti">Pagado</div><div class="num" id="kpiPlPagado">-</div></div>
         </div>
@@ -815,8 +816,11 @@
             <button class="btn" id="btnPlGenerar">Generar / actualizar planilla</button>
             <button class="btn verde" id="btnPlTrabNuevo" style="margin-left:auto;">+ Nuevo trabajador</button>
           </div>
-          <p class="nota" style="margin:0 0 12px;">"Generar / actualizar" crea el pago de la quincena para cada trabajador
-            activo (sueldo + comisión calculada de VENTA DIARIA) sin tocar los que ya están marcados como Pagado.</p>
+          <p class="nota" style="margin:0 0 12px;">Las filas en gris con estado <b>ESTIMADO</b> son el cálculo de lo que
+            le tocaría a cada trabajador activo; aún no están guardadas. "Generar / actualizar" las convierte en pagos reales
+            sin tocar los que ya están marcados como Pagado. La <b>comisión</b> se paga una sola vez al mes, en la
+            <b>quincena 2</b>, calculada sobre las ventas de todo el mes. El <b>extra</b> (horas extra, feriados, bonos)
+            se agrega a mano desde "Registrar pago".</p>
           <div class="tabla-wrap"><table class="drive" id="tablaPlanilla"></table></div>
         </div>
 
@@ -1312,12 +1316,16 @@
         <div class="campo"><label>% Comisión sobre ventas</label><input type="number" id="trabComision" step="0.1" min="0" max="100" value="0"></div>
         <div class="campo"><label>Método de pago</label><input type="text" id="trabMetodoPago" placeholder="ej. Transferencia, Efectivo, Yape"></div>
         <div class="campo"><label>Cuenta / banco</label><input type="text" id="trabCuenta" placeholder="opcional"></div>
+        <div class="campo ancho"><label>Nombre en VENTA DIARIA (columna Doctor)</label>
+          <input type="text" id="trabNombreVentas" placeholder="ej. DR. BORIS — déjalo vacío si es igual al nombre"></div>
         <div class="campo" id="trabEstadoCampo"><label>Estado</label>
           <select id="trabEstado"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select>
         </div>
       </div>
-      <p class="nota" style="margin:0 0 12px;">El % de comisión se calcula sobre las ventas de VENTA DIARIA cuya columna
-        Doctor coincida exactamente con este nombre (solo ventas con status realizado). Déjalo en 0 si el trabajador no gana comisión.</p>
+      <p class="nota" style="margin:0 0 12px;">El % de comisión se calcula sobre las ventas de VENTA DIARIA atribuidas a
+        esta persona en la columna Doctor (solo ventas con status realizado) y se paga una sola vez al mes, en la
+        <b>quincena 2</b>, sobre las ventas del mes completo. Déjalo en 0 si el trabajador no gana comisión.
+        Si en VENTA DIARIA se escribe distinto (ej. "DR. BORIS" vs "Boris Ramirez"), ponlo en el campo de arriba.</p>
       <div class="mensaje err oculto" id="msgTrabForm"></div>
       <div class="pies">
         <button type="button" class="btn rojo" id="btnTrabBorrar" style="margin-right:auto;">Borrar</button>
@@ -1336,6 +1344,9 @@
       <div class="form-grid">
         <div class="campo"><label>Sueldo base (S/)</label><input type="number" id="pagoSueldo" step="0.01" min="0"></div>
         <div class="campo"><label>Comisión (S/)</label><input type="number" id="pagoComision" step="0.01" min="0"></div>
+        <div class="campo"><label>Monto extra (S/)</label><input type="number" id="pagoExtra" step="0.01" value="0" placeholder="horas extra, feriado, bono"></div>
+        <div class="campo"><label>Motivo del extra</label><input type="text" id="pagoMotivoExtra" placeholder="ej. 4 h extra + feriado 28 jul"></div>
+        <div class="campo ancho"><label>Total a pagar</label><input type="text" id="pagoTotal" readonly style="font-weight:700;background:var(--fondo);"></div>
         <div class="campo"><label>Estado</label>
           <select id="pagoEstado"><option value="PENDIENTE">Pendiente</option><option value="PAGADO">Pagado</option></select>
         </div>
@@ -1414,7 +1425,8 @@ const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
 let TARJETAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
 let INVENTARIO_PRODUCTOS = null, INV_MOVIMIENTOS = null, productoEditando = null, movStockCodigo = null;
-let PLANILLA_TRABAJADORES = null, PLANILLA_PAGOS = null, trabajadorEditando = null, pagoEditando = null;
+let PLANILLA_TRABAJADORES = null, PLANILLA_PAGOS = null, PLANILLA_ESTIMADOS = [],
+    trabajadorEditando = null, pagoEditando = null;
 let hoyFilaActiva = null;
 let HOY_ACCIONES = {};
 let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
@@ -1645,7 +1657,7 @@ async function cargarResumenPanel() {
     const t = plR.value.totales;
     tarjetas.push(`<div class="resumen-card" onclick="pagina('planilla')">
       <h4>Planilla · Q${qNow} ${HOY_M}</h4>
-      <div class="fila"><span class="lab">Total quincena</span><span class="num">${fmtMon(t.monto_total)}</span></div>
+      <div class="fila"><span class="lab">Total quincena</span><span class="num">${fmtMon(t.total_general)}</span></div>
       <div class="fila"><span class="lab">Pendiente</span><span class="num"${t.pendiente ? ' style="color:var(--naranja);"' : ''}>${fmtMon(t.pendiente)}</span></div>
     </div>`);
   }
@@ -2637,25 +2649,33 @@ async function cargarPagosPlanilla() {
   try {
     const r = await api(`/api/crm/planilla?anio=${anio}&mes=${mes}&quincena=${quincena}`);
     PLANILLA_PAGOS = r.pagos;
-    $('kpiPlTotal').textContent = fmtMon(r.totales.monto_total);
+    PLANILLA_ESTIMADOS = r.estimados || [];
+    $('kpiPlTotal').textContent = fmtMon(r.totales.total_general);
     $('kpiPlPendiente').textContent = fmtMon(r.totales.pendiente);
     $('kpiPlPagado').textContent = fmtMon(r.totales.pagado);
+    $('kpiPlEstimado').textContent = fmtMon(r.totales.estimado);
   } catch (e) {
     tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = PLANILLA_PAGOS.length
-    ? '<thead><tr><th>Nombre</th><th class="der">Sueldo base</th><th class="der">Comisión</th><th class="der">Total</th><th>Estado</th><th>Fecha pago</th><th>Acciones</th></tr></thead><tbody>' +
-      PLANILLA_PAGOS.map(p => `<tr>
+  /* Se muestran juntos los pagos ya generados y el estimado de quien todavía
+     no lo tiene, para que la quincena se vea completa desde el primer día. */
+  const filas = PLANILLA_PAGOS.concat(PLANILLA_ESTIMADOS);
+  tbody.innerHTML = filas.length
+    ? '<thead><tr><th>Nombre</th><th class="der">Sueldo base</th><th class="der">Comisión</th><th class="der">Extra</th><th class="der">Total</th><th>Estado</th><th>Fecha pago</th><th>Acciones</th></tr></thead><tbody>' +
+      filas.map(p => `<tr${p.estimado ? ' style="opacity:.6;"' : ''}>
         <td>${esc(p.nombre)}</td>
         <td class="der">${fmtMon(p.sueldo_base)}</td>
         <td class="der">${fmtMon(p.comision)}</td>
+        <td class="der"${p.extra ? ' title="' + esc(p.motivo_extra || '') + '"' : ''}>${p.extra ? fmtMon(p.extra) : '—'}</td>
         <td class="der"><b>${fmtMon(p.monto_total)}</b></td>
-        <td><span class="chip ${p.estado === 'PAGADO' ? 'ok' : 'ambar'}">${esc(p.estado)}</span></td>
+        <td><span class="chip ${p.estado === 'PAGADO' ? 'ok' : (p.estimado ? '' : 'ambar')}">${esc(p.estado)}</span></td>
         <td>${esc(p.fecha_pago || '')}</td>
-        <td><button class="btn borde pequeno" onclick="abrirModalPago(${p.id})">${p.estado === 'PAGADO' ? 'Ver' : 'Registrar pago'}</button></td>
+        <td>${p.estimado
+              ? '<span class="nota">Genera la planilla para registrarlo</span>'
+              : `<button class="btn borde pequeno" onclick="abrirModalPago(${p.id})">${p.estado === 'PAGADO' ? 'Ver' : 'Registrar pago'}</button>`}</td>
       </tr>`).join('') + '</tbody>'
-    : '<tr><td><div class="vacio">Sin pagos generados para esta quincena. Usa "Generar / actualizar planilla".</div></td></tr>';
+    : '<tr><td><div class="vacio">Sin trabajadores activos. Agrega uno con "+ Nuevo trabajador".</div></td></tr>';
 }
 $('btnPlRecargar').addEventListener('click', cargarPagosPlanilla);
 $('plMes').addEventListener('change', cargarPagosPlanilla);
@@ -2684,6 +2704,7 @@ function abrirModalTrabajador(tid) {
   $('trabComision').value = t ? t.porcentaje_comision : 0;
   $('trabMetodoPago').value = t ? (t.metodo_pago || '') : '';
   $('trabCuenta').value = t ? (t.cuenta || '') : '';
+  $('trabNombreVentas').value = t ? (t.nombre_ventas || '') : '';
   $('trabEstado').value = t ? t.estado : 'ACTIVO';
   $('trabEstadoCampo').style.display = t ? '' : 'none';
   $('btnTrabBorrar').classList.toggle('oculto', !t);
@@ -2702,6 +2723,7 @@ $('formTrabajador').addEventListener('submit', async (e) => {
     porcentaje_comision: $('trabComision').value ? +$('trabComision').value : 0,
     metodo_pago: $('trabMetodoPago').value.trim(),
     cuenta: $('trabCuenta').value.trim(),
+    nombre_ventas: $('trabNombreVentas').value.trim(),
   };
   if (trabajadorEditando) payload.estado = $('trabEstado').value;
   try {
@@ -2740,12 +2762,21 @@ function abrirModalPago(pid) {
   $('pagoTitulo').textContent = `Pago de planilla · ${p.nombre} — ${p.mes} ${p.anio} Q${p.quincena}`;
   $('pagoSueldo').value = p.sueldo_base;
   $('pagoComision').value = p.comision;
+  $('pagoExtra').value = p.extra || 0;
+  $('pagoMotivoExtra').value = p.motivo_extra || '';
   $('pagoEstado').value = p.estado;
   $('pagoMetodoPago').value = p.metodo_pago || '';
   $('pagoNota').value = p.nota || '';
+  recalcularTotalPago();
   $('msgPagoForm').classList.add('oculto');
   $('modalPago').classList.add('abierto');
 }
+function recalcularTotalPago() {
+  const n = (id) => +$(id).value || 0;
+  $('pagoTotal').value = fmtMon(n('pagoSueldo') + n('pagoComision') + n('pagoExtra'));
+}
+['pagoSueldo', 'pagoComision', 'pagoExtra'].forEach(id =>
+  $(id).addEventListener('input', recalcularTotalPago));
 $('formPago').addEventListener('submit', async (e) => {
   e.preventDefault();
   const b = $('btnPagoGuardar'); b.disabled = true;
@@ -2756,6 +2787,8 @@ $('formPago').addEventListener('submit', async (e) => {
       body: JSON.stringify({
         sueldo_base: $('pagoSueldo').value ? +$('pagoSueldo').value : 0,
         comision: $('pagoComision').value ? +$('pagoComision').value : 0,
+        extra: $('pagoExtra').value ? +$('pagoExtra').value : 0,
+        motivo_extra: $('pagoMotivoExtra').value.trim(),
         estado: $('pagoEstado').value,
         metodo_pago: $('pagoMetodoPago').value.trim(),
         nota: $('pagoNota').value.trim(),
