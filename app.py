@@ -196,6 +196,7 @@ class VentaReq(BaseModel):
     observacion: str = ''
     producto_codigo: str = ''
     cantidad: Optional[float] = None
+    forzar: bool = False
 
 
 class ReprogramarReq(BaseModel):
@@ -1075,7 +1076,11 @@ async def crm_venta_nuevo(data: VentaReq):
     aviso_inventario = None
     with _bloqueo:
         try:
-            res = crm.agregar_venta(d)
+            res = crm.agregar_venta(d, forzar=bool(d.get('forzar')))
+        except crm.VentaDuplicada as e:
+            raise HTTPException(409, {'error': 'venta_duplicada',
+                                      'mensaje': str(e),
+                                      'existente': e.existente})
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001

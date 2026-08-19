@@ -1388,7 +1388,11 @@ async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   let j = null;
   try { j = await r.json(); } catch (e) { j = { ok: false }; }
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : (j.detail ? JSON.stringify(j.detail) : 'Error del servidor'));
+  if (!r.ok) {
+    const err = new Error(typeof j.detail === 'string' ? j.detail : (j.detail ? JSON.stringify(j.detail) : 'Error del servidor'));
+    err.status = r.status; err.data = j.detail;
+    throw err;
+  }
   return j;
 }
 
@@ -2053,9 +2057,26 @@ $('formVenta').addEventListener('submit', async (e) => {
       toast(`Venta actualizada (fila ${res.fila})`, 'okm');
       veAnioActivo = res.hoja; veLimite = 400; cargarVenta();
     } else {
-      const res = await api('/api/crm/venta', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      const guardar = (p) => api('/api/crm/venta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p),
       });
+      let res;
+      try {
+        res = await guardar(payload);
+      } catch (err) {
+        if (!(err.status === 409 && err.data && err.data.error === 'venta_duplicada')) throw err;
+        const x = err.data.existente || {};
+        const detalle = [x.tratamiento, x.status, x.venta ? fmtMon(x.venta) : ''].filter(Boolean).join(' · ');
+        if (!confirm(`Ya hay una venta de ${x.nombre} el ${x.dia} ${x.mes} ${x.anio || ''} (fila ${x.fila})`
+            + `${detalle ? ':\n' + detalle : ' (fila incompleta)'}\n\n`
+            + 'Para no duplicar, cancela y usa el botón "Editar" de esa fila.\n\n'
+            + '¿Registrar de todos modos como una venta aparte?')) {
+          $('msgVeForm').textContent = `No se guardó: ya existe la fila ${x.fila} de ${x.nombre} ese día. Ciérralo y edita esa fila.`;
+          $('msgVeForm').classList.remove('oculto');
+          return;
+        }
+        res = await guardar({ ...payload, forzar: true });
+      }
       cerrarModales();
       toast(`Venta guardada en ${res.hoja} (fila ${res.fila})`, 'okm');
       if (res.aviso_inventario) toast('Aviso de inventario: ' + res.aviso_inventario, 'err');
@@ -2064,7 +2085,7 @@ $('formVenta').addEventListener('submit', async (e) => {
     }
   } catch (err) {
     $('msgVeForm').textContent = err.message; $('msgVeForm').classList.remove('oculto');
-  } finally { b.disabled = false; b.textContent = 'Guardar venta'; }
+  } finally { b.disabled = false; b.textContent = veEditando ? 'Guardar cambios' : 'Guardar venta'; }
 });
 
 /* ---------------- CRM PLUS: CAJA (arqueo diario) ---------------- */

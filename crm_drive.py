@@ -26,6 +26,7 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
 import zipfile
 from datetime import datetime
 
@@ -685,6 +686,83 @@ def normalizar_venta_edicion(d, hoja='VENTA 2026'):
 
 
 # ============================================================
+# DETECCIÓN DE VENTAS DUPLICADAS
+# ============================================================
+class VentaDuplicada(Exception):
+    """Ya hay una venta del mismo paciente en la misma fecha.
+
+    ``existente`` describe la fila ya registrada para que la UI pueda
+    mostrarla y dejar que el usuario decida (editarla o registrar igual).
+    """
+
+    def __init__(self, existente):
+        self.existente = existente
+        super().__init__('Ya existe una venta de este paciente en esa fecha')
+
+
+def _clave_texto(v):
+    """Texto comparable: sin acentos, en mayúsculas y con espacios colapsados."""
+    s = unicodedata.normalize('NFKD', str(v if v is not None else ''))
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return ' '.join(s.upper().split())
+
+
+def buscar_venta_duplicada(ruta, hoja, valores):
+    """Busca en ``hoja`` una venta ya registrada del mismo paciente y fecha.
+
+    Compara la fecha (día/mes/año) y considera que es el mismo paciente si
+    coincide el nombre normalizado o el teléfono. Sirve tanto para dobles
+    envíos del formulario como para filas que alguien escribió a mano en el
+    Drive antes de registrarlas por la web.
+
+    Devuelve un dict con los datos de la fila encontrada, o None.
+    """
+    nombre = _clave_texto(valores.get('G'))
+    tel = _tel(valores.get('F'))
+    dia, mes, anio = valores.get('B'), valores.get('C'), valores.get('D')
+    if not nombre or not dia or not mes:
+        return None
+    _, campos, _ = _detectar_columnas(ruta, hoja, _HEADERS_VENTA)
+    inv = _mapa_inverso(campos, VENTA_CANON)
+    if not {'B', 'C', 'G'} <= set(inv):
+        return None
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    ws = wb[hoja]
+
+    def celda(fila, cl):
+        real = inv.get(cl)
+        if not real:
+            return None
+        return ws.cell(row=fila,
+                       column=openpyxl.utils.column_index_from_string(real)).value
+
+    encontrada = None
+    for r in range(1, ws.max_row + 1):
+        if _int(celda(r, 'B')) != _int(dia):
+            continue
+        if _clave_texto(celda(r, 'C')) != _clave_texto(mes):
+            continue
+        if anio and _int(celda(r, 'D')) and _int(celda(r, 'D')) != _int(anio):
+            continue
+        mismo_nombre = _clave_texto(celda(r, 'G')) == nombre
+        mismo_tel = bool(tel) and _tel(celda(r, 'F')) == tel
+        if not (mismo_nombre or mismo_tel):
+            continue
+        encontrada = {
+            'fila': r, 'hoja': hoja,
+            'nombre': _txt(celda(r, 'G')),
+            'dia': _int(celda(r, 'B')), 'mes': _txt(celda(r, 'C')),
+            'anio': _int(celda(r, 'D')),
+            'tratamiento': _txt(celda(r, 'L')), 'doctor': _txt(celda(r, 'M')),
+            'status': _txt(celda(r, 'N')), 'venta': am.num(celda(r, 'O')),
+            'coincide_por': 'nombre' if mismo_nombre else 'telefono',
+        }
+        break
+    wb.close()
+    return encontrada
+
+
+# ============================================================
 # AGREGAR FILAS (Google Sheet nativa: append atómico | xlsx: cirugía XML)
 # ============================================================
 def _append_sheets(fid, hoja, valores, ruta):
@@ -977,7 +1055,12 @@ def editar_agendado(fila_num, datos):
             'valores': valores, 'conflicto': conflicto}
 
 
-def agregar_venta(datos):
+def agregar_venta(datos, forzar=False):
+    """Agrega una venta. Con ``forzar=False`` aborta si detecta un duplicado.
+
+    Lanza ``VentaDuplicada`` si ya hay una venta del mismo paciente en la
+    misma fecha, para que el usuario confirme antes de crear una fila doble.
+    """
     anio = am.num(datos.get('anio')) or 2026
     hoja = 'VENTA 2026' if anio >= 2026 else 'VENTA 2025'
     valores = normalizar_venta(datos, hoja)
@@ -985,6 +1068,12 @@ def agregar_venta(datos):
         raise ValueError('Indica el nombre del paciente')
 
     def adaptador(ruta, v):
+        # Se valida aquí porque ``ruta`` es la copia recién descargada que
+        # usará el append: así el chequeo ve el estado real del Drive.
+        if not forzar:
+            existente = buscar_venta_duplicada(ruta, hoja, v)
+            if existente:
+                raise VentaDuplicada(existente)
         return _adaptador_venta(ruta, hoja, v)
 
     with _lock:
