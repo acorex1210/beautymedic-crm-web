@@ -453,9 +453,48 @@ def _clave(tel, nombre):
     return 'n' + str(nombre or '').strip().lower()
 
 
-def leer_pacientes():
+# Orden de meses tal como se escriben en las hojas (SET, no SEP)
+_MESES_NUM = {'ENE': 1, 'FEB': 2, 'MAR': 3, 'ABR': 4, 'MAY': 5, 'JUN': 6,
+              'JUL': 7, 'AGO': 8, 'SET': 9, 'SEP': 9, 'OCT': 10, 'NOV': 11,
+              'DIC': 12}
+
+
+def _fecha_iso(dia, mes, anio):
+    """'YYYY-MM-DD' a partir de día/mes-texto/año de las hojas. None si falta algo."""
+    d = am.num(dia)
+    a = am.num(anio)
+    m = _MESES_NUM.get(_status_normalizado(mes))
+    if not d or not m or not a:
+        return None
+    return f'{int(a):04d}-{m:02d}-{int(d):02d}'
+
+
+def _asistio_agendado(v):
+    """True si el agendado quedó marcado como que el paciente fue al consultorio."""
+    s = _status_normalizado(v)
+    return 'ASISTIO' in s and 'NO ASISTIO' not in s
+
+
+def _vino_a_consulta(v):
+    """True si una fila de VENTA DIARIA implica que el paciente fue al consultorio.
+
+    Una fila en VENTA DIARIA significa que el paciente vino; sea que compró
+    (SE REALIZO) o que sólo fue la consulta (NO SE REALIZO). Sólo se descarta
+    si el status dice explícitamente que no asistió.
+    """
+    return 'NO ASISTIO' not in _status_normalizado(v)
+
+
+def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
+    """Directorio de pacientes.
+
+    Con ``solo_atendidos`` (por defecto) sólo devuelve a quienes fueron al
+    consultorio —compraron o no—, no a todos los agendados. ``desde``/``hasta``
+    ('YYYY-MM-DD') acotan por fecha de atención.
+    """
     ag = cd.leer_agendados()['filas']
-    ve = [f for v in cd.leer_venta()['hojas'].values() for f in v['filas']]
+    ve = [dict(f, _hoja=hoja)
+          for hoja, v in cd.leer_venta()['hojas'].items() for f in v['filas']]
     tar = leer_tarjetas()
     notas = _leer_hoja('NOTAS')
 
@@ -468,9 +507,16 @@ def leer_pacientes():
             p = {'clave': k, 'nombre': nombre, 'telefono': tel, 'correo': '',
                  'crm': '', 'campana': '', 'etapa': None, 'citas': 0,
                  'compras': 0, 'total': 0.0, 'proxima_cita': None,
-                 'ultima_actividad': None, 'notas': 0, 'doctores': ''}
+                 'ultima_actividad': None, 'notas': 0, 'doctores': '',
+                 'atendido': False, 'atenciones': 0, 'ultima_atencion': None,
+                 'tratamientos': []}
             pacientes[k] = p
         return p
+
+    def marcar_atencion(p, fecha):
+        p['atendido'] = True
+        if fecha and (p['ultima_atencion'] is None or fecha > p['ultima_atencion']):
+            p['ultima_atencion'] = fecha
 
     for f in ag:
         tel = f.get('I')
@@ -483,6 +529,8 @@ def leer_pacientes():
         if not p['correo'] and f.get('J'):
             p['correo'] = str(f['J']).strip()
         p['citas'] += 1
+        if _asistio_agendado(f.get('Q')):
+            marcar_atencion(p, _fecha_iso(f.get('L'), f.get('M'), f.get('N')))
         if f.get('L') and f.get('M') and f.get('N'):
             fecha = f'{f["L"]}/{f["M"]}/{f["N"]}'
             hora = f.get('P') or ''
@@ -508,6 +556,20 @@ def leer_pacientes():
             fecha = f'{f["B"]}/{f["C"]}/{f["D"]}'
             if p['ultima_actividad'] is None or fecha > p['ultima_actividad'].split(' ')[0]:
                 p['ultima_actividad'] = fecha
+        if _vino_a_consulta(f.get('N')):
+            iso = _fecha_iso(f.get('B'), f.get('C'), f.get('D'))
+            marcar_atencion(p, iso)
+            p['atenciones'] += 1
+            p['tratamientos'].append({
+                'fecha': iso,
+                'fecha_texto': f'{f.get("B") or ""} {f.get("C") or ""} {f.get("D") or ""}'.strip(),
+                'tratamiento': str(f.get('L') or '').strip(),
+                'doctor': str(f.get('M') or '').strip(),
+                'status': str(f.get('N') or '').strip(),
+                'precio': am.num(f.get('O')) or 0,
+                'pago': str(f.get('P') or '').strip(),
+                'hoja': f.get('_hoja', ''), 'fila': f.get('_fila'),
+            })
 
     for t in tar:
         tel = re.sub(r'\D', '', str(t.get('telefono') or ''))
@@ -532,7 +594,20 @@ def leer_pacientes():
             p['ultima_actividad'] = f['D']
 
     out = list(pacientes.values())
-    out.sort(key=lambda p: (p['ultima_actividad'] or ''), reverse=True)
+    if solo_atendidos:
+        out = [p for p in out if p['atendido']]
+    if desde or hasta:
+        def en_rango(p):
+            fechas = [t['fecha'] for t in p['tratamientos'] if t['fecha']]
+            if p['ultima_atencion']:
+                fechas.append(p['ultima_atencion'])
+            return any((not desde or fe >= desde) and (not hasta or fe <= hasta)
+                       for fe in fechas)
+        out = [p for p in out if en_rango(p)]
+    for p in out:
+        p['tratamientos'].sort(key=lambda t: (t['fecha'] or ''), reverse=True)
+    out.sort(key=lambda p: (p['ultima_atencion'] or p['ultima_actividad'] or ''),
+             reverse=True)
     return out
 
 

@@ -34,6 +34,7 @@ import alimentar_maestro as am          # noqa: E402
 import analitica as ana                 # noqa: E402
 import crm_drive as crm                 # noqa: E402
 import crm_plus as cp                   # noqa: E402
+import historias as hist                # noqa: E402
 import meta_ads as mads                 # noqa: E402
 import recibo_pdf as rp                 # noqa: E402
 import reporte_ventas_pdf as rv         # noqa: E402
@@ -45,6 +46,8 @@ BACKUP_DIR = os.environ.get('BACKUP_DIR', os.path.join(DATA_DIR, 'backups'))
 RECIBOS_DIR = os.environ.get('RECIBOS_DIR', os.path.join(DATA_DIR, 'recibos'))
 META_DIR = os.path.join(DATA_DIR, 'meta_ads')
 os.makedirs(META_DIR, exist_ok=True)
+HISTORIAS_DIR = os.path.join(DATA_DIR, 'historias')
+os.makedirs(HISTORIAS_DIR, exist_ok=True)
 MAX_BACKUPS = int(os.environ.get('MAX_BACKUPS', '12'))
 os.makedirs(REPORTES_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -770,7 +773,8 @@ async def exportar_csv(tipo: str):
         if tipo == 'pacientes':
             filas = cp.leer_pacientes()
             cols = ['nombre', 'telefono', 'correo', 'crm', 'campana', 'citas',
-                    'compras', 'total', 'proxima_cita', 'ultima_actividad', 'notas']
+                    'atenciones', 'compras', 'total', 'proxima_cita',
+                    'ultima_atencion', 'ultima_actividad', 'notas']
             return _csv_response(cols, filas, 'pacientes')
         if tipo == 'analitica':
             return _csv_response(
@@ -1590,11 +1594,66 @@ async def planilla_pago_borrar(pid: int):
 # CRM Plus: Directorio, dashboard y actividades de hoy
 # ============================================================
 @app.get('/api/crm/pacientes')
-async def crm_pacientes():
+async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
+    """Directorio de pacientes.
+
+    Por defecto sólo los que fueron al consultorio (compraron o no).
+    ``todos=true`` incluye a los agendados que aún no asistieron.
+    """
     try:
-        return {'ok': True, 'pacientes': cp.leer_pacientes()}
+        pacientes = cp.leer_pacientes(desde=desde or None, hasta=hasta or None,
+                                      solo_atendidos=not todos)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo armar el directorio (Drive): {e}')
+    docs = hist.conteos(HISTORIAS_DIR)
+    for p in pacientes:
+        p['historias'] = docs.get(hist.carpeta(p['clave']), 0)
+    return {'ok': True, 'pacientes': pacientes}
+
+
+@app.get('/api/crm/pacientes/historias')
+async def crm_historias_listar(clave: str):
+    try:
+        return {'ok': True, 'documentos': hist.listar(HISTORIAS_DIR, clave)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer la historia clínica: {e}')
+
+
+@app.post('/api/crm/pacientes/historias')
+async def crm_historias_subir(clave: str, nota: str = '',
+                              file: UploadFile = File(...)):
+    contenido = await file.read()
+    try:
+        doc = hist.guardar(HISTORIAS_DIR, clave, contenido,
+                           file.filename or 'historia.pdf', nota)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo guardar la historia clínica: {e}')
+    return {'ok': True, 'documento': doc}
+
+
+@app.get('/api/crm/pacientes/historias/{doc_id}')
+async def crm_historias_descargar(doc_id: str, clave: str):
+    try:
+        ruta = hist.ruta(HISTORIAS_DIR, clave, doc_id)
+        doc = hist.documento(HISTORIAS_DIR, clave, doc_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return FileResponse(ruta, media_type='application/pdf',
+                        filename=doc.get('archivo') or 'historia.pdf')
+
+
+@app.delete('/api/crm/pacientes/historias/{doc_id}')
+async def crm_historias_borrar(doc_id: str, clave: str):
+    try:
+        return hist.borrar(HISTORIAS_DIR, clave, doc_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo borrar el documento: {e}')
 
 
 @app.get('/api/crm/dashboard')

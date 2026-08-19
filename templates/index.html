@@ -937,6 +937,13 @@
         <div class="tarjeta" style="margin-top:18px;">
           <div class="toolbar">
             <div class="buscar"><input type="search" id="paBuscar" placeholder="Buscar por nombre o teléfono&hellip;"></div>
+            <label style="font-size:12px;color:var(--gris);">Desde
+              <input type="date" id="paDesde" style="width:auto;padding:4px 8px;"></label>
+            <label style="font-size:12px;color:var(--gris);">Hasta
+              <input type="date" id="paHasta" style="width:auto;padding:4px 8px;"></label>
+            <button class="btn borde pequeno" id="btnPaLimpiarFechas">Limpiar fechas</button>
+            <label style="font-size:12px;color:var(--gris);display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="paTodos" style="width:auto;margin:0;"> Incluir agendados que no asistieron</label>
             <button class="btn gris" id="btnPaRecargar">Actualizar</button>
           </div>
           <div class="nota" id="paNota" style="margin:0 0 10px;"></div>
@@ -1155,10 +1162,23 @@
 
 <!-- ============ MODAL PACIENTE (detalle + notas) ============ -->
 <div class="modal-fondo" id="modalPaciente">
-  <div class="modal" style="max-width: 640px;">
+  <div class="modal" style="max-width: 780px;">
     <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
     <div class="resumen" id="paDetKpis"></div>
-    <div class="grupo" style="margin:6px 0 10px;">Historial de notas</div>
+    <div class="grupo" style="margin:6px 0 10px;">Tratamientos realizados</div>
+    <div class="tabla-wrap"><table class="drive" id="paDetTratamientos"></table></div>
+    <div class="grupo" style="margin:16px 0 10px;">Historia clínica (PDF)</div>
+    <div id="paDetHistorias"></div>
+    <form id="formHistoria" style="margin-top:10px;">
+      <div class="form-grid">
+        <div class="campo"><label>Archivo PDF</label>
+          <input type="file" id="hcArchivo" accept="application/pdf,.pdf" required></div>
+        <div class="campo"><label>Nota (opcional)</label>
+          <input type="text" id="hcNota" placeholder="Ej. control post tratamiento&hellip;"></div>
+      </div>
+      <div class="pies"><button type="submit" class="btn azul" id="btnHcSubir">Subir historia clínica</button></div>
+    </form>
+    <div class="grupo" style="margin:16px 0 10px;">Historial de notas</div>
     <div id="paDetNotas"></div>
     <form id="formNota" style="margin-top:14px;">
       <div class="form-grid">
@@ -3215,9 +3235,17 @@ $('btnPiWhatsappGuardar').addEventListener('click', async () => {
 /* ---------------- CRM PLUS: PACIENTES ---------------- */
 async function cargarPacientes() {
   $('tablaPacientes').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Armando directorio&hellip;</div></td></tr>';
-  try { PACIENTES = await api('/api/crm/pacientes'); }
+  const qs = new URLSearchParams();
+  if ($('paDesde').value) qs.set('desde', $('paDesde').value);
+  if ($('paHasta').value) qs.set('hasta', $('paHasta').value);
+  if ($('paTodos').checked) qs.set('todos', 'true');
+  try { PACIENTES = await api('/api/crm/pacientes' + (qs.toString() ? '?' + qs : '')); }
   catch (e) { $('tablaPacientes').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
-  $('paNota').textContent = `${PACIENTES.pacientes.length} pacientes consolidados desde AGENDADOS, VENTA DIARIA, pipeline y notas.`;
+  const rango = ($('paDesde').value || $('paHasta').value)
+    ? ` atendidos entre ${$('paDesde').value || 'el inicio'} y ${$('paHasta').value || 'hoy'}` : '';
+  $('paNota').textContent = $('paTodos').checked
+    ? `${PACIENTES.pacientes.length} contactos${rango} (incluye agendados que aún no asistieron).`
+    : `${PACIENTES.pacientes.length} pacientes${rango}: solo quienes fueron al consultorio, hayan comprado o no.`;
   pintarPacientes();
   cargarReactivar();
 }
@@ -3290,15 +3318,16 @@ function pintarPacientes() {
   $('paCompras').textContent = conCompras.length;
   $('paMonto').textContent = fmtMon(conCompras.reduce((s, p) => s + (p.total || 0), 0));
   const vis = filt.slice(0, paLimite);
-  $('tablaPacientes').innerHTML = '<thead><tr><th>Paciente</th><th>Teléfono</th><th>CRM</th><th>Campaña</th><th>Etapa</th><th>Citas</th><th>Compras</th><th>Total</th><th>Próxima cita</th><th>Última actividad</th></tr></thead><tbody>' +
+  $('tablaPacientes').innerHTML = '<thead><tr><th>Paciente</th><th>Teléfono</th><th>CRM</th><th>Campaña</th><th>Etapa</th><th>Atenciones</th><th>Compras</th><th>Total</th><th>Historia</th><th>Última atención</th></tr></thead><tbody>' +
     vis.map(p => `<tr style="cursor:pointer;" onclick="abrirModalPaciente(${PACIENTES.pacientes.indexOf(p)})">
       <td><b>${esc(p.nombre || '—')}</b></td>
       <td class="num">${esc(p.telefono || '')}</td>
       <td>${esc(p.crm || '')}</td><td>${esc(p.campana || '')}</td>
       <td>${p.etapa ? `<span class="chip" style="background:#e9edf6;color:var(--azul2);">${esc(p.etapa)}</span>` : ''}</td>
-      <td class="num">${p.citas}</td><td class="num">${p.compras}</td>
+      <td class="num">${p.atenciones || 0}</td><td class="num">${p.compras}</td>
       <td class="num mon">${fmtMon(p.total)}</td>
-      <td>${esc(p.proxima_cita || '')}</td><td>${esc(p.ultima_actividad || '')}</td>
+      <td>${p.historias ? `<span class="chip ok">${p.historias} PDF</span>` : ''}</td>
+      <td>${esc(p.ultima_atencion || p.ultima_actividad || '')}</td>
     </tr>`).join('') + '</tbody>';
   $('paMas').innerHTML = filt.length > paLimite
     ? `<button onclick="paLimite+=200;pintarPacientes()">Mostrar más (${filt.length - paLimite} restantes)</button>`
@@ -3314,11 +3343,74 @@ async function abrirModalPaciente(pidx) {
     <div class="kpi"><div class="eti">Citas</div><div class="num">${p.citas}</div></div>
     <div class="kpi verde"><div class="eti">Compras</div><div class="num">${p.compras}</div></div>
     <div class="kpi naranja"><div class="eti">Total</div><div class="num" style="font-size:18px;">${fmtMon(p.total)}</div></div>`;
+  pintarTratamientosPaciente(p);
   $('notaTipo').value = 'LLAMADA';
   $('notaTexto').value = '';
+  $('hcArchivo').value = ''; $('hcNota').value = '';
   $('modalPaciente').classList.add('abierto');
-  await cargarNotasPaciente();
+  await Promise.all([cargarNotasPaciente(), cargarHistoriasPaciente()]);
 }
+function pintarTratamientosPaciente(p) {
+  const ts = p.tratamientos || [];
+  if (!ts.length) {
+    $('paDetTratamientos').innerHTML = '<tbody><tr><td><div class="vacio">Sin tratamientos registrados en VENTA DIARIA.</div></td></tr></tbody>';
+    return;
+  }
+  const total = ts.reduce((s, t) => s + (t.precio || 0), 0);
+  $('paDetTratamientos').innerHTML = '<thead><tr><th>Fecha</th><th>Tratamiento</th><th>Doctor</th><th>Status</th><th class="der">Precio</th></tr></thead><tbody>' +
+    ts.map(t => `<tr>
+      <td>${esc(t.fecha_texto || t.fecha || '')}</td>
+      <td>${esc(t.tratamiento || '—')}</td>
+      <td>${esc(t.doctor || '')}</td>
+      <td>${chipStatus(t.status)}</td>
+      <td class="num mon der">${t.precio ? fmtMon(t.precio) : ''}</td>
+    </tr>`).join('') +
+    `<tr><td colspan="4"><b>Total</b></td><td class="num mon der"><b>${fmtMon(total)}</b></td></tr></tbody>`;
+}
+async function cargarHistoriasPaciente() {
+  const cont = $('paDetHistorias');
+  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
+  try {
+    const r = await api('/api/crm/pacientes/historias?clave=' + encodeURIComponent(pacienteActual.clave));
+    cont.innerHTML = r.documentos.length ? r.documentos.map(d => `
+      <div class="item-hoy">
+        <span class="chip info">PDF</span>
+        <div class="info"><b>${esc(d.archivo)}</b><small>${esc((d.fecha || '').replace('T', ' '))} · ${(d.bytes / 1024).toFixed(0)} KB${d.nota ? ' · ' + esc(d.nota) : ''}</small></div>
+        <a class="btn borde pequeno" target="_blank" rel="noopener"
+           href="/api/crm/pacientes/historias/${encodeURIComponent(d.id)}?clave=${encodeURIComponent(pacienteActual.clave)}">Ver</a>
+        <button class="btn rojo pequeno" onclick="borrarHistoria('${d.id}')">Borrar</button>
+      </div>`).join('') : '<div class="vacio">Sin historia clínica cargada.</div>';
+  } catch (e) { cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; }
+}
+async function borrarHistoria(docId) {
+  if (!confirm('¿Borrar este PDF de la historia clínica? Esta acción no se puede deshacer.')) return;
+  try {
+    await api(`/api/crm/pacientes/historias/${encodeURIComponent(docId)}?clave=${encodeURIComponent(pacienteActual.clave)}`,
+      { method: 'DELETE' });
+    toast('Documento borrado', 'okm');
+    await cargarHistoriasPaciente();
+    cargarPacientes();
+  } catch (e) { toast(e.message, 'err'); }
+}
+$('formHistoria').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const archivo = $('hcArchivo').files[0];
+  if (!archivo) { toast('Elige un archivo PDF', 'err'); return; }
+  const b = $('btnHcSubir'); b.disabled = true; b.textContent = 'Subiendo…';
+  try {
+    const fd = new FormData();
+    fd.append('file', archivo);
+    const qs = new URLSearchParams({ clave: pacienteActual.clave, nota: $('hcNota').value.trim() });
+    const r = await fetch('/api/crm/pacientes/historias?' + qs, { method: 'POST', body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'No se pudo subir el archivo');
+    toast('Historia clínica cargada', 'okm');
+    $('hcArchivo').value = ''; $('hcNota').value = '';
+    await cargarHistoriasPaciente();
+    cargarPacientes();
+  } catch (err) { toast(err.message, 'err'); }
+  finally { b.disabled = false; b.textContent = 'Subir historia clínica'; }
+});
 async function cargarNotasPaciente() {
   const cont = $('paDetNotas');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
@@ -3352,6 +3444,12 @@ $('formNota').addEventListener('submit', async (e) => {
 });
 $('paBuscar').addEventListener('input', pintarPacientes);
 $('btnPaRecargar').addEventListener('click', cargarPacientes);
+$('paDesde').addEventListener('change', cargarPacientes);
+$('paHasta').addEventListener('change', cargarPacientes);
+$('paTodos').addEventListener('change', cargarPacientes);
+$('btnPaLimpiarFechas').addEventListener('click', () => {
+  $('paDesde').value = ''; $('paHasta').value = ''; cargarPacientes();
+});
 
 /* ---------------- CRM PLUS: TAREAS (contextuales, desde Hoy) ---------------- */
 function abrirModalTarea(t) {
