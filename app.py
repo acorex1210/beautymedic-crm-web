@@ -458,6 +458,7 @@ async def salud():
 class LoginReq(BaseModel):
     usuario: str = ''
     clave: str = ''
+    recordar: bool = False
 
 
 class CambioClaveReq(BaseModel):
@@ -490,9 +491,12 @@ async def login(data: LoginReq, request: Request):
     # No se mira request.url.scheme: detrás del proxy de Railway llega como
     # http y la cookie se quedaría sin Secure. Sólo en local va sin él.
     local = (request.url.hostname or '') in ('localhost', '127.0.0.1')
-    r.set_cookie(COOKIE_SESION, usr.crear_token(perfil['usuario']),
-                 max_age=usr.SESION_HORAS * 3600, httponly=True, samesite='lax',
-                 secure=not local, path='/')
+    horas = usr.SESION_HORAS if data.recordar else usr.SESION_HORAS_CORTA
+    r.set_cookie(COOKIE_SESION, usr.crear_token(perfil['usuario'], horas),
+                 # Sin "recordarme" no lleva max_age: es cookie de sesión y se
+                 # borra al cerrar el navegador, pero sobrevive a recargar.
+                 max_age=horas * 3600 if data.recordar else None,
+                 httponly=True, samesite='lax', secure=not local, path='/')
     return r
 
 

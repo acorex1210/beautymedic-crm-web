@@ -53,6 +53,12 @@
     border: 1px solid #f5c6c0;
   }
   .error.visible { display: block; }
+  .recordar {
+    display: flex; align-items: center; gap: 9px; margin: -4px 0 18px;
+    font-size: 13.5px; font-weight: 500; color: var(--texto);
+    text-transform: none; letter-spacing: 0; cursor: pointer;
+  }
+  .recordar input { width: auto; margin: 0; accent-color: var(--azul); cursor: pointer; }
   .pie { margin-top: 20px; text-align: center; font-size: 12px; color: var(--gris); }
 </style>
 </head>
@@ -71,6 +77,10 @@
            autocomplete="username" required autofocus>
     <label for="clave">Contraseña</label>
     <input type="password" id="clave" name="password" autocomplete="current-password" required>
+    <label class="recordar" for="recordar">
+      <input type="checkbox" id="recordar" checked>
+      <span>Recordar mi sesión en este equipo</span>
+    </label>
     <button type="submit" id="btnEntrar">Ingresar</button>
     <div class="pie">Acceso restringido al personal autorizado</div>
   </form>
@@ -88,6 +98,7 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify({
         usuario: document.getElementById('usuario').value.trim(),
         clave: document.getElementById('clave').value,
+        recordar: document.getElementById('recordar').checked,
       }),
     });
     const j = await r.json().catch(() => ({}));

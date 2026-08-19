@@ -29,6 +29,9 @@ from datetime import datetime
 DATA_DIR = os.environ.get('DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
 ARCHIVO = os.path.join(DATA_DIR, 'usuarios.json')
 ARCHIVO_SECRETO = os.path.join(DATA_DIR, '.sesion_secreto')
+# Sin "recordarme" la sesión dura lo que dure el navegador abierto (y como
+# mucho SESION_HORAS_CORTA); con "recordarme" aguanta la jornada entera.
+SESION_HORAS_CORTA = int(os.environ.get('SESION_HORAS_CORTA', '2'))
 SESION_HORAS = int(os.environ.get('SESION_HORAS', '12'))
 
 _ITERACIONES = 240_000
