@@ -578,7 +578,7 @@
 
       <!-- ============ PANEL (resumen general) ============ -->
       <section id="pag-panel">
-        <div class="tarjeta">
+        <div class="tarjeta" id="panelMeta">
           <h3>Meta de ventas del mes</h3>
           <div class="toolbar">
             <span style="color:var(--gris);font-size:13px;" id="metaEtiquetaMes">Mes actual</span>
@@ -1559,6 +1559,8 @@ const puedeVer = (sec) => !!YO && YO.secciones.includes(sec);
 /* El servidor manda la lista de recursos donde el rol puede escribir; aquí sólo
    se usa para no mostrar botones que igual serían rechazados con 403. */
 const puedeEditar = (rec) => !!YO && (YO.escritura === '*' || YO.escritura.includes(rec));
+/* La meta del mes cruza Meta Ads con Analítica; sin ambas la tarjeta sobra. */
+const puedeVerMeta = () => puedeVer('metaads') && puedeVer('analitica');
 
 async function cargarSesion() {
   const r = await api('/api/yo');
@@ -1594,6 +1596,7 @@ async function cargarSesion() {
 function aplicarPermisos() {
   const ocultar = (id, ok) => { const el = $(id); if (el) el.classList.toggle('oculto', !ok); };
   ocultar('btnVeNuevo', puedeEditar('venta'));
+  ocultar('panelMeta', puedeVerMeta());
   document.querySelectorAll('[data-permiso]').forEach(el => {
     el.classList.toggle('oculto', !puedeEditar(el.dataset.permiso));
   });
@@ -1630,7 +1633,8 @@ function pagina(nombre) {
   if (nombre === 'inventario') cargarInventario();
   if (nombre === 'planilla') cargarPlanilla();
   if (nombre === 'usuarios') cargarUsuarios();
-  if (nombre === 'panel') { cargarEstado(); cargarMetaMensual(); cargarResumenPanel(); }
+  // La meta se alimenta de Meta Ads y Analítica: quien no los ve, no la carga.
+  if (nombre === 'panel') { cargarEstado(); if (puedeVerMeta()) cargarMetaMensual(); cargarResumenPanel(); }
   if (nombre === 'reportes') cargarEstado();
   if (nombre === 'hoy') cargarHoy();
   if (nombre === 'calendario') cargarCalendario();
@@ -1728,17 +1732,29 @@ $('btnMetaGuardar').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'err'); }
 });
 
-/* ---------------- Panel: resumen general ---------------- */
+/* ---------------- Panel: resumen general ----------------
+   El resumen se arma con las secciones del usuario: sólo se piden los
+   endpoints que su rol puede leer, así nadie dispara 403 de fondo ni ve un
+   panel vacío por no tener acceso al dashboard completo. */
 async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
   const qNow = HOY_D <= 15 ? 1 : 2;
-  const [hoyR, cajaR, invR, dashR, plR] = await Promise.allSettled([
-    api('/api/crm/hoy'),
-    api('/api/crm/caja'),
-    api('/api/crm/inventario/productos'),
-    api('/api/crm/dashboard'),
-    api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`),
+  const nada = Promise.reject(new Error('sin acceso'));
+  const si = (sec, p) => (puedeVer(sec) ? p() : nada);
+  // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
+  const quiereAg = puedeVer('agendados') || puedeVer('calendario');
+
+  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR] = await Promise.allSettled([
+    si('hoy', () => api('/api/crm/hoy')),
+    si('caja', () => api('/api/crm/caja')),
+    si('inventario', () => api('/api/crm/inventario/productos')),
+    si('dashboard', () => api('/api/crm/dashboard')),
+    si('planilla', () => api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`)),
+    quiereAg ? api('/api/crm/agendados') : nada,
+    // Con dashboard ya vienen los totales de venta: no se baja el libro entero.
+    (puedeVer('venta') && !puedeVer('dashboard')) ? api('/api/crm/venta') : nada,
+    si('pacientes', () => api('/api/crm/pacientes')),
   ]);
   const tarjetas = [];
 
@@ -1791,6 +1807,53 @@ async function cargarResumenPanel() {
       <h4>Venta diaria</h4>
       <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${d.ventas_registradas}</span></div>
       <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(d.total_ventas)}</span></div>
+    </div>`);
+  }
+
+  if (agR.status === 'fulfilled') {
+    const filas = agR.value.filas || [];
+    const hoy = hoyISO();
+    const futuras = filas.filter(f => f._fecha_cita && f._fecha_cita >= hoy);
+    if (puedeVer('calendario')) {
+      // Próximos 7 días, contando hoy.
+      const limite = new Date(); limite.setDate(limite.getDate() + 7);
+      const tope = limite.toISOString().slice(0, 10);
+      tarjetas.push(`<div class="resumen-card" onclick="pagina('calendario')">
+        <h4>Calendario</h4>
+        <div class="fila"><span class="lab">Citas próximos 7 días</span><span class="num">${futuras.filter(f => f._fecha_cita <= tope).length}</span></div>
+        <div class="fila"><span class="lab">Agendadas por venir</span><span class="num">${futuras.length}</span></div>
+      </div>`);
+    }
+    if (puedeVer('agendados') && !puedeVer('dashboard')) {
+      const sinIr = filas.filter(f => f._fecha_cita && f._fecha_cita < hoy && !f._asistio).length;
+      tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
+        <h4>Agendados</h4>
+        <div class="fila"><span class="lab">Total agendados</span><span class="num">${filas.length}</span></div>
+        <div class="fila"><span class="lab">Agendaron y no fueron</span><span class="num"${sinIr ? ' style="color:var(--naranja);"' : ''}>${sinIr}</span></div>
+      </div>`);
+    }
+  }
+
+  if (veR.status === 'fulfilled') {
+    const hojas = veR.value.hojas || {};
+    let n = 0, monto = 0;
+    Object.values(hojas).forEach(h => (h.filas || []).forEach(f => {
+      n += 1; monto += Number(f.O) || 0;
+    }));
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('venta')">
+      <h4>Venta diaria</h4>
+      <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${n}</span></div>
+      <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(monto)}</span></div>
+    </div>`);
+  }
+
+  if (pacR.status === 'fulfilled') {
+    const ps = pacR.value.pacientes || [];
+    const compraron = ps.filter(p => p.compras > 0).length;
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('pacientes')">
+      <h4>Pacientes</h4>
+      <div class="fila"><span class="lab">Atendidos</span><span class="num">${ps.length}</span></div>
+      <div class="fila"><span class="lab">Con compra</span><span class="num">${compraron}</span></div>
     </div>`);
   }
 

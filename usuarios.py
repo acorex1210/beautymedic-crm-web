@@ -89,11 +89,24 @@ ROLES = {
         'escritura': '*',
         'denegar': [],
     },
+    'DOCTOR': {
+        'nombre': 'Médico',
+        'descripcion': ('Panel, Hoy, Calendario y Pacientes, con sus historias '
+                        'clínicas. No ve ventas, caja, planilla ni reportes.'),
+        'secciones': ['panel', 'hoy', 'calendario', 'pacientes'],
+        # 'agendados' no es una sección suya, pero Hoy y Calendario leen y
+        # marcan citas ahí: sin ese permiso no podría atender su propio día.
+        'lectura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias'],
+        'escritura': ['comun', 'hoy', 'agendados', 'pacientes', 'historias'],
+        # Igual que CRM: "compró" escribe en VENTA DIARIA y el médico no
+        # registra ventas.
+        'denegar': [('POST', '/api/crm/agendados/*/compro')],
+    },
     'CRM': {
         'nombre': 'CRM',
-        'descripcion': ('Agendados, Venta diaria (sólo lectura), Hoy y '
+        'descripcion': ('Panel, Agendados, Venta diaria (sólo lectura), Hoy y '
                         'Calendario. No puede registrar ni editar ventas.'),
-        'secciones': ['agendados', 'venta', 'hoy', 'calendario'],
+        'secciones': ['panel', 'agendados', 'venta', 'hoy', 'calendario'],
         # Historias entra porque el flujo de "asistió" en Hoy abre la historia
         # clínica; sin esto ese botón se rompería.
         'lectura': ['comun', 'agendados', 'venta', 'hoy', 'historias'],
