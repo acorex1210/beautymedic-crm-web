@@ -121,8 +121,9 @@ def credenciales_disponibles():
 MESES = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
          'JUL', 'AGO', 'SET', 'SEP', 'OCT', 'NOV', 'DIC'}
 
-# STATUS de VENTA DIARIA que indican que el tratamiento SÍ se realizó
-ASISTE_POR_TEXTO = ('SE REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO')
+# STATUS de VENTA DIARIA que indican que el paciente asistió.
+# 'SE REALIZO' = vino + compró; 'NO SE REALIZO' = vino + no compró.
+ASISTE_POR_TEXTO = ('SE REALIZO', 'NO SE REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO')
 REVISAR_STATUS = ()
 
 # ============================================================
@@ -883,6 +884,12 @@ class Calculo:
             # TRAT 2, no perderse.
             par = list(zip(self.col.get('TRAT', []), self.col.get('PAGO', [])))
             for v in ventas:
+                # Solo escribir tratamiento/pago si se realizó (SE REALIZO, COMPRO, etc.)
+                # 'NO SE REALIZO' = asistió pero no compró → solo ASISTIO, sin TRAT/PAGO
+                es_compra = any(x in (txt(v['status']) or '').upper()
+                                for x in ('SE REALIZO', 'COMPRO', 'DEJO PAGADO'))
+                if not es_compra:
+                    continue
                 if self._tiene_tratamiento(fila_m, v):
                     continue
                 libre = next(((t, p) for t, p in par
