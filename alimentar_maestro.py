@@ -611,6 +611,7 @@ class Calculo:
         self._calcular_nuevos(agendados)
         self._indexar_nuevos()
         self._calcular_ventas(venta)
+        self._actualizar_campanas()
 
     def _idx(self, sem):
         c = self.col.get(sem)
@@ -702,6 +703,19 @@ class Calculo:
             if c:
                 return c
         return None
+
+    def _actualizar_campanas(self):
+        """Actualiza CAMPAÑA desde AGENDADOS para TODAS las filas del maestro,
+        incluyendo las que ya tenían ASISTIO (no depende de匹配 con VENTA)."""
+        c_camp_m = self.col.get('CAMPANA')
+        if not c_camp_m:
+            return
+        for fila_m in self.m_rows:
+            camp_ag = self._buscar_campana_agendados(fila_m)
+            if camp_ag:
+                u = self.updates.setdefault(fila_m, {})
+                if c_camp_m not in u:
+                    u[c_camp_m] = camp_ag
 
     # ----- 1) AGENDADOS -> filas nuevas (con fila provisional) -----
     def _calcular_nuevos(self, agendados):
@@ -915,10 +929,9 @@ class Calculo:
             primer = ventas[0]
             u = self.updates.setdefault(fila_m, {})
             u[c_asist] = 'ASISTIO'
-            # Actualizar CAMPAÑA desde AGENDADOS si está vacía o inválida
+            # SIEMPRE actualizar CAMPAÑA desde AGENDADOS cuando hay match
             c_camp_m = self.col.get('CAMPANA')
-            camp_actual = str(self._valor(fila_m, c_camp_m) or '').strip()
-            if c_camp_m and (not camp_actual or len(camp_actual) <= 5):
+            if c_camp_m:
                 camp_ag = self._buscar_campana_agendados(fila_m)
                 if camp_ag:
                     u[c_camp_m] = camp_ag
