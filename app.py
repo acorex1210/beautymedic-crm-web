@@ -522,9 +522,10 @@ async def debug_venta():
 
 @app.get('/api/debug/agendados')
 async def debug_agendados():
-    """Muestra AGENDADOS del drive."""
+    """Muestra AGENDADOS del drive con filtro de periodo."""
+    from collections import defaultdict
     import alimentar_maestro as am
-    ag = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+    ag = os.path.join(am.Tmp_DIR, 'AGENDADOS.xlsx') if hasattr(am, 'Tmp_DIR') else os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     if not os.path.exists(ag):
         try:
             ag = am.descargar(am.AGENDADOS_FID, 'AGENDADOS', forzar=True)
@@ -532,11 +533,90 @@ async def debug_agendados():
             return {'error': str(e)}
     agendados, ag_col = am.leer_agendados(ag)
     c_camp = ag_col.get('CAMPANA') if ag_col else None
+    c_d2 = ag_col.get('DIA2') if ag_col else None
+    c_m3 = ag_col.get('MES3') if ag_col else None
+    c_a4 = ag_col.get('ANIO4') if ag_col else None
+    c_nm = ag_col.get('NOMBRE') if ag_col else None
+    c_ph = ag_col.get('TELEFONO') if ag_col else None
+
     camps = defaultdict(int)
+    todos = []
     for _r, fila in agendados:
         camp = str(fila.get(c_camp) or '').strip() if c_camp else '?'
         camps[camp] += 1
-    return {'ag_path': ag, 'total': len(agendados), 'por_campana': dict(camps)}
+        d = fila.get(c_d2) if c_d2 else None
+        m = fila.get(c_m3) if c_m3 else None
+        a = fila.get(c_a4) if c_a4 else None
+        nm = str(fila.get(c_nm) or '')[:30] if c_nm else ''
+        todos.append({'nombre': nm, 'campana': camp, 'dia': d, 'mes': m, 'anio': a})
+    return {'ag_path': ag, 'total': len(agendados), 'por_campana': dict(camps), 'rows': todos}
+
+
+@app.get('/api/debug/cruce')
+async def debug_cruce():
+    """Cruce completo: AGENDADOS → VENTA → maestro para 1-15 AGO."""
+    import alimentar_maestro as am
+    from openpyxl import load_workbook
+
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+    if not os.path.exists(ag_path):
+        ag_path = am.descargar(am.AGENDADOS_FID, 'AGENDADOS', forzar=True)
+    agendados, ag_col = am.leer_agendados(ag_path)
+
+    ve_path = os.path.join(am.TMP_DIR, 'VENTA DIARIA.xlsx')
+    if not os.path.exists(ve_path):
+        ve_path = am.descargar(am.VENTA_FID, 'VENTA DIARIA', forzar=True)
+    venta = am.leer_venta(ve_path)
+
+    m_ws = am.leer_maestro(am.ruta_maestro_local())
+
+    ANIO = am.ANIO
+    MES = am.MES
+    D1 = am.D1
+    D2 = am.D2
+
+    c_a_d2 = ag_col.get('DIA2')
+    c_a_m3 = ag_col.get('MES3')
+    c_a_a4 = ag_col.get('ANIO4')
+    c_a_nm = ag_col.get('NOMBRE')
+    c_a_ph = ag_col.get('TELEFONO')
+    c_a_cam = ag_col.get('CAMPANA')
+    c_a_asist = ag_col.get('ASISTENCIA')
+
+    ag_in = []
+    for _r, fila in agendados:
+        d = fila.get(c_a_d2) if c_a_d2 else None
+        m = fila.get(c_a_m3) if c_a_m3 else None
+        a = fila.get(c_a_a4) if c_a_a4 else None
+        if a == ANIO and m == MES and isinstance(d, (int, float)) and D1 <= int(d) <= D2:
+            ag_in.append({
+                'nombre': str(fila.get(c_a_nm) or '')[:30],
+                'telefono': str(fila.get(c_a_ph) or ''),
+                'campana': str(fila.get(c_a_cam) or '').strip(),
+                'dia': int(d),
+                'asist': str(fila.get(c_a_asist) or '').strip(),
+            })
+
+    ve_in = []
+    for v in venta:
+        if v.get('anio') == ANIO and v.get('mes') == MES and isinstance(v.get('dia'), (int, float)):
+            if D1 <= int(v['dia']) <= D2:
+                ve_in.append({
+                    'nombre': str(v.get('nombre', ''))[:30],
+                    'telefono': str(v.get('telefono', '')),
+                    'status': str(v.get('status', '')),
+                    'tratamiento': str(v.get('tratamiento', '')),
+                    'venta': v.get('venta', 0),
+                    'dia': int(v['dia']),
+                })
+
+    return {
+        'periodo': f'{MES} {D1}-{D2} {ANIO}',
+        'agendados_en_periodo': len(ag_in),
+        'venta_en_periodo': len(ve_in),
+        'agendados': ag_in,
+        'venta': ve_in,
+    }
 
 
 # ============================================================
