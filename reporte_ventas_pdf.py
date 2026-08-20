@@ -249,7 +249,7 @@ def build_data():
     for (camp, crm), counts in ag_counts.items():
         agg[(camp, crm)]['ag'] = counts['ag']
 
-    # Construir claves de AGENDADOS para filtrar no_fueron
+    # Construir claves de AGENDADOS para filtrar asistidos, no_fueron
     ag_keys = set()
     if FUENTE == 'auto' and agendados and ag_col:
         c_ph = ag_col.get('TELEFONO')
@@ -257,15 +257,13 @@ def build_data():
         c_d2 = ag_col.get('DIA2')
         c_m3 = ag_col.get('MES3')
         c_a4 = ag_col.get('ANIO4')
-        c_camp = ag_col.get('CAMPANA')
         for _r, fila in agendados:
             ph = am.norm_phone(fila.get(c_ph))
             nm = am.norm_name(fila.get(c_nm))
             fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
-            camp = am.norm_name(fila.get(c_camp))
-            ag_keys.add((ph, fc, camp))
+            ag_keys.add((ph, fc))
             if nm:
-                ag_keys.add((nm, fc, camp))
+                ag_keys.add((nm, fc))
 
     # Contar asistidos, monto, compraron y no_fueron desde el maestro
     for r in range(5, ws.max_row + 1):
@@ -276,7 +274,14 @@ def build_data():
                 and ws.cell(row=r, column=COL['MES3']).value == MES
                 and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
             asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-            if asist == 'ASISTIO':
+            # Verificar que la fila existe en AGENDADOS actual
+            ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+            nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+            fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                               ws.cell(row=r, column=COL['MES3']).value,
+                               ws.cell(row=r, column=COL['ANIO4']).value)
+            en_ag = (not ag_keys) or (ph, fc) in ag_keys or (nm, fc) in ag_keys
+            if asist == 'ASISTIO' and en_ag:
                 d['as_'] += 1
                 p = pago_total(ws, r)
                 d['mon'] += p
@@ -291,8 +296,7 @@ def build_data():
                 fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
                                    ws.cell(row=r, column=COL['MES3']).value,
                                    ws.cell(row=r, column=COL['ANIO4']).value)
-                camp_n = am.norm_name(camp)
-                if (ph, fc, camp_n) in ag_keys or (nm, fc, camp_n) in ag_keys:
+                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
                     d['no_fueron'] += 1
     return agg
 
@@ -366,8 +370,14 @@ def datos_ejecutivas():
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
                 and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
+            ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+            nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+            fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                               ws.cell(row=r, column=COL['MES3']).value,
+                               ws.cell(row=r, column=COL['ANIO4']).value)
+            en_ag = (not ag_keys) or (ph, fc) in ag_keys or (nm, fc) in ag_keys
             asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-            if asist == 'ASISTIO':
+            if asist == 'ASISTIO' and en_ag:
                 d['as_'] += 1
                 p = pago_total(ws, r)
                 d['mon'] += p
@@ -375,14 +385,8 @@ def datos_ejecutivas():
                     d['co'] += 1
                 else:
                     d['fueron_sin_compra'] += 1
-            elif ag_keys and _cita_pasada(ws, r):
-                ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
-                nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
-                fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
-                                   ws.cell(row=r, column=COL['MES3']).value,
-                                   ws.cell(row=r, column=COL['ANIO4']).value)
-                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
-                    d['no_fueron'] += 1
+            elif ag_keys and en_ag and _cita_pasada(ws, r):
+                d['no_fueron'] += 1
     out = []
     for ej, d in agrup.items():
         out.append({'ejecutiva': ej, 'ag': d['ag'], 'as_': d['as_'], 'co': d['co'],
@@ -424,9 +428,6 @@ def datos_motivos():
     no_asistio = Counter()
     no_compra = Counter()
     for r in range(5, ws.max_row + 1):
-        asistido_ok = (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
-                       and ws.cell(row=r, column=COL['MES3']).value == MES
-                       and en_periodo(ws.cell(row=r, column=COL['DIA2']).value))
         asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
         if (ag_keys and asist != 'ASISTIO' and _cita_pasada(ws, r) and c_m_as):
             ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
@@ -438,10 +439,19 @@ def datos_motivos():
                 m = str(ws.cell(row=r, column=c_m_as).value or '').strip()
                 if m:
                     no_asistio[m.upper()] += 1
-        if asistido_ok and asist == 'ASISTIO' and pago_total(ws, r) == 0 and c_m_co:
-            m = str(ws.cell(row=r, column=c_m_co).value or '').strip()
-            if m:
-                no_compra[m.upper()] += 1
+        if (ag_keys and asist == 'ASISTIO' and pago_total(ws, r) == 0 and c_m_co
+                and ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                and ws.cell(row=r, column=COL['MES3']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
+            ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+            nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+            fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                               ws.cell(row=r, column=COL['MES3']).value,
+                               ws.cell(row=r, column=COL['ANIO4']).value)
+            if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
+                m = str(ws.cell(row=r, column=c_m_co).value or '').strip()
+                if m:
+                    no_compra[m.upper()] += 1
     return {'no_asistio': dict(no_asistio.most_common()),
             'no_compra': dict(no_compra.most_common())}
 
@@ -491,8 +501,14 @@ def totales_periodo(mes, anio, desde, hasta):
                 and ws.cell(row=r, column=col['MES3']).value == mes
                 and isinstance(ws.cell(row=r, column=col['DIA2']).value, (int, float))
                 and desde <= int(ws.cell(row=r, column=col['DIA2']).value) <= hasta):
+            ph = am.norm_phone(ws.cell(row=r, column=col['TELEFONO']).value)
+            nm = am.norm_name(ws.cell(row=r, column=col['NOMBRE']).value)
+            fc = am.norm_fecha(ws.cell(row=r, column=col['DIA2']).value,
+                               ws.cell(row=r, column=col['MES3']).value,
+                               ws.cell(row=r, column=col['ANIO4']).value)
+            en_ag = (not ag_keys) or (ph, fc) in ag_keys or (nm, fc) in ag_keys
             asist = str(ws.cell(row=r, column=col['ASISTENCIA']).value or '').strip()
-            if asist == 'ASISTIO':
+            if asist == 'ASISTIO' and en_ag:
                 tot['as_'] += 1
                 p = pago_total(ws, r)
                 tot['mon'] += p
@@ -500,14 +516,8 @@ def totales_periodo(mes, anio, desde, hasta):
                     tot['co'] += 1
                 else:
                     tot['fueron_sin_compra'] += 1
-            elif ag_keys and _cita_pasada(ws, r):
-                ph = am.norm_phone(ws.cell(row=r, column=col['TELEFONO']).value)
-                nm = am.norm_name(ws.cell(row=r, column=col['NOMBRE']).value)
-                fc = am.norm_fecha(ws.cell(row=r, column=col['DIA2']).value,
-                                   ws.cell(row=r, column=col['MES3']).value,
-                                   ws.cell(row=r, column=col['ANIO4']).value)
-                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
-                    tot['no_fueron'] += 1
+            elif ag_keys and en_ag and _cita_pasada(ws, r):
+                tot['no_fueron'] += 1
     return tot
 
 
