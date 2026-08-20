@@ -467,6 +467,34 @@ async def salud():
     return {'ok': True}
 
 
+@app.get('/api/debug/asistidos')
+async def debug_asistidos():
+    """Endpoint temporal: muestra ASISTIO del maestro en Railway."""
+    from collections import defaultdict
+    import reporte_ventas_pdf as rv
+    import alimentar_maestro as am
+
+    ma = am.ruta_maestro_local()
+    ws = am.leer_maestro(ma)
+    COL = rv.detectar_columnas(ws)
+    asistio = []
+    for r in range(5, ws.max_row + 1):
+        anio4 = ws.cell(row=r, column=COL['ANIO4']).value
+        mes3 = ws.cell(row=r, column=COL['MES3']).value
+        dia2 = ws.cell(row=r, column=COL['DIA2']).value
+        asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+        if (anio4 == 2026 and mes3 == 'AGO' and isinstance(dia2, (int, float))
+                and 1 <= int(dia2) <= 15 and asist == 'ASISTIO'):
+            camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
+            nombre = str(ws.cell(row=r, column=COL['NOMBRE']).value or '')
+            asistio.append({'fila': r, 'nombre': nombre, 'campana': camp, 'dia': int(dia2)})
+    camps = defaultdict(int)
+    for a in asistio:
+        camps[a['campana']] += 1
+    return {'maestro_path': ma, 'total_asistio': len(asistio),
+            'por_campana': dict(camps), 'rows': asistio}
+
+
 # ============================================================
 # Sesión y usuarios
 # ============================================================
