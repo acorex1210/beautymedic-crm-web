@@ -495,6 +495,43 @@ async def debug_asistidos():
             'por_campana': dict(camps), 'rows': asistio}
 
 
+@app.get('/api/debug/venta')
+async def debug_venta():
+    """Muestra VENTA DIARIA del drive."""
+    import alimentar_maestro as am
+    from collections import defaultdict
+    ve = os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx')
+    if not os.path.exists(ve):
+        try:
+            ve = am.descargar(am.VENTA_FID, 'VENTA_DIARIA', forzar=True)
+        except Exception as e:
+            return {'error': str(e)}
+    venta = am.leer_venta(ve)
+    # Solo los que tienen status SE REALIZO
+    realizados = [v for v in venta if str(v.get('status') or '').strip() == 'SE REALIZO']
+    return {'venta_path': ve, 'total_venta': len(venta), 'total_realizados': len(realizados),
+            'realizados': [{k: v for k, v in r.items() if k != 'fila'} for r in realizados[:50]]}
+
+
+@app.get('/api/debug/agendados')
+async def debug_agendados():
+    """Muestra AGENDADOS del drive."""
+    import alimentar_maestro as am
+    ag = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+    if not os.path.exists(ag):
+        try:
+            ag = am.descargar(am.AGENDADOS_FID, 'AGENDADOS', forzar=True)
+        except Exception as e:
+            return {'error': str(e)}
+    agendados, ag_col = am.leer_agendados(ag)
+    c_camp = ag_col.get('CAMPANA') if ag_col else None
+    camps = defaultdict(int)
+    for _r, fila in agendados:
+        camp = str(fila.get(c_camp) or '').strip() if c_camp else '?'
+        camps[camp] += 1
+    return {'ag_path': ag, 'total': len(agendados), 'por_campana': dict(camps)}
+
+
 # ============================================================
 # Sesión y usuarios
 # ============================================================
