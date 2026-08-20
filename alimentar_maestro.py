@@ -380,7 +380,7 @@ _SEMANTICOS = {
 FUENTE_AG_COLS = {
     'C': 'DIA', 'D': 'MES', 'E': 'ANIO', 'G': 'NOMBRE', 'H': 'RED_SOCIAL',
     'I': 'TELEFONO', 'J': 'CORREO', 'K': 'AGENDADO', 'L': 'DIA2', 'M': 'MES3',
-    'N': 'ANIO4', 'O': 'CAMPANA',
+    'N': 'CAMPANA', 'O': 'HORA',
 }
 
 
