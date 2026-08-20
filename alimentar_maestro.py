@@ -864,8 +864,7 @@ class Calculo:
             ventas.sort(key=lambda x: (x['anio'] or 0, str(x['mes'] or ''), x['dia'] or 0, x['fila']))
             primer = ventas[0]
             u = self.updates.setdefault(fila_m, {})
-            if not self._asistio(fila_m):
-                u[c_asist] = 'ASISTIO'
+            u[c_asist] = 'ASISTIO'
             for col, v in ((c_dni, primer['dni']), (c_dist, primer['distrito']),
                            (c_edad, primer['edad']), (c_sexo, primer['sexo'])):
                 if col and v is not None and txt(self._valor(fila_m, col)) is None:
