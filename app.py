@@ -661,6 +661,18 @@ async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
     return {'total': len(filas), 'filas': filas}
 
 
+@app.get('/api/debug/agendados-cols')
+async def debug_agendados_cols():
+    """Muestra qué columnas detecta leer_agendados de la hoja AGENDADOS."""
+    import alimentar_maestro as am
+    import os
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+    if not os.path.exists(ag_path):
+        ag_path = am.descargar(am.AGENDADOS_FID, 'AGENDADOS', forzar=True)
+    agendados, ag_col = am.leer_agendados(ag_path)
+    return {'ag_col': ag_col, 'campana_col': ag_col.get('CAMPANA') if ag_col else None}
+
+
 # ============================================================
 # Sesión y usuarios
 # ============================================================
