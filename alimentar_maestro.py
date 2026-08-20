@@ -712,16 +712,55 @@ class Calculo:
                 return c
         return None
 
-    def _actualizar_campanas(self):
+def _buscar_campana_por_fila_agendados(self, fila):
+        """Busca la campaña de AGENDADOS usando un dict de fila (para filas nuevas)."""
+        c_ph = self._ag('TELEFONO')
+        c_nm = self._ag('NOMBRE')
+        c_d2 = self._ag('DIA2')
+        c_m3 = self._ag('MES3')
+        c_a4 = self._ag('ANIO4')
+        c_camp = self._ag('CAMPANA')
+        if not c_camp:
+            return ''
+        ph = norm_phone(fila.get(c_ph))
+        nm = norm_name(fila.get(c_nm))
+        fc = norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+        if fc:
+            if ph:
+                c = self._ag_campanas.get(('ph', ph, fc))
+                if c:
+                    return c
+            if nm:
+                c = self._ag_campanas.get(('nm', nm, fc))
+                if c:
+                    return c
+            # Fallback con vacío
+            c = self._ag_campanas.get(('ph', '', fc))
+            if c:
+                return c
+            c = self._ag_campanas.get(('nm', '', fc))
+            if c:
+                return c
+        return ''
+
+def _actualizar_campanas(self):
         """Actualiza CAMPAÑA desde AGENDADOS para TODAS las filas del maestro,
-        incluyendo las que ya tenían ASISTIO (no depende de匹配 con VENTA)."""
+        incluyendo las nuevas y las que ya tenía ASISTIO (no depende de匹配 con VENTA)."""
         c_camp_m = self.col.get('CAMPANA')
         if not c_camp_m:
             return
+        # Actualizar filas existentes
         for fila_m in self.m_rows:
             camp_ag = self._buscar_campana_agendados(fila_m)
             if camp_ag:
                 u = self.updates.setdefault(fila_m, {})
+                if c_camp_m not in u:
+                    u[c_camp_m] = camp_ag
+        # Actualizar filas nuevas (provisionales)
+        for fila_num, fila in self.new_rows:
+            camp_ag = self._buscar_campana_agendados_por_fila(fila)
+            if camp_ag:
+                u = self.updates.setdefault(fila_num, {})
                 if c_camp_m not in u:
                     u[c_camp_m] = camp_ag
 
