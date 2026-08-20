@@ -249,39 +249,43 @@ def build_data():
     for (camp, crm), counts in ag_counts.items():
         agg[(camp, crm)]['ag'] = counts['ag']
 
-    # Construir claves de AGENDADOS para filtrar asistidos, no_fueron
-    ag_keys = set()
+    # Lookup de AGENDADOS: (ph, fc) -> campaña actual
+    ag_camp = {}
     if FUENTE == 'auto' and agendados and ag_col:
         c_ph = ag_col.get('TELEFONO')
         c_nm = ag_col.get('NOMBRE')
         c_d2 = ag_col.get('DIA2')
         c_m3 = ag_col.get('MES3')
         c_a4 = ag_col.get('ANIO4')
+        c_camp = ag_col.get('CAMPANA')
         for _r, fila in agendados:
             ph = am.norm_phone(fila.get(c_ph))
             nm = am.norm_name(fila.get(c_nm))
             fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
-            ag_keys.add((ph, fc))
+            camp = str(fila.get(c_camp) or '').strip() or '(SIN CAMPANA)'
+            if ph:
+                ag_camp[(ph, fc)] = camp
             if nm:
-                ag_keys.add((nm, fc))
+                ag_camp[(nm, fc)] = camp
 
     # Contar asistidos, monto, compraron y no_fueron desde el maestro
     for r in range(5, ws.max_row + 1):
-        camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN CAMPANA)'
         crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
-        d = agg[(camp, crm)]
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
                 and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
-            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-            # Verificar que la fila existe en AGENDADOS actual
             ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
             nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
             fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
                                ws.cell(row=r, column=COL['MES3']).value,
                                ws.cell(row=r, column=COL['ANIO4']).value)
-            en_ag = (not ag_keys) or (ph, fc) in ag_keys or (nm, fc) in ag_keys
-            if asist == 'ASISTIO' and en_ag:
+            # Usar campaña de AGENDADOS, no del maestro
+            camp = ag_camp.get((ph, fc)) or ag_camp.get((nm, fc))
+            if not camp:
+                camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN CAMPANA)'
+            d = agg[(camp, crm)]
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist == 'ASISTIO':
                 d['as_'] += 1
                 p = pago_total(ws, r)
                 d['mon'] += p
@@ -289,15 +293,8 @@ def build_data():
                     d['co'] += 1
                 else:
                     d['fueron_sin_compra'] += 1
-            elif _cita_pasada(ws, r) and ag_keys:
-                # Solo contar no_fueron si la fila existe en AGENDADOS actual
-                ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
-                nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
-                fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
-                                   ws.cell(row=r, column=COL['MES3']).value,
-                                   ws.cell(row=r, column=COL['ANIO4']).value)
-                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
-                    d['no_fueron'] += 1
+            elif _cita_pasada(ws, r):
+                d['no_fueron'] += 1
     return agg
 
 
