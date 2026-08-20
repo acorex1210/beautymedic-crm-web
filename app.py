@@ -554,9 +554,14 @@ async def debug_agendados():
 
 @app.get('/api/debug/cruce')
 async def debug_cruce():
-    """Cruce completo: AGENDADOS → VENTA → maestro para 1-15 AGO."""
+    """Cruce completo: AGENDADOS → VENTA → maestro para el periodo actual."""
     import alimentar_maestro as am
-    from openpyxl import load_workbook
+    import reporte_ventas_pdf as rv
+
+    ANIO = rv.ANIO
+    MES = rv.MES
+    D1 = rv.D1
+    D2 = rv.D2
 
     ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     if not os.path.exists(ag_path):
@@ -567,13 +572,6 @@ async def debug_cruce():
     if not os.path.exists(ve_path):
         ve_path = am.descargar(am.VENTA_FID, 'VENTA DIARIA', forzar=True)
     venta = am.leer_venta(ve_path)
-
-    m_ws = am.leer_maestro(am.ruta_maestro_local())
-
-    ANIO = am.ANIO
-    MES = am.MES
-    D1 = am.D1
-    D2 = am.D2
 
     c_a_d2 = ag_col.get('DIA2')
     c_a_m3 = ag_col.get('MES3')
