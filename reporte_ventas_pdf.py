@@ -225,10 +225,11 @@ def monto(sol):
 
 def build_data():
     global COL
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     if FUENTE == 'auto':
         maestro_ws = am.leer_maestro(am.ruta_maestro_local())
         COL = detectar_columnas(maestro_ws)
-        agendados, ag_col = am.leer_agendados(os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx'))
+        agendados, ag_col = am.leer_agendados(ag_path)
         venta = am.leer_venta(os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx'))
         col = am.detectar_maestro(maestro_ws)
         calc = am.Calculo(maestro_ws, agendados, venta, col=col, ag_col=ag_col)
@@ -239,31 +240,60 @@ def build_data():
     else:
         ws = am.leer_maestro(am.ruta_maestro_local())
         COL = detectar_columnas(ws)
+
     agg = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0,
                                    no_fueron=0, fueron_sin_compra=0))
+
+    # Contar agendados desde AGENDADOS actual (no del maestro acumulativo)
+    ag_counts = am.agendados_por_periodo(ag_path, ANIO, MES, DESDE, HASTA)
+    for (camp, crm), counts in ag_counts.items():
+        agg[(camp, crm)]['ag'] = counts['ag']
+
+    # Construir claves de AGENDADOS para filtrar no_fueron
+    ag_keys = set()
+    if FUENTE == 'auto' and agendados and ag_col:
+        c_ph = ag_col.get('TELEFONO')
+        c_nm = ag_col.get('NOMBRE')
+        c_d2 = ag_col.get('DIA2')
+        c_m3 = ag_col.get('MES3')
+        c_a4 = ag_col.get('ANIO4')
+        c_camp = ag_col.get('CAMPANA')
+        for _r, fila in agendados:
+            ph = am.norm_phone(fila.get(c_ph))
+            nm = am.norm_name(fila.get(c_nm))
+            fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            camp = am.norm_name(fila.get(c_camp))
+            ag_keys.add((ph, fc, camp))
+            if nm:
+                ag_keys.add((nm, fc, camp))
+
+    # Contar asistidos, monto, compraron y no_fueron desde el maestro
     for r in range(5, ws.max_row + 1):
         camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN CAMPANA)'
         crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
         d = agg[(camp, crm)]
-        if (ws.cell(row=r, column=COL['ANIO']).value == ANIO
-                and ws.cell(row=r, column=COL['MES']).value == MES
-                and en_periodo(ws.cell(row=r, column=COL['DIA']).value)
-                and ws.cell(row=r, column=COL['TELEFONO']).value):
-            d['ag'] += 1
-            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-            if asist != 'ASISTIO' and _cita_pasada(ws, r):
-                d['no_fueron'] += 1
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
-                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)
-                and ws.cell(row=r, column=COL['ASISTENCIA']).value == 'ASISTIO'):
-            d['as_'] += 1
-            p = pago_total(ws, r)
-            d['mon'] += p
-            if p > 0:
-                d['co'] += 1
-            else:
-                d['fueron_sin_compra'] += 1
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist == 'ASISTIO':
+                d['as_'] += 1
+                p = pago_total(ws, r)
+                d['mon'] += p
+                if p > 0:
+                    d['co'] += 1
+                else:
+                    d['fueron_sin_compra'] += 1
+            elif _cita_pasada(ws, r) and ag_keys:
+                # Solo contar no_fueron si la fila existe en AGENDADOS actual
+                ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+                nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+                fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                                   ws.cell(row=r, column=COL['MES3']).value,
+                                   ws.cell(row=r, column=COL['ANIO4']).value)
+                camp_n = am.norm_name(camp)
+                if (ph, fc, camp_n) in ag_keys or (nm, fc, camp_n) in ag_keys:
+                    d['no_fueron'] += 1
     return agg
 
 
@@ -304,36 +334,55 @@ def datos_analiticos():
 def datos_ejecutivas():
     """Ranking por ejecutiva (AGENDADO POR) del periodo, desde el maestro."""
     global COL
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     ws = am.leer_maestro(am.ruta_maestro_local())
     COL = detectar_columnas(ws)
     c_ag = COL.get('AGENDADO')
     if not c_ag:
         return []
-    c_ej = c_ag
+
+    # Claves de AGENDADOS para filtrar agendados y no_fueron
+    ag_keys = set()
+    agendados_raw, ag_col = am.leer_agendados(ag_path)
+    if agendados_raw and ag_col:
+        c_ph = ag_col.get('TELEFONO')
+        c_nm = ag_col.get('NOMBRE')
+        c_d2 = ag_col.get('DIA2')
+        c_m3 = ag_col.get('MES3')
+        c_a4 = ag_col.get('ANIO4')
+        for _r, fila in agendados_raw:
+            ph = am.norm_phone(fila.get(c_ph))
+            nm = am.norm_name(fila.get(c_nm))
+            fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            ag_keys.add((ph, fc))
+            if nm:
+                ag_keys.add((nm, fc))
+
     agrup = {}
     for r in range(5, ws.max_row + 1):
-        ej = str(ws.cell(row=r, column=c_ej).value or '').strip() or 'SIN EJECUTIVA'
+        ej = str(ws.cell(row=r, column=c_ag).value or '').strip() or 'SIN EJECUTIVA'
         d = agrup.setdefault(ej, {'ag': 0, 'as_': 0, 'co': 0, 'mon': 0.0,
                                   'no_fueron': 0, 'fueron_sin_compra': 0})
-        if (ws.cell(row=r, column=COL['ANIO']).value == ANIO
-                and ws.cell(row=r, column=COL['MES']).value == MES
-                and en_periodo(ws.cell(row=r, column=COL['DIA']).value)
-                and ws.cell(row=r, column=COL['TELEFONO']).value):
-            d['ag'] += 1
-            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-            if asist != 'ASISTIO' and _cita_pasada(ws, r):
-                d['no_fueron'] += 1
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
-                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)
-                and ws.cell(row=r, column=COL['ASISTENCIA']).value == 'ASISTIO'):
-            d['as_'] += 1
-            p = pago_total(ws, r)
-            d['mon'] += p
-            if p > 0:
-                d['co'] += 1
-            else:
-                d['fueron_sin_compra'] += 1
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist == 'ASISTIO':
+                d['as_'] += 1
+                p = pago_total(ws, r)
+                d['mon'] += p
+                if p > 0:
+                    d['co'] += 1
+                else:
+                    d['fueron_sin_compra'] += 1
+            elif ag_keys and _cita_pasada(ws, r):
+                ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+                nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+                fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                                   ws.cell(row=r, column=COL['MES3']).value,
+                                   ws.cell(row=r, column=COL['ANIO4']).value)
+                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
+                    d['no_fueron'] += 1
     out = []
     for ej, d in agrup.items():
         out.append({'ejecutiva': ej, 'ag': d['ag'], 'as_': d['as_'], 'co': d['co'],
@@ -349,24 +398,46 @@ def datos_ejecutivas():
 def datos_motivos():
     """Distribución de motivos de no asistencia y no compra del periodo."""
     global COL
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     ws = am.leer_maestro(am.ruta_maestro_local())
     COL = detectar_columnas(ws)
     c_m_as = COL.get('MOTIVO_NO_ASISTIO')
     c_m_co = COL.get('MOTIVO_NO_COMPRA')
+
+    # Claves de AGENDADOS para filtrar no_asistio
+    ag_keys = set()
+    agendados_raw, ag_col = am.leer_agendados(ag_path)
+    if agendados_raw and ag_col:
+        c_ph = ag_col.get('TELEFONO')
+        c_nm = ag_col.get('NOMBRE')
+        c_d2 = ag_col.get('DIA2')
+        c_m3 = ag_col.get('MES3')
+        c_a4 = ag_col.get('ANIO4')
+        for _r, fila in agendados_raw:
+            ph = am.norm_phone(fila.get(c_ph))
+            nm = am.norm_name(fila.get(c_nm))
+            fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            ag_keys.add((ph, fc))
+            if nm:
+                ag_keys.add((nm, fc))
+
     no_asistio = Counter()
     no_compra = Counter()
     for r in range(5, ws.max_row + 1):
-        agendado_ok = (ws.cell(row=r, column=COL['ANIO']).value == ANIO
-                       and ws.cell(row=r, column=COL['MES']).value == MES
-                       and en_periodo(ws.cell(row=r, column=COL['DIA']).value))
         asistido_ok = (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                        and ws.cell(row=r, column=COL['MES3']).value == MES
                        and en_periodo(ws.cell(row=r, column=COL['DIA2']).value))
         asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
-        if agendado_ok and asist != 'ASISTIO' and _cita_pasada(ws, r) and c_m_as:
-            m = str(ws.cell(row=r, column=c_m_as).value or '').strip()
-            if m:
-                no_asistio[m.upper()] += 1
+        if (ag_keys and asist != 'ASISTIO' and _cita_pasada(ws, r) and c_m_as):
+            ph = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+            nm = am.norm_name(ws.cell(row=r, column=COL['NOMBRE']).value)
+            fc = am.norm_fecha(ws.cell(row=r, column=COL['DIA2']).value,
+                               ws.cell(row=r, column=COL['MES3']).value,
+                               ws.cell(row=r, column=COL['ANIO4']).value)
+            if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
+                m = str(ws.cell(row=r, column=c_m_as).value or '').strip()
+                if m:
+                    no_asistio[m.upper()] += 1
         if asistido_ok and asist == 'ASISTIO' and pago_total(ws, r) == 0 and c_m_co:
             m = str(ws.cell(row=r, column=c_m_co).value or '').strip()
             if m:
@@ -392,32 +463,51 @@ def _variacion(actual, anterior):
 
 def totales_periodo(mes, anio, desde, hasta):
     """Totales del periodo sobre el maestro actual (sin tocar globales)."""
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     ws = am.leer_maestro(am.ruta_maestro_local())
     col = detectar_columnas(ws)
     tot = {'ag': 0, 'as_': 0, 'co': 0, 'mon': 0.0,
            'no_fueron': 0, 'fueron_sin_compra': 0}
+
+    # Claves de AGENDADOS para filtrar agendados y no_fueron
+    ag_keys = set()
+    agendados_raw, ag_col = am.leer_agendados(ag_path)
+    if agendados_raw and ag_col:
+        c_ph = ag_col.get('TELEFONO')
+        c_nm = ag_col.get('NOMBRE')
+        c_d2 = ag_col.get('DIA2')
+        c_m3 = ag_col.get('MES3')
+        c_a4 = ag_col.get('ANIO4')
+        for _r, fila in agendados_raw:
+            ph = am.norm_phone(fila.get(c_ph))
+            nm = am.norm_name(fila.get(c_nm))
+            fc = am.norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            ag_keys.add((ph, fc))
+            if nm:
+                ag_keys.add((nm, fc))
+
     for r in range(5, ws.max_row + 1):
-        if (ws.cell(row=r, column=col['ANIO']).value == anio
-                and ws.cell(row=r, column=col['MES']).value == mes
-                and isinstance(ws.cell(row=r, column=col['DIA']).value, (int, float))
-                and desde <= int(ws.cell(row=r, column=col['DIA']).value) <= hasta
-                and ws.cell(row=r, column=col['TELEFONO']).value):
-            tot['ag'] += 1
-            asist = str(ws.cell(row=r, column=col['ASISTENCIA']).value or '').strip()
-            if asist != 'ASISTIO' and _cita_pasada(ws, r):
-                tot['no_fueron'] += 1
         if (ws.cell(row=r, column=col['ANIO4']).value == anio
                 and ws.cell(row=r, column=col['MES3']).value == mes
                 and isinstance(ws.cell(row=r, column=col['DIA2']).value, (int, float))
-                and desde <= int(ws.cell(row=r, column=col['DIA2']).value) <= hasta
-                and ws.cell(row=r, column=col['ASISTENCIA']).value == 'ASISTIO'):
-            tot['as_'] += 1
-            p = pago_total(ws, r)
-            tot['mon'] += p
-            if p > 0:
-                tot['co'] += 1
-            else:
-                tot['fueron_sin_compra'] += 1
+                and desde <= int(ws.cell(row=r, column=col['DIA2']).value) <= hasta):
+            asist = str(ws.cell(row=r, column=col['ASISTENCIA']).value or '').strip()
+            if asist == 'ASISTIO':
+                tot['as_'] += 1
+                p = pago_total(ws, r)
+                tot['mon'] += p
+                if p > 0:
+                    tot['co'] += 1
+                else:
+                    tot['fueron_sin_compra'] += 1
+            elif ag_keys and _cita_pasada(ws, r):
+                ph = am.norm_phone(ws.cell(row=r, column=col['TELEFONO']).value)
+                nm = am.norm_name(ws.cell(row=r, column=col['NOMBRE']).value)
+                fc = am.norm_fecha(ws.cell(row=r, column=col['DIA2']).value,
+                                   ws.cell(row=r, column=col['MES3']).value,
+                                   ws.cell(row=r, column=col['ANIO4']).value)
+                if (ph, fc) in ag_keys or (nm, fc) in ag_keys:
+                    tot['no_fueron'] += 1
     return tot
 
 

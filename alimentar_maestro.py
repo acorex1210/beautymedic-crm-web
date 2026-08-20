@@ -630,6 +630,7 @@ class Calculo:
         self.m_rows = []
         self.by_phone = defaultdict(list)
         self.by_name = defaultdict(list)
+        self.by_phone_date = defaultdict(set)  # (tel, fecha) -> set(campañas)
         self.keys_full = set()
         self.keys_loose = set()
         self.last_row = 4
@@ -649,11 +650,13 @@ class Calculo:
             fc = norm_fecha(cel.get(self.col.get('DIA2')),
                             cel.get(self.col.get('MES3')),
                             cel.get(self.col.get('ANIO4')))
+            camp = norm_name(cel.get(self.col.get('CAMPANA')))
             if ph:
                 self.by_phone[ph].append(r)
             if nm:
                 self.by_name[nm].append(r)
-            camp = norm_name(cel.get(self.col.get('CAMPANA')))
+            if ph and fc:
+                self.by_phone_date[(ph, fc)].add(camp)
             self.keys_full.add((ph, nm, fc, camp))
             if nm:
                 self.keys_loose.add((nm, fc, camp))
@@ -679,8 +682,9 @@ class Calculo:
                 continue
             if nm and (nm, fc, camp) in self.keys_loose:
                 continue
-            if ph and any(self._fecha(x) == fc for x in self.by_phone.get(ph, [])):
-                self.incompletas.append((r, fila, 'teléfono ya existe con misma fecha de cita'))
+            # Teléfono + fecha + campaña: misma persona, misma cita, misma campaña → duplicado
+            if ph and camp and camp in self.by_phone_date.get((ph, fc), set()):
+                self.incompletas.append((r, fila, 'teléfono+fecha+campaña ya existen en maestro'))
                 continue
             if (ph, nm, fc, camp) in vistos:
                 continue
@@ -1219,6 +1223,31 @@ def escribir_reporte(calc, ruta):
 # ============================================================
 # FLUJO PRINCIPAL (reutilizable desde CLI o web)
 # ============================================================
+def agendados_por_periodo(ag_path, anio, mes, desde, hasta):
+    """Cuenta agendados directamente desde AGENDADOS para un periodo.
+
+    Devuelve dict[(campana, crm)] -> ag, con crm='SIN CRM' (AGENDADOS no tiene CRM).
+    """
+    agendados, ag_col = leer_agendados(ag_path)
+    if not ag_col:
+        return {}
+    c_d2 = ag_col.get('DIA2')
+    c_m3 = ag_col.get('MES3')
+    c_a4 = ag_col.get('ANIO4')
+    c_camp = ag_col.get('CAMPANA')
+    c_tel = ag_col.get('TELEFONO')
+    c_nm = ag_col.get('NOMBRE')
+    agg = defaultdict(lambda: {'ag': 0})
+    for _r, fila in agendados:
+        if (fila.get(c_a4) == anio
+                and fila.get(c_m3) == mes
+                and desde <= (fila.get(c_d2) or 0) <= hasta):
+            if fila.get(c_tel) or fila.get(c_nm):
+                camp = str(fila.get(c_camp) or '').strip() or '(SIN CAMPANA)'
+                agg[(camp, 'SIN CRM')]['ag'] += 1
+    return dict(agg)
+
+
 def ejecutar_sync(aplicar=True, sin_descarga=False):
     """Ejecuta el flujo completo de sincronización.
 
