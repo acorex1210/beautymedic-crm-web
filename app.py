@@ -553,15 +553,10 @@ async def debug_agendados():
 
 
 @app.get('/api/debug/cruce')
-async def debug_cruce():
-    """Cruce completo: AGENDADOS → VENTA → maestro para el periodo actual."""
+async def debug_cruce(mes: str = '', anio: str = '', desde: str = '', hasta: str = ''):
+    """Cruce completo: AGENDADOS → VENTA → maestro para un periodo."""
     import alimentar_maestro as am
-    import reporte_ventas_pdf as rv
-
-    ANIO = rv.ANIO
-    MES = rv.MES
-    D1 = rv.D1
-    D2 = rv.D2
+    m, a, d, h = _filtros(mes, anio, desde, hasta)
 
     ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
     if not os.path.exists(ag_path):
@@ -583,22 +578,22 @@ async def debug_cruce():
 
     ag_in = []
     for _r, fila in agendados:
-        d = fila.get(c_a_d2) if c_a_d2 else None
-        m = fila.get(c_a_m3) if c_a_m3 else None
-        a = fila.get(c_a_a4) if c_a_a4 else None
-        if a == ANIO and m == MES and isinstance(d, (int, float)) and D1 <= int(d) <= D2:
+        dg = fila.get(c_a_d2) if c_a_d2 else None
+        mg = fila.get(c_a_m3) if c_a_m3 else None
+        ag = fila.get(c_a_a4) if c_a_a4 else None
+        if ag == a and mg == m and isinstance(dg, (int, float)) and d <= int(dg) <= h:
             ag_in.append({
                 'nombre': str(fila.get(c_a_nm) or '')[:30],
                 'telefono': str(fila.get(c_a_ph) or ''),
                 'campana': str(fila.get(c_a_cam) or '').strip(),
-                'dia': int(d),
+                'dia': int(dg),
                 'asist': str(fila.get(c_a_asist) or '').strip(),
             })
 
     ve_in = []
     for v in venta:
-        if v.get('anio') == ANIO and v.get('mes') == MES and isinstance(v.get('dia'), (int, float)):
-            if D1 <= int(v['dia']) <= D2:
+        if v.get('anio') == a and v.get('mes') == m and isinstance(v.get('dia'), (int, float)):
+            if d <= int(v['dia']) <= h:
                 ve_in.append({
                     'nombre': str(v.get('nombre', ''))[:30],
                     'telefono': str(v.get('telefono', '')),
@@ -609,7 +604,7 @@ async def debug_cruce():
                 })
 
     return {
-        'periodo': f'{MES} {D1}-{D2} {ANIO}',
+        'periodo': f'{m} {d}-{h} {a}',
         'agendados_en_periodo': len(ag_in),
         'venta_en_periodo': len(ve_in),
         'agendados': ag_in,
