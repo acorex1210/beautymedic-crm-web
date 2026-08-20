@@ -630,9 +630,6 @@ async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
     c_trat = [c2n(col[f'TRAT{i}']) for i in range(1, 9)]
     c_pago = [c2n(col[f'PAGO{i}']) for i in range(1, 9)]
     c_pt = c2n(col['PAGO_TOTAL'])
-    c Sexo = c2n(col['SEXO'])
-    c_dist = c2n(col['DISTRITO'])
-
     filas = []
     for r in range(5, ws.max_row + 1):
         mes_val = str(ws.cell(row=r, column=c_mes).value or '').strip().upper()
