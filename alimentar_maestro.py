@@ -602,6 +602,7 @@ class Calculo:
         self.pendientes = []     # ventas sin match
         self.revisar = []        # casos a revisar
         self.incompletas = []    # filas AGENDADOS incompletas/sin nombre
+        self.sin_hueco = []      # (venta, maestro_fila) sin par TRAT/PAGO libre
         self._nueva_info = {}    # provisional -> (ph, nm, fecha)
         self._indexar()
         self._calcular_nuevos(agendados)
@@ -722,6 +723,22 @@ class Calculo:
     def _asistio(self, fila):
         return txt(self._valor(fila, self.col.get('ASISTENCIA'))) == 'ASISTIO'
 
+    def _tiene_tratamiento(self, fila, v):
+        """¿Alguno de los pares TRAT/PAGO de la fila ya trae esta venta?
+
+        Se compara tratamiento + monto: sin esto, cada corrida diaria volvería
+        a escribir la misma venta en el siguiente par libre."""
+        trat_v = txt(v.get('tratamiento'))
+        monto_v = num(v.get('venta'))
+        for trat_col, pago_col in zip(self.col.get('TRAT', []), self.col.get('PAGO', [])):
+            if txt(self._valor(fila, trat_col)) != trat_v:
+                continue
+            # Mismo tratamiento: sólo cuenta como la misma venta si el monto
+            # coincide (o si no hay monto con qué distinguirlas).
+            if monto_v is None or num(self._valor(fila, pago_col)) == monto_v:
+                return True
+        return False
+
     # ----- 2) VENTA DIARIA -> completar P..AB -----
     def _calcular_ventas(self, venta):
         ws = self.maestro
@@ -744,30 +761,48 @@ class Calculo:
             def empty_p_rows(lista):
                 return [r for r in lista if not self._asistio(r)]
 
+            def ya_asistio(cand, etiqueta):
+                """La fila ya está marcada ASISTIO. Si el tratamiento de esta
+                venta todavía no figura en sus pares TRAT/PAGO, es un segundo
+                tratamiento del mismo paciente: va al siguiente par libre de esa
+                misma fila, no a una fila nueva. Si ya figura, está sincronizada
+                y no se toca (esto es lo que evita duplicar en cada corrida)."""
+                fila = next(r for r in cand if self._asistio(r))
+                if self._tiene_tratamiento(fila, v):
+                    self.pendientes.append((v, f'ya sincronizada ({etiqueta})'))
+                    return None
+                return fila
+
             modo = None
             candidatos = []
             # Etapa 1: mismo teléfono + misma fecha de cita
             if ph:
                 cand = [r for r in self.by_phone[ph] if self._fecha(r) == fv]
                 if any(self._asistio(r) for r in cand):
-                    self.pendientes.append((v, 'ya asistió con mismo teléfono+fecha'))
-                    continue
-                cand = empty_p_rows(cand)
-                if len(cand) == 1:
-                    candidatos, modo = cand, 'telefono+fecha'
-                elif len(cand) > 1:
-                    self.revisar.append((v, f'{len(cand)} filas con mismo teléfono+fecha'))
+                    fila = ya_asistio(cand, 'teléfono+fecha')
+                    if fila is None:
+                        continue
+                    candidatos, modo = [fila], 'telefono+fecha (2do tratamiento)'
+                if not candidatos:
+                    cand = empty_p_rows(cand)
+                    if len(cand) == 1:
+                        candidatos, modo = cand, 'telefono+fecha'
+                    elif len(cand) > 1:
+                        self.revisar.append((v, f'{len(cand)} filas con mismo teléfono+fecha'))
             # Etapa 2: mismo nombre + misma fecha
             if not candidatos and nm:
                 cand = [r for r in self.by_name[nm] if self._fecha(r) == fv]
                 if any(self._asistio(r) for r in cand):
-                    self.pendientes.append((v, 'ya asistió con mismo nombre+fecha'))
-                    continue
-                cand = empty_p_rows(cand)
-                if len(cand) == 1:
-                    candidatos, modo = cand, 'nombre+fecha'
-                elif len(cand) > 1:
-                    self.revisar.append((v, f'{len(cand)} filas con mismo nombre+fecha'))
+                    fila = ya_asistio(cand, 'nombre+fecha')
+                    if fila is None:
+                        continue
+                    candidatos, modo = [fila], 'nombre+fecha (2do tratamiento)'
+                if not candidatos:
+                    cand = empty_p_rows(cand)
+                    if len(cand) == 1:
+                        candidatos, modo = cand, 'nombre+fecha'
+                    elif len(cand) > 1:
+                        self.revisar.append((v, f'{len(cand)} filas con mismo nombre+fecha'))
             if not candidatos:
                 if ph or nm:
                     walkins[(ph, nm, fv)].append(v)
@@ -831,13 +866,19 @@ class Calculo:
                            (c_edad, primer['edad']), (c_sexo, primer['sexo'])):
                 if col and v is not None and txt(self._valor(fila_m, col)) is None:
                     u[col] = v
+            # Cada venta va al PRIMER par TRAT/PAGO libre, no al par que le
+            # tocaría por su orden: si TRAT 1 ya trae el tratamiento de una
+            # sincronización anterior, el segundo tratamiento debe caer en
+            # TRAT 2, no perderse.
             par = list(zip(self.col.get('TRAT', []), self.col.get('PAGO', [])))
-            for i, v in enumerate(ventas[:4]):
-                if i >= len(par):
-                    break
-                trat_col, pago_col = par[i]
-                if txt(self._valor(fila_m, trat_col)) is None:
-                    u[trat_col] = v['tratamiento']
+            for v in ventas:
+                libre = next(((t, p) for t, p in par
+                              if txt(self._valor(fila_m, t)) is None and t not in u), None)
+                if libre is None:
+                    self.sin_hueco.append((v, fila_m))
+                    continue
+                trat_col, pago_col = libre
+                u[trat_col] = v['tratamiento']
                 if num(self._valor(fila_m, pago_col)) is None and v['venta'] is not None:
                     u[pago_col] = num(v['venta'])
 
@@ -853,6 +894,7 @@ class Calculo:
             'pendientes': len(self.pendientes),
             'revisar': len(self.revisar),
             'incompletas': len(self.incompletas),
+            'sin_hueco': len(self.sin_hueco),
             'filas_a_actualizar': len(self.updates),
             'celdas_a_escribir': sum(len(v) for v in self.updates.values()),
         }
