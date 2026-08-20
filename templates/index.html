@@ -679,7 +679,7 @@
           <div class="toolbar">
             <div class="buscar"><input type="search" id="agBuscar" placeholder="Buscar por nombre, teléfono, campaña, CRM&hellip;"></div>
             <select id="agFiltroCampana"><option value="">Campaña: todas</option></select>
-            <select id="agFiltroMes"><option value="">Mes cita: todos</option></select>
+            <select id="agFiltroMes"><option value="">Mes: todos</option></select>
             <select id="agFiltroEstado">
               <option value="">Estado: todos</option>
               <option value="no_fueron">Agendaron pero no fueron</option>
@@ -2006,7 +2006,7 @@ async function cargarAgendados() {
   const col = AG.columnas, orden = Object.keys(col);
   const v = AG.valores;
   llenarSelect($('agFiltroCampana'), v.campana, 'Campaña: todas');
-  llenarSelect($('agFiltroMes'), MESES, 'Mes cita: todos');
+  llenarSelect($('agFiltroMes'), MESES, 'Mes: todos');
   llenarSelect($('agCrm'), v.crm);
   llenarSelect($('agCampana'), v.campana);
   llenarSelect($('agRedSocial'), v.red_social);
@@ -2049,7 +2049,8 @@ function agFiltradas() {
   const hoy = hoyISO();
   return AG.filas.filter(f => {
     if (camp && String(f.O || '').trim() !== camp) return false;
-    if (mes && String(f.M || '').trim() !== mes) return false;
+    // Columna D = MES (no M, que es MES 2).
+    if (mes && String(f.D || '').trim() !== mes) return false;
     // Sólo cuenta como "no fue" si la cita ya pasó; una cita futura aún no falló.
     if (estado === 'no_fueron' && (f._asistio || !f._fecha_cita || f._fecha_cita >= hoy)) return false;
     if (estado === 'sin_compra' && (!f._asistio || f._compro)) return false;
