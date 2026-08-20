@@ -672,7 +672,7 @@ class Calculo:
         c_d2 = self._ag('DIA2')
         c_m3 = self._ag('MES3')
         c_a4 = self._ag('ANIO4')
-        c_camp = self._ag('CAMPANA')
+        c_camp = 'N'  # Columna N (14ª) es CAMPAÑA en el formato Derma Essenza AGENDADOS
         if not c_camp:
             return
         for r, fila in agendados:
