@@ -747,6 +747,7 @@ class Calculo:
         ws = self.maestro
         para_llenar = defaultdict(list)  # maestro_row -> [venta_row]
         walkins = defaultdict(list)      # (tel, nombre, fecha) -> [venta_row] sin match
+        filas_con_venta = set()          # filas que tienen match con VENTA (ya sync o nuevo)
         for v in venta:
             status = txt(v['status']) or ''
             st = status.upper()
@@ -784,6 +785,9 @@ class Calculo:
                 if any(self._asistio(r) for r in cand):
                     fila = ya_asistio(cand, 'teléfono+fecha')
                     if fila is None:
+                        for r in cand:
+                            if self._asistio(r):
+                                filas_con_venta.add(r)
                         continue
                     candidatos, modo = [fila], 'telefono+fecha (2do tratamiento)'
                 if not candidatos:
@@ -798,6 +802,9 @@ class Calculo:
                 if any(self._asistio(r) for r in cand):
                     fila = ya_asistio(cand, 'nombre+fecha')
                     if fila is None:
+                        for r in cand:
+                            if self._asistio(r):
+                                filas_con_venta.add(r)
                         continue
                     candidatos, modo = [fila], 'nombre+fecha (2do tratamiento)'
                 if not candidatos:
@@ -815,6 +822,7 @@ class Calculo:
 
             fila_m = candidatos[0]
             para_llenar[fila_m].append(v)
+            filas_con_venta.add(fila_m)
             self.matches.append((v['fila'], fila_m, modo, v['hoja']))
 
         # ----- ventas sin agendado previo: crear fila nueva (walk-in) para que -----
@@ -912,7 +920,7 @@ class Calculo:
         if c_asist:
             col_asist = openpyxl.utils.column_index_from_string(c_asist)
             for r in range(5, ws.max_row + 1):
-                if r in para_llenar:
+                if r in filas_con_venta:
                     continue
                 val = ws.cell(row=r, column=col_asist).value
                 if val == 'ASISTIO':
