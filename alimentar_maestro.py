@@ -886,14 +886,23 @@ class Calculo:
                 u[trat_col] = v['tratamiento']
                 if num(self._valor(fila_m, pago_col)) is None and v['venta'] is not None:
                     u[pago_col] = num(v['venta'])
-            # Recalcular PAGO TOTAL como suma de todos los pares TRAT/PAGO
-            # (incluye valores que acabamos de escribir + los que ya existían)
+            # Recalcular PAGO TOTAL como suma de pares TRAT/PAGO únicos.
+            # Evita contar el mismo tratamiento dos veces si quedó
+            # duplicado en filas anteriores.
             if c_ptot:
                 s = 0.0
-                for c_pago in self.col.get('PAGO', []):
-                    val = u.get(c_pago) or self._valor(fila_m, c_pago)
-                    if isinstance(val, (int, float)):
-                        s += val
+                vistos = set()
+                for c_trat, c_pago in zip(self.col.get('TRAT', []),
+                                          self.col.get('PAGO', [])):
+                    trat_val = u.get(c_trat) or self._valor(fila_m, c_trat)
+                    pago_val = u.get(c_pago) or self._valor(fila_m, c_pago)
+                    clave = (str(trat_val or '').strip().upper(),
+                             num(pago_val))
+                    if clave in vistos or clave[0] in ('', 'NONE'):
+                        continue
+                    vistos.add(clave)
+                    if isinstance(pago_val, (int, float)):
+                        s += pago_val
                 u[c_ptot] = s
 
         # Quitar ASISTIO de filas que NO tuvieron match con VENTA actual.
