@@ -745,15 +745,6 @@ class Calculo:
     # ----- 2) VENTA DIARIA -> completar P..AB -----
     def _calcular_ventas(self, venta):
         ws = self.maestro
-        # Limpiar ASISTENCIA de filas existentes antes de recalcular.
-        # Esto evita que queden ASISTIO de syncs anteriores cuando la
-        # persona ya no tiene SE REALIZO en VENTA DIARIA actual.
-        c_asist_clear = self.col.get('ASISTENCIA')
-        if c_asist_clear:
-            col_idx = openpyxl.utils.column_index_from_string(c_asist_clear)
-            for r in range(5, ws.max_row + 1):
-                if ws.cell(row=r, column=col_idx).value == 'ASISTIO':
-                    ws.cell(row=r, column=col_idx).value = None
         para_llenar = defaultdict(list)  # maestro_row -> [venta_row]
         walkins = defaultdict(list)      # (tel, nombre, fecha) -> [venta_row] sin match
         for v in venta:
@@ -884,6 +875,8 @@ class Calculo:
             # TRAT 2, no perderse.
             par = list(zip(self.col.get('TRAT', []), self.col.get('PAGO', [])))
             for v in ventas:
+                if self._tiene_tratamiento(fila_m, v):
+                    continue
                 libre = next(((t, p) for t, p in par
                               if txt(self._valor(fila_m, t)) is None and t not in u), None)
                 if libre is None:
@@ -902,6 +895,20 @@ class Calculo:
                     if isinstance(val, (int, float)):
                         s += val
                 u[c_ptot] = s
+
+        # Quitar ASISTIO de filas que NO tuvieron match con VENTA actual.
+        # Evita que queden marcadas como asistidas personas cuya venta
+        # ya no aparece en VENTA DIARIA.
+        c_asist = self.col.get('ASISTENCIA')
+        if c_asist:
+            col_asist = openpyxl.utils.column_index_from_string(c_asist)
+            for r in range(5, ws.max_row + 1):
+                if r in para_llenar:
+                    continue
+                val = ws.cell(row=r, column=col_asist).value
+                if val == 'ASISTIO':
+                    u = self.updates.setdefault(r, {})
+                    u[c_asist] = None
 
     def resumen(self):
         n_match_exacto = sum(1 for _, _, m, _ in self.matches if m in ('telefono+fecha', 'nombre+fecha'))
