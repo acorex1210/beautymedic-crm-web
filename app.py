@@ -497,7 +497,7 @@ async def debug_asistidos():
 
 @app.get('/api/debug/venta')
 async def debug_venta():
-    """Muestra VENTA DIARIA del drive."""
+    """Muestra TODA la VENTA DIARIA del drive."""
     import alimentar_maestro as am
     from collections import defaultdict
     ve = os.path.join(am.TMP_DIR, 'VENTA_DIARIA.xlsx')
@@ -507,10 +507,17 @@ async def debug_venta():
         except Exception as e:
             return {'error': str(e)}
     venta = am.leer_venta(ve)
-    # Solo los que tienen status SE REALIZO
-    realizados = [v for v in venta if str(v.get('status') or '').strip() == 'SE REALIZO']
-    return {'venta_path': ve, 'total_venta': len(venta), 'total_realizados': len(realizados),
-            'realizados': [{k: v for k, v in r.items() if k != 'fila'} for r in realizados[:50]]}
+    # Show ALL entries grouped by status
+    by_status = defaultdict(list)
+    for v in venta:
+        st = str(v.get('status') or '').strip() or '(vacio)'
+        by_status[st].append(v)
+    result = {'venta_path': ve, 'total_venta': len(venta), 'por_status': {}}
+    for st, items in by_status.items():
+        total = sum(r.get('venta', 0) or 0 for r in items if isinstance(r.get('venta'), (int, float)))
+        result['por_status'][st] = {'count': len(items), 'total': total,
+                                     'items': [{k: v for k, v in r.items() if k != 'fila'} for r in items[:50]]}
+    return result
 
 
 @app.get('/api/debug/agendados')
