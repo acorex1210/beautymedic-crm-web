@@ -380,7 +380,7 @@ _SEMANTICOS = {
 FUENTE_AG_COLS = {
     'C': 'DIA', 'D': 'MES', 'E': 'ANIO', 'G': 'NOMBRE', 'H': 'RED_SOCIAL',
     'I': 'TELEFONO', 'J': 'CORREO', 'K': 'AGENDADO', 'L': 'DIA2', 'M': 'MES3',
-    'N': 'CAMPANA', 'O': 'HORA',
+    'N': 'ANIO4', 'O': 'CAMPANA',
 }
 
 
@@ -689,17 +689,25 @@ class Calculo:
 
     def _buscar_campana_agendados(self, fila_m):
         """Busca la campaña de AGENDADOS para una fila del maestro."""
-        ph = norm_phone(self._valor(fila_m, self.col.get('TELEFONO')))
-        nm = norm_name(self._valor(fila_m, self.col.get('NOMBRE')))
+        ph = norm_phone(self._valor(fila_m, self.col.get('TELEFONO'))) if self._valor(fila_m, self.col.get('TELEFONO')) else ''
+        nm = norm_name(self._valor(fila_m, self.col.get('NOMBRE'))) if self._valor(fila_m, self.col.get('NOMBRE')) else ''
         fc = norm_fecha(self._valor(fila_m, self.col.get('DIA2')),
                         self._valor(fila_m, self.col.get('MES3')),
                         self._valor(fila_m, self.col.get('ANIO4')))
-        if ph and fc:
-            c = self._ag_campanas.get(('ph', ph, fc))
+        if fc:
+            if ph:
+                c = self._ag_campanas.get(('ph', ph, fc))
+                if c:
+                    return c
+            if nm:
+                c = self._ag_campanas.get(('nm', nm, fc))
+                if c:
+                    return c
+            # Try with empty phone/name as fallback
+            c = self._ag_campanas.get(('ph', '', fc))
             if c:
                 return c
-        if nm and fc:
-            c = self._ag_campanas.get(('nm', nm, fc))
+            c = self._ag_campanas.get(('nm', '', fc))
             if c:
                 return c
         return None
