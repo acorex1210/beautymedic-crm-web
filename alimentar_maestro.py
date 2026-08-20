@@ -256,7 +256,7 @@ def subir_maestro(ruta):
     """Persiste el maestro: sube a Drive si hay MAESTRO_FID, si no lo copia
     localmente a MAESTRO_PATH."""
     if MAESTRO_FID:
-        subir_archivo(MAESTRO_FID, ruta)
+        pass  # No subir el maestro de vuelta a Drive; se guarda local en /data/
     else:
         if os.path.abspath(ruta) == os.path.abspath(MAESTRO):
             return
