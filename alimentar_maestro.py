@@ -750,9 +750,10 @@ class Calculo:
         # persona ya no tiene SE REALIZO en VENTA DIARIA actual.
         c_asist_clear = self.col.get('ASISTENCIA')
         if c_asist_clear:
+            col_idx = openpyxl.utils.column_index_from_string(c_asist_clear)
             for r in range(5, ws.max_row + 1):
-                if ws.cell(row=r, column=c_asist_clear).value == 'ASISTIO':
-                    ws.cell(row=r, column=c_asist_clear).value = None
+                if ws.cell(row=r, column=col_idx).value == 'ASISTIO':
+                    ws.cell(row=r, column=col_idx).value = None
         para_llenar = defaultdict(list)  # maestro_row -> [venta_row]
         walkins = defaultdict(list)      # (tel, nombre, fecha) -> [venta_row] sin match
         for v in venta:
