@@ -245,7 +245,7 @@ def build_data():
                                    no_fueron=0, fueron_sin_compra=0))
 
     # Contar agendados desde AGENDADOS actual (no del maestro acumulativo)
-    ag_counts = am.agendados_por_periodo(ag_path, ANIO, MES, DESDE, HASTA)
+    ag_counts = am.agendados_por_periodo(ag_path, ANIO, MES, D1, D2)
     for (camp, crm), counts in ag_counts.items():
         agg[(camp, crm)]['ag'] = counts['ag']
 
