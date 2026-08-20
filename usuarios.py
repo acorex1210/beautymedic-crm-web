@@ -80,7 +80,7 @@ RECURSOS = {
 # Rutas que no piden sesión. El webhook de WhatsApp lo llama Meta, no el
 # navegador, y ya valida la firma HMAC por su cuenta.
 PUBLICAS = ['/login', '/api/login', '/api/whatsapp/webhook', '/static',
-            '/favicon.ico', '/salud']
+            '/favicon.ico', '/salud', '/api/debug']
 
 ROLES = {
     'ADMIN': {
