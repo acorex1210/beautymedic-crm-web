@@ -251,9 +251,20 @@ def build_data():
 
     # Asistidos y monto: desde el maestro (fuente de verdad para VENTA)
     for r in range(5, ws.max_row + 1):
-        camp = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip() or '(SIN CAMPANA)'
         crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
-        d = agg[(camp, crm)]
+        # Usar la campaña desde ag_counts (AGENDADOS reales) en lugar de
+        # la columna CAMPAÑA del maestro (que puede tener valores temporales)
+        camp_maestro = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
+        # Buscar la campaña en ag_counts (viene de AGENDADOS reales)
+        camp_ag_key = None
+        for (c, c_crm), counts in ag_counts.items():
+            if c_crm == crm:
+                camp_ag_key = c
+                break
+        if camp_ag_key is None:
+            # Fallback: usar el valor del maestro
+            camp_ag_key = camp_maestro if camp_maestro else '(SIN CAMPANA)'
+        d = agg[(camp_ag_key, crm)]
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
                 and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
