@@ -627,8 +627,8 @@ async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
     c_d2 = c2n(col['DIA2'])
     c_m3 = c2n(col['MES3'])
     c_a4 = c2n(col['ANIO4'])
-    c_trat = [c2n(col[f'TRAT{i}']) for i in range(1, 9)]
-    c_pago = [c2n(col[f'PAGO{i}']) for i in range(1, 9)]
+    c_trat = [c2n(c) for c in col.get('TRAT', [])]
+    c_pago = [c2n(c) for c in col.get('PAGO', [])]
     c_pt = c2n(col['PAGO_TOTAL'])
     filas = []
     for r in range(5, ws.max_row + 1):
