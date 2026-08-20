@@ -1226,22 +1226,24 @@ def escribir_reporte(calc, ruta):
 def agendados_por_periodo(ag_path, anio, mes, desde, hasta):
     """Cuenta agendados directamente desde AGENDADOS para un periodo.
 
+    Filtra por fecha de creación (DIA/MES/ANIO), no fecha de cita.
     Devuelve dict[(campana, crm)] -> ag, con crm='SIN CRM' (AGENDADOS no tiene CRM).
     """
     agendados, ag_col = leer_agendados(ag_path)
     if not ag_col:
         return {}
-    c_d2 = ag_col.get('DIA2')
-    c_m3 = ag_col.get('MES3')
-    c_a4 = ag_col.get('ANIO4')
+    c_dia = ag_col.get('DIA')
+    c_mes = ag_col.get('MES')
+    c_anio = ag_col.get('ANIO')
     c_camp = ag_col.get('CAMPANA')
     c_tel = ag_col.get('TELEFONO')
     c_nm = ag_col.get('NOMBRE')
     agg = defaultdict(lambda: {'ag': 0})
     for _r, fila in agendados:
-        if (fila.get(c_a4) == anio
-                and fila.get(c_m3) == mes
-                and desde <= (fila.get(c_d2) or 0) <= hasta):
+        if (fila.get(c_anio) == anio
+                and fila.get(c_mes) == mes
+                and isinstance(fila.get(c_dia), (int, float))
+                and desde <= int(fila.get(c_dia)) <= hasta):
             if fila.get(c_tel) or fila.get(c_nm):
                 camp = str(fila.get(c_camp) or '').strip() or '(SIN CAMPANA)'
                 agg[(camp, 'SIN CRM')]['ag'] += 1
