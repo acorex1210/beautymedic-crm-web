@@ -605,7 +605,9 @@ class Calculo:
         self.incompletas = []    # filas AGENDADOS incompletas/sin nombre
         self.sin_hueco = []      # (venta, maestro_fila) sin par TRAT/PAGO libre
         self._nueva_info = {}    # provisional -> (ph, nm, fecha)
+        self._ag_campanas = {}   # (ph, fecha) -> campaña | (nm, fecha) -> campaña
         self._indexar()
+        self._indexar_agendados(agendados)
         self._calcular_nuevos(agendados)
         self._indexar_nuevos()
         self._calcular_ventas(venta)
@@ -661,6 +663,45 @@ class Calculo:
             self.keys_full.add((ph, nm, fc, camp))
             if nm:
                 self.keys_loose.add((nm, fc))
+
+    def _indexar_agendados(self, agendados):
+        """Indexa campañas de AGENDADOS por (teléfono, fecha) y (nombre, fecha)."""
+        c_ph = self._ag('TELEFONO')
+        c_nm = self._ag('NOMBRE')
+        c_d2 = self._ag('DIA2')
+        c_m3 = self._ag('MES3')
+        c_a4 = self._ag('ANIO4')
+        c_camp = self._ag('CAMPANA')
+        if not c_camp:
+            return
+        for r, fila in agendados:
+            ph = norm_phone(fila.get(c_ph))
+            nm = norm_name(fila.get(c_nm))
+            fc = norm_fecha(fila.get(c_d2), fila.get(c_m3), fila.get(c_a4))
+            camp = str(fila.get(c_camp) or '').strip()
+            if not camp:
+                continue
+            if ph and fc:
+                self._ag_campanas[('ph', ph, fc)] = camp
+            if nm and fc:
+                self._ag_campanas[('nm', nm, fc)] = camp
+
+    def _buscar_campana_agendados(self, fila_m):
+        """Busca la campaña de AGENDADOS para una fila del maestro."""
+        ph = norm_phone(self._valor(fila_m, self.col.get('TELEFONO')))
+        nm = norm_name(self._valor(fila_m, self.col.get('NOMBRE')))
+        fc = norm_fecha(self._valor(fila_m, self.col.get('DIA2')),
+                        self._valor(fila_m, self.col.get('MES3')),
+                        self._valor(fila_m, self.col.get('ANIO4')))
+        if ph and fc:
+            c = self._ag_campanas.get(('ph', ph, fc))
+            if c:
+                return c
+        if nm and fc:
+            c = self._ag_campanas.get(('nm', nm, fc))
+            if c:
+                return c
+        return None
 
     # ----- 1) AGENDADOS -> filas nuevas (con fila provisional) -----
     def _calcular_nuevos(self, agendados):
@@ -874,6 +915,13 @@ class Calculo:
             primer = ventas[0]
             u = self.updates.setdefault(fila_m, {})
             u[c_asist] = 'ASISTIO'
+            # Actualizar CAMPAÑA desde AGENDADOS si está vacía o inválida
+            c_camp_m = self.col.get('CAMPANA')
+            camp_actual = str(self._valor(fila_m, c_camp_m) or '').strip()
+            if c_camp_m and (not camp_actual or len(camp_actual) <= 5):
+                camp_ag = self._buscar_campana_agendados(fila_m)
+                if camp_ag:
+                    u[c_camp_m] = camp_ag
             for col, v in ((c_dni, primer['dni']), (c_dist, primer['distrito']),
                            (c_edad, primer['edad']), (c_sexo, primer['sexo'])):
                 if col and v is not None and txt(self._valor(fila_m, col)) is None:
