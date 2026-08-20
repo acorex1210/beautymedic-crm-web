@@ -659,7 +659,7 @@ class Calculo:
                 self.by_phone_date[(ph, fc)].add(camp)
             self.keys_full.add((ph, nm, fc, camp))
             if nm:
-                self.keys_loose.add((nm, fc, camp))
+                self.keys_loose.add((nm, fc))
 
     # ----- 1) AGENDADOS -> filas nuevas (con fila provisional) -----
     def _calcular_nuevos(self, agendados):
@@ -680,11 +680,10 @@ class Calculo:
                 continue
             if (ph, nm, fc, camp) in self.keys_full:
                 continue
-            if nm and (nm, fc, camp) in self.keys_loose:
+            if nm and (nm, fc) in self.keys_loose:
                 continue
-            # Teléfono + fecha + campaña: misma persona, misma cita, misma campaña → duplicado
-            if ph and camp and camp in self.by_phone_date.get((ph, fc), set()):
-                self.incompletas.append((r, fila, 'teléfono+fecha+campaña ya existen en maestro'))
+            if ph and any(self._fecha(x) == fc for x in self.by_phone.get(ph, [])):
+                self.incompletas.append((r, fila, 'teléfono ya existe con misma fecha de cita'))
                 continue
             if (ph, nm, fc, camp) in vistos:
                 continue
