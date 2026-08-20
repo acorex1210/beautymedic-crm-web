@@ -612,6 +612,58 @@ async def debug_cruce(mes: str = '', anio: str = '', desde: str = '', hasta: str
     }
 
 
+@app.get('/api/debug/maestro-ago')
+async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
+    """Muestra filas del maestro para un mes/año dado: CAMPAÑA, ASISTENCIA, NOMBRE, TRAT/PAGO."""
+    import alimentar_maestro as am
+    from openpyxl.utils import column_index_from_string as c2n
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    col = am.detectar_maestro(ws)
+    c_nom = c2n(col['NOMBRE'])
+    c_mes = c2n(col['MES'])
+    c_anio = c2n(col['ANIO'])
+    c_camp = c2n(col['CAMPANA'])
+    c_asist = c2n(col['ASISTENCIA'])
+    c_d2 = c2n(col['DIA2'])
+    c_m3 = c2n(col['MES3'])
+    c_a4 = c2n(col['ANIO4'])
+    c_trat = [c2n(col[f'TRAT{i}']) for i in range(1, 9)]
+    c_pago = [c2n(col[f'PAGO{i}']) for i in range(1, 9)]
+    c_pt = c2n(col['PAGO_TOTAL'])
+    c Sexo = c2n(col['SEXO'])
+    c_dist = c2n(col['DISTRITO'])
+
+    filas = []
+    for r in range(5, ws.max_row + 1):
+        mes_val = str(ws.cell(row=r, column=c_mes).value or '').strip().upper()
+        anio_val = str(ws.cell(row=r, column=c_anio).value or '').strip()
+        if mes_val != mes or anio_val != anio:
+            continue
+        nombre = str(ws.cell(row=r, column=c_nom).value or '').strip()
+        asist = str(ws.cell(row=r, column=c_asist).value or '').strip()
+        camp = str(ws.cell(row=r, column=c_camp).value or '').strip()
+        d2 = ws.cell(row=r, column=c_d2).value
+        m3 = str(ws.cell(row=r, column=c_m3).value or '').strip()
+        a4 = ws.cell(row=r, column=c_a4).value
+        trats = []
+        for ct, cp in zip(c_trat, c_pago):
+            tv = ws.cell(row=r, column=ct).value
+            pv = ws.cell(row=r, column=cp).value
+            if tv:
+                trats.append({'trat': str(tv), 'pago': pv})
+        pt = ws.cell(row=r, column=c_pt).value
+        filas.append({
+            'row': r,
+            'nombre': nombre,
+            'asistencia': asist,
+            'campana': camp,
+            'fecha_cita': f'{d2}-{m3}-{a4}' if d2 else '',
+            'tratamientos': trats,
+            'pago_total': pt,
+        })
+    return {'total': len(filas), 'filas': filas}
+
+
 # ============================================================
 # Sesión y usuarios
 # ============================================================
