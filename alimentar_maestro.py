@@ -856,6 +856,7 @@ class Calculo:
         c_dist = self.col.get('DISTRITO')
         c_edad = self.col.get('EDAD')
         c_sexo = self.col.get('SEXO')
+        c_ptot = self.col.get('PAGO_TOTAL')
         for fila_m, ventas in para_llenar.items():
             ventas.sort(key=lambda x: (x['anio'] or 0, str(x['mes'] or ''), x['dia'] or 0, x['fila']))
             primer = ventas[0]
@@ -881,6 +882,15 @@ class Calculo:
                 u[trat_col] = v['tratamiento']
                 if num(self._valor(fila_m, pago_col)) is None and v['venta'] is not None:
                     u[pago_col] = num(v['venta'])
+            # Recalcular PAGO TOTAL como suma de todos los pares TRAT/PAGO
+            # (incluye valores que acabamos de escribir + los que ya existían)
+            if c_ptot:
+                s = 0.0
+                for c_pago in self.col.get('PAGO', []):
+                    val = u.get(c_pago) or self._valor(fila_m, c_pago)
+                    if isinstance(val, (int, float)):
+                        s += val
+                u[c_ptot] = s
 
     def resumen(self):
         n_match_exacto = sum(1 for _, _, m, _ in self.matches if m in ('telefono+fecha', 'nombre+fecha'))
