@@ -230,10 +230,17 @@ def _sheets():
     return build('sheets', 'v4', credentials=_credenciales())
 
 
+_ES_SHEETS_CACHE = {}  # fid -> bool; el tipo de un archivo no cambia en la vida del proceso
+
+
 def _es_sheets(fid):
     """True si el archivo de Drive es una Google Sheet nativa."""
+    if fid in _ES_SHEETS_CACHE:
+        return _ES_SHEETS_CACHE[fid]
     meta = _drive().files().get(fileId=fid, fields='mimeType').execute()
-    return meta.get('mimeType') == MIME_SHEETS
+    es = meta.get('mimeType') == MIME_SHEETS
+    _ES_SHEETS_CACHE[fid] = es
+    return es
 
 
 def subir_drive(fid, ruta):
@@ -993,6 +1000,31 @@ def _adaptador_edicion_venta(ruta, hoja, fila_num, valores):
     return actual
 
 
+def _fila_actual_sheets(fid, hoja, fila_num, ultima_col='Z'):
+    """Lee sólo la fila ``fila_num`` de una Google Sheet nativa vía la API de
+    Sheets (values.get), sin exportar ni volver a parsear el archivo entero.
+
+    Los ediciones de una sola fila (confirmar, reprogramar, editar venta...)
+    necesitan el contenido actual de la fila para no borrar columnas que no
+    tocan, pero no necesitan el archivo completo: exportarlo a .xlsx y
+    parsearlo con openpyxl solo para leer una fila costaba ~2-3s por click,
+    que era el cuello de botella real detrás de "se siente lento" en cada
+    botón de acción."""
+    res = _sheets().spreadsheets().values().get(
+        spreadsheetId=fid, range=f"'{hoja}'!A{fila_num}:{ultima_col}{fila_num}",
+        valueRenderOption='UNFORMATTED_VALUE').execute()
+    fila = (res.get('values') or [[]])
+    fila = fila[0] if fila else []
+    out = {}
+    for i, v in enumerate(fila):
+        if v in (None, ''):
+            continue
+        if isinstance(v, float) and v == int(v):
+            v = int(v)
+        out[openpyxl.utils.get_column_letter(i + 1)] = v
+    return out
+
+
 def editar_venta(hoja, fila_num, datos):
     if hoja not in ('VENTA 2026', 'VENTA 2025'):
         raise ValueError('Hoja de venta no válida')
@@ -1131,12 +1163,17 @@ def actualizar_campos_agendado(fila_num, campos):
     with _lock:
         fid = am.AGENDADOS_FID
         if _es_sheets(fid):
-            ruta = descargar('AGENDADOS', fid, forzar=True)
-            valores_hoja = _adaptador_edicion_agendados(ruta, fila_num, campos)
-            letras = sorted(valores_hoja,
-                            key=openpyxl.utils.column_index_from_string)
+            ruta = descargar('AGENDADOS', fid)
+            _, campos_hdr, _ = _detectar_columnas(ruta, 'AGENDADOS', _HEADERS_AGENDADOS)
+            inverso = _mapa_inverso(campos_hdr, AGENDADOS_CANON)
+            actual = _fila_actual_sheets(fid, 'AGENDADOS', fila_num)
+            for cl, v in campos.items():
+                real = inverso.get(cl)
+                if real:
+                    actual[real] = v
+            letras = sorted(actual, key=openpyxl.utils.column_index_from_string)
             ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
-            fila_row = [valores_hoja.get(openpyxl.utils.get_column_letter(c))
+            fila_row = [actual.get(openpyxl.utils.get_column_letter(c))
                         for c in range(1, ncols + 1)]
             fila_row = ['' if v is None else v for v in fila_row]
             _sheets().spreadsheets().values().update(
