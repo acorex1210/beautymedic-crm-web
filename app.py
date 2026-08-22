@@ -1421,8 +1421,7 @@ async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
         raise HTTPException(400, 'Indica la nueva fecha de la cita')
     with _bloqueo:
         try:
-            return crm.actualizar_campos_agendado(
-                fila, {'L': d.get('dia'), 'M': d.get('mes'), 'N': d.get('anio')})
+            return crm.reprogramar_agendado(fila, d.get('dia'), d.get('mes'), d.get('anio'))
         except ValueError as e:
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001

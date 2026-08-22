@@ -247,6 +247,9 @@
   .cal-dia .cal-puntos { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
   .cal-punto { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .cal-punto.ok { background: #1d7a42; } .cal-punto.ambar { background: #b07614; } .cal-punto.bad { background: #b03a3a; }
+  .cal-punto.huella { background: #7a7a7a; }
+  .cal-dia .cal-huella-txt { font-size: 10px; color: #7a7a7a; }
+  .cal-huella-item { opacity: .75; }
   .kadd:hover { color: var(--azul2); border-color: var(--azul3); }
 
   .etapa-NUEVO { --c: #5b6472; } .etapa-AGENDADO { --c: #2f5597; }
@@ -3547,6 +3550,28 @@ function calCitasDia(dia) {
   const mesTxt = MESES[calMes];
   return CAL_AG.filas.filter(f => Number(f.L) === dia && String(f.M || '').trim() === mesTxt && Number(f.N) === calAnio);
 }
+/* La huella de reprogramaciones vive en OBSERVACION2 (columna T), como
+   entradas "D-MES-A>D-MES-A" separadas por ";" (ver reprogramar_agendado
+   en crm_drive.py). Sirve para que un día no quede en blanco cuando una
+   cita se movió de ahí a otra fecha, y para ver cuántas veces se reagendó. */
+function parsearHistorialReagenda(t) {
+  return String(t || '').split(';').map(s => s.trim()).filter(Boolean).map(entrada => {
+    const [de, a] = entrada.split('>');
+    return { de, a };
+  }).filter(h => h.de && h.a);
+}
+function calHuellasDia(dia) {
+  if (!CAL_AG) return [];
+  const mesTxt = MESES[calMes];
+  const out = [];
+  CAL_AG.filas.forEach(f => {
+    parsearHistorialReagenda(f.T).forEach(h => {
+      const [d, m, a] = h.de.split('-');
+      if (Number(d) === dia && m === mesTxt && Number(a) === calAnio) out.push({ cita: f, aDonde: h.a });
+    });
+  });
+  return out;
+}
 function pintarCalendario() {
   if (!CAL_AG) return;
   $('calTitulo').textContent = `${MESES[calMes]} ${calAnio}`;
@@ -3563,14 +3588,17 @@ function pintarCalendario() {
       if (e === 'CONFIRMADO') c++; else if (e === 'NO_CONFIRMADO') n++; else p++;
     });
     total += citas.length; conf += c; pend += p; noconf += n;
+    const huellas = calHuellasDia(dia);
     const esHoy = dia === HOY_D && calMes === HOY.getMonth() && calAnio === HOY_A;
     const esSel = calDiaSel === dia;
-    const puntos = citas.length
-      ? `<div class="cal-puntos">${c ? `<span class="cal-punto ok" title="${c} confirmada(s)"></span>` : ''}${p ? `<span class="cal-punto ambar" title="${p} pendiente(s)"></span>` : ''}${n ? `<span class="cal-punto bad" title="${n} no confirmada(s)"></span>` : ''}</div>`
+    const tituloHuellas = huellas.map(h => `${h.cita.G || '—'} → movida a ${h.aDonde}`).join('\n');
+    const puntos = (citas.length || huellas.length)
+      ? `<div class="cal-puntos">${c ? `<span class="cal-punto ok" title="${c} confirmada(s)"></span>` : ''}${p ? `<span class="cal-punto ambar" title="${p} pendiente(s)"></span>` : ''}${n ? `<span class="cal-punto bad" title="${n} no confirmada(s)"></span>` : ''}${huellas.length ? `<span class="cal-punto huella" title="${esc(tituloHuellas)}"></span>` : ''}</div>`
       : '';
     html += `<div class="cal-dia${esHoy ? ' cal-hoy' : ''}${esSel ? ' cal-sel' : ''}" onclick="calSeleccionarDia(${dia})">
       <div class="cal-num">${dia}</div>
       ${citas.length ? `<div class="cal-resumen">${citas.length} cita${citas.length === 1 ? '' : 's'}</div>` : ''}
+      ${huellas.length ? `<div class="cal-huella-txt" title="${esc(tituloHuellas)}">↻ ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'}</div>` : ''}
       ${puntos}
     </div>`;
   }
@@ -3588,14 +3616,25 @@ function calSeleccionarDia(dia) {
 }
 function pintarCalDetalle() {
   const citas = calCitasDia(calDiaSel).slice().sort((a, b) => String(a.P || '').localeCompare(String(b.P || '')));
-  $('calDetalleTitulo').textContent = `${calDiaSel} de ${MESES[calMes]} ${calAnio} · ${citas.length} cita${citas.length === 1 ? '' : 's'}`;
-  $('calDetalleLista').innerHTML = citas.length ? citas.map(f => {
+  const huellas = calHuellasDia(calDiaSel);
+  $('calDetalleTitulo').textContent = `${calDiaSel} de ${MESES[calMes]} ${calAnio} · ${citas.length} cita${citas.length === 1 ? '' : 's'}${huellas.length ? ` · ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'} desde este día` : ''}`;
+  const filasCitas = citas.map(f => {
     const e = estadoCita(f.Q);
+    const hist = parsearHistorialReagenda(f.T);
+    const badge = hist.length ? `<span class="chip warn" title="${esc(hist.map(h => `${h.de} → ${h.a}`).join('\n'))}">↻ reagendada ${hist.length}x</span>` : '';
     return `<div class="item-hoy"><span class="hora">${esc(f.P || '—')}</span>
       <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small></div>
+      ${badge}
       <span class="chip ${CAL_CLASE[e]}">${CAL_ETIQUETA[e]}</span>
     </div>`;
-  }).join('') : '<div class="vacio">Sin citas ese día.</div>';
+  });
+  const filasHuellas = huellas.map(h => `
+    <div class="item-hoy cal-huella-item"><span class="hora">—</span>
+      <div class="info"><b>${esc(h.cita.G || '—')}</b><small>Estaba agendado este día, se movió a ${esc(h.aDonde)}</small></div>
+      <span class="chip info">↻ Reagendada</span>
+    </div>`);
+  const html = filasCitas.concat(filasHuellas).join('');
+  $('calDetalleLista').innerHTML = html || '<div class="vacio">Sin citas ese día.</div>';
 }
 function calCambiarMes(delta) {
   calMes += delta;

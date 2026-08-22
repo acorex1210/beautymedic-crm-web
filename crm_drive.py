@@ -1155,6 +1155,25 @@ def actualizar_campos_agendado(fila_num, campos):
             'campos': campos, 'conflicto': conflicto}
 
 
+def reprogramar_agendado(fila_num, dia, mes, anio):
+    """Cambia la fecha de la cita y deja huella del cambio anterior en
+    OBSERVACION2 (columna T, sin uso hasta ahora), como entradas
+    "D-MES-A>D-MES-A" separadas por ';'. Así el calendario puede mostrar
+    que una cita se movió en vez de simplemente desaparecer del día
+    original, y se puede ver cuántas veces se reagendó un paciente."""
+    actual = None
+    for f in leer_agendados()['filas']:
+        if f.get('_fila') == fila_num:
+            actual = f
+            break
+    campos = {'L': dia, 'M': mes, 'N': anio}
+    if actual and actual.get('L') and actual.get('M') and actual.get('N'):
+        entrada = f"{actual['L']}-{actual['M']}-{actual['N']}>{dia}-{mes}-{anio}"
+        previo = [p for p in str(actual.get('T') or '').split(';') if p.strip()]
+        campos['T'] = ';'.join((previo + [entrada])[-12:])
+    return actualizar_campos_agendado(fila_num, campos)
+
+
 def agregar_ventas_multi(datos, lineas):
     """Registra una venta con varios tratamientos: una fila por tratamiento.
 
