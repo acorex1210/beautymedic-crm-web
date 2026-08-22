@@ -305,14 +305,26 @@ def detectar_agendados(ws):
     return col
 
 
+_AGENDADOS_CACHE = {}  # path -> (mtime, (filas, ag_col))
+
+
 def leer_agendados(path):
     """Devuelve (filas, ag_col): filas = [(fila_excel, {letra: valor})] de la hoja
-    AGENDADOS y ag_col = {semántico: letra} detectado por cabecera."""
+    AGENDADOS y ag_col = {semántico: letra} detectado por cabecera.
+
+    Cacheada por ruta+mtime: reporte_ventas_pdf.py llama a esto varias veces
+    (build_data, datos_ejecutivas, datos_motivos, totales_periodo...) dentro
+    de una sola generación de reporte."""
+    mtime = os.path.getmtime(path)
+    cache = _AGENDADOS_CACHE.get(path)
+    if cache and cache[0] == mtime:
+        return cache[1]
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb['AGENDADOS']
     ag_col = detectar_agendados(ws)
     filas = []
     if not ag_col:
+        _AGENDADOS_CACHE[path] = (mtime, (filas, None))
         return filas, None
     c_nom = openpyxl.utils.column_index_from_string(ag_col['NOMBRE'])
     c_dia = openpyxl.utils.column_index_from_string(ag_col['DIA'])
@@ -325,11 +337,25 @@ def leer_agendados(path):
             if v is not None:
                 fila[openpyxl.utils.get_column_letter(c)] = v
         filas.append((r, fila))
+    _AGENDADOS_CACHE[path] = (mtime, (filas, ag_col))
     return filas, ag_col
 
 
+_VENTA_CACHE = {}  # path -> (mtime, filas)
+
+
 def leer_venta(path):
-    """Devuelve lista de dicts de las hojas VENTA 2026 y VENTA 2025."""
+    """Devuelve lista de dicts de las hojas VENTA 2026 y VENTA 2025.
+
+    Cacheada por ruta+mtime (mismo motivo que leer_maestro): proyeccion_mes
+    llama a esto indirectamente una vez por cada mes histórico que mira, y
+    VENTA_DIARIA.xlsx es el archivo más pesado de los tres que maneja la
+    app — sin caché era la mitad del tiempo de /api/analitica/proyeccion
+    incluso después de cachear el maestro."""
+    mtime = os.path.getmtime(path)
+    cache = _VENTA_CACHE.get(path)
+    if cache and cache[0] == mtime:
+        return cache[1]
     wb = openpyxl.load_workbook(path, data_only=True)
     filas = []
     for hoja, hr in [('VENTA 2026', 5), ('VENTA 2025', 8)]:
@@ -356,6 +382,7 @@ def leer_venta(path):
                 'fila': r,
             }
             filas.append(fila)
+    _VENTA_CACHE[path] = (mtime, filas)
     return filas
 
 
