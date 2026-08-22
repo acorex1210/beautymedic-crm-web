@@ -721,10 +721,20 @@ def _es_venta_registrada(v):
     return any(x in s for x in ('REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO'))
 
 
-def leer_dashboard():
+def leer_dashboard(anio=None, mes=None):
+    """Resumen del pipeline/ventas/agendados. Sin anio/mes, es histórico
+    (todo lo que hay). Con ambos, sólo cuenta lo de ese mes: agendados por
+    su fecha de agendado (no de cita) y ventas por su fecha de venta."""
+    mes = str(mes).strip().upper() if mes else None
+    anio = int(anio) if anio else None
+    filtra_mes = bool(anio and mes)
+
     tar = leer_tarjetas()
     ag = cd.leer_agendados()['filas']
     ve = cd.leer_venta()['hojas']
+    if filtra_mes:
+        ag = [f for f in ag if str(f.get('D') or '').strip().upper() == mes
+              and am.num(f.get('E')) == anio]
 
     funnel = {e: 0 for e in ETAPAS}
     for t in tar:
@@ -737,6 +747,9 @@ def leer_dashboard():
     for v in ve.values():
         for f in v['filas']:
             if not _es_venta_registrada(f.get('N')):
+                continue
+            if filtra_mes and (str(f.get('C') or '').strip().upper() != mes
+                               or am.num(f.get('D')) != anio):
                 continue
             monto = am.num(f.get('O')) or 0
             ventas_registradas += 1

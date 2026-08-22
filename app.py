@@ -2194,9 +2194,9 @@ async def crm_historias_borrar(doc_id: str, clave: str):
 
 
 @app.get('/api/crm/dashboard')
-async def crm_dashboard():
+async def crm_dashboard(anio: int = 0, mes: str = ''):
     try:
-        return {'ok': True, **cp.leer_dashboard()}
+        return {'ok': True, **cp.leer_dashboard(anio or None, mes or None)}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo calcular el dashboard (Drive): {e}')
 

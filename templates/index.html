@@ -1792,7 +1792,9 @@ async function cargarResumenPanel() {
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
-    si('dashboard', () => api('/api/crm/dashboard')),
+    // Resumen del panel = mes en curso; el Dashboard completo (con
+    // desglose por mes) sigue mostrando el histórico completo.
+    si('dashboard', () => api(`/api/crm/dashboard?anio=${HOY_A}&mes=${HOY_M}`)),
     si('planilla', () => api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`)),
     quiereAg ? api('/api/crm/agendados') : nada,
     // Con dashboard ya vienen los totales de venta: no se baja el libro entero.
@@ -1842,12 +1844,12 @@ async function cargarResumenPanel() {
       <div class="fila"><span class="lab">Conversión</span><span class="num">${d.conversion}%</span></div>
     </div>`);
     tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
-      <h4>Agendados</h4>
-      <div class="fila"><span class="lab">Total en el maestro</span><span class="num">${totalAg}</span></div>
+      <h4>Agendados · este mes</h4>
+      <div class="fila"><span class="lab">Agendados del mes</span><span class="num">${totalAg}</span></div>
       <div class="fila"><span class="lab">Fuentes CRM</span><span class="num">${Object.keys(d.ag_por_crm).length}</span></div>
     </div>`);
     tarjetas.push(`<div class="resumen-card" onclick="pagina('venta')">
-      <h4>Venta diaria</h4>
+      <h4>Venta diaria · este mes</h4>
       <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${d.ventas_registradas}</span></div>
       <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(d.total_ventas)}</span></div>
     </div>`);
