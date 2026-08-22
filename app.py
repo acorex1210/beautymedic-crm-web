@@ -1988,6 +1988,15 @@ async def planilla_trabajador_borrar(tid: int):
 
 @app.get('/api/crm/planilla')
 async def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
+    # Antes de leer, refresca la comisión de los pagos PENDIENTE de esa
+    # quincena con las ventas actuales (nunca toca los ya marcados PAGADO):
+    # así la comisión del médico queda al día cada vez que se abre la
+    # pantalla, sin depender de que alguien apriete "Generar planilla".
+    if anio and mes and quincena:
+        try:
+            cp.generar_planilla_quincena(anio, mes, quincena)
+        except ValueError:
+            pass
     try:
         pagos = cp.leer_planilla(anio or None, mes or None, quincena or None)
     except Exception as e:  # noqa: BLE001
