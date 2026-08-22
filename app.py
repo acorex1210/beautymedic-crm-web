@@ -985,6 +985,18 @@ async def analitica_kpis(mes: str = '', anio: str = '',
         raise HTTPException(502, f'No se pudo calcular KPIs: {e}')
 
 
+@app.get('/api/analitica/proyeccion')
+async def analitica_proyeccion(mes: str = '', anio: str = ''):
+    m, a, _d, _h = _filtros(mes, anio)
+    try:
+        res = ana.proyeccion_mes(m, a)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular la proyección: {e}')
+    if res is None:
+        raise HTTPException(400, f'Mes inválido: {m}')
+    return {'ok': True, **res}
+
+
 @app.get('/api/analitica/serie')
 async def analitica_serie(mes: str = '', anio: str = '',
                           desde: str = '', hasta: str = ''):

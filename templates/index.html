@@ -1738,11 +1738,12 @@ async function cargarMetaMensual() {
     $('metaPct').textContent = `${pct}% de la meta ${pct >= 100 ? '· ¡meta alcanzada!' : ''}`;
     $('metaNota').classList.add('oculto');
 
-    // Proyección: ritmo de venta actual (S/ por día transcurrido) llevado a fin de mes.
-    const diasMes = new Date(HOY_A, HOY.getMonth() + 1, 0).getDate();
-    const diasTranscurridos = Math.min(HOY_D, diasMes);
-    const ritmoDiario = diasTranscurridos > 0 ? Math.round((actual / diasTranscurridos) * 100) / 100 : 0;
-    const proyeccion = Math.round(ritmoDiario * diasMes * 100) / 100;
+    // Proyección: ya vendido + pipeline de citas ya agendadas (con tasa de
+    // conversión y ticket real) + estimado de leads que aún no se agendan,
+    // según el ritmo de agendamiento de los últimos 30 días. No es sólo el
+    // monto/día llevado a fin de mes.
+    const py = await api(`/api/analitica/proyeccion?mes=${HOY_M}&anio=${HOY_A}`);
+    const proyeccion = py.proyeccion;
     const pctProy = meta ? Math.round(100 * proyeccion / meta) : 0;
     const colorProy = proyeccion >= meta ? 'var(--verde)' : pctProy >= 70 ? 'var(--naranja)' : 'var(--rojo)';
     const icono = proyeccion >= meta ? '✓' : '⚠';
@@ -1752,14 +1753,17 @@ async function cargarMetaMensual() {
       : `-${fmtMon(Math.abs(diferencia))} por debajo de la meta`;
     $('metaProyeccion').innerHTML = `
       <div style="display:flex;justify-content:space-between;color:var(--gris);">
-        <span>Proyección al cierre del mes (según ritmo actual)</span>
+        <span>Proyección al cierre del mes</span>
         <span style="font-weight:700;color:${colorProy};">${fmtMon(proyeccion)}</span>
       </div>
-      <div style="margin-top:2px;color:${colorProy};">${icono} ${pctProy}% de la meta proyectado · día ${diasTranscurridos} de ${diasMes}</div>
+      <div style="margin-top:2px;color:${colorProy};">${icono} ${pctProy}% de la meta proyectado · día ${py.dias_transcurridos} de ${py.dias_mes}</div>
       <div style="margin-top:6px;color:${colorProy};font-weight:600;">${textoVs}</div>
-      <div style="margin-top:4px;color:var(--gris);font-size:12px;">
-        Cálculo: ${fmtMon(actual)} vendido en ${diasTranscurridos} día(s)
-        → ritmo de ${fmtMon(ritmoDiario)}/día × ${diasMes} días del mes.
+      <div style="margin-top:8px;color:var(--gris);font-size:12px;line-height:1.7;">
+        ${fmtMon(py.ya_vendido)} ya vendido
+        + ${fmtMon(py.pipeline_esperado)} esperado de ${py.citas_pendientes} cita(s) ya agendada(s) para lo que resta del mes
+        + ${fmtMon(py.venta_nuevos_esperada)} esperado de ~${py.nuevos_esperados} lead(s) nuevo(s) aún sin agendar (según ritmo de los últimos 30 días).<br>
+        Conversión histórica ${py.tasa_conversion_pct}% · ticket promedio ${fmtMon(py.ticket_promedio)}.
+        Ritmo lineal simple: ${fmtMon(py.ritmo_lineal)}.
       </div>`;
   } catch (e) { /* sin datos del maestro aún */ }
 }

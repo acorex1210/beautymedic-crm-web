@@ -12,10 +12,11 @@ Funciones principales:
   comparativo(mes, anio, desde, hasta)  -> periodo actual vs anterior vs año pasado
   recurrentes(mes, anio, desde, hasta)  -> pacientes que repiten y LTV
 """
+import calendar
 import os
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import openpyxl  # noqa: F401
 
@@ -272,6 +273,110 @@ def serie_diaria(mes, anio, desde, hasta):
             'asistidos': [as_[d] for d in dias],
             'compraron': [co[d] for d in dias],
             'monto': [round(mon[d], 2) for d in dias]}
+
+
+def _fecha(dia, mes, anio):
+    """(dia, 'AGO', anio) -> date, o None si algo no calza."""
+    try:
+        mi = _MM_ORD.get(str(mes).strip().upper())
+        if not mi:
+            return None
+        return datetime(int(anio), mi, int(dia)).date()
+    except (TypeError, ValueError):
+        return None
+
+
+def proyeccion_mes(mes, anio):
+    """Proyección de venta al cierre del mes, sin asumir un ritmo diario
+    plano. Combina tres factores:
+
+      1. Ya vendido: lo que ya se facturó este mes (citas hasta hoy).
+      2. Pipeline conocido: citas YA agendadas para lo que resta del mes
+         (aún no ocurren) × tasa de conversión y ticket promedio de los
+         últimos 3 meses — a diferencia del monto/día, esto usa compromisos
+         reales ya en la agenda, no un promedio.
+      3. Leads todavía sin agendar: para los días que faltan y que aún no
+         tienen ninguna cita en agenda, se estima cuántos agendados nuevos
+         aparecerán según el ritmo de agendamiento de los últimos 30 días
+         (no del mes en curso, que puede estar a mitad de camino), y se les
+         aplica la misma tasa de conversión y ticket promedio.
+
+    Devuelve el desglose completo para que la pantalla explique el número,
+    no sólo lo muestre.
+    """
+    mes = str(mes).strip().upper()
+    anio = int(anio)
+    mi = _MM_ORD.get(mes)
+    if not mi:
+        return None
+    dias_mes = calendar.monthrange(anio, mi)[1]
+    hoy = datetime.now().date()
+    es_mes_actual = (hoy.year, hoy.month) == (anio, mi)
+    dia_hoy = hoy.day if es_mes_actual else dias_mes
+    dias_transcurridos = min(dia_hoy, dias_mes)
+    dias_restantes = max(0, dias_mes - dias_transcurridos)
+
+    # ---- tasa de conversión y ticket promedio: últimos 3 meses (incluye el
+    # actual) para no depender de un solo mes con pocos datos ----
+    meses_hist = [(mes, anio)] + _meses_previos(mes, anio, 2)
+    as_hist = co_hist = 0
+    mon_hist = 0.0
+    for m, a in meses_hist:
+        k = _kpis_core(m, a, 1, 31)
+        as_hist += k['asistidos']; co_hist += k['compraron']; mon_hist += k['monto']
+    tasa_conversion = co_hist / as_hist if as_hist else 0.0
+    ticket_promedio = mon_hist / co_hist if co_hist else 0.0
+
+    filas, _ = _filas_maestro()
+    ya_vendido = 0.0
+    citas_pendientes = 0
+    for f in filas:
+        if f['anio_cita'] != anio or str(f['mes_cita'] or '').strip().upper() != mes:
+            continue
+        fc = _fecha(f['dia_cita'], f['mes_cita'], f['anio_cita'])
+        if fc is None:
+            continue
+        if fc <= hoy:
+            if str(f['asistencia'] or '').strip() == 'ASISTIO':
+                ya_vendido += _monto(f)
+        else:
+            citas_pendientes += 1
+    pipeline_esperado = round(citas_pendientes * tasa_conversion * ticket_promedio, 2)
+
+    # ---- ritmo de agendamiento reciente (últimos 30 días naturales, no el
+    # mes en curso) para estimar cuántos leads NUEVOS (sin cita todavía)
+    # aparecerán en lo que falta del mes ----
+    desde30 = hoy - timedelta(days=30)
+    nuevos_30d = 0
+    for f in filas:
+        fa = _fecha(f['dia_ag'], f['mes_ag'], f['anio_ag'])
+        if fa and desde30 <= fa <= hoy and f['telefono']:
+            nuevos_30d += 1
+    ritmo_agendados_dia = nuevos_30d / 30.0
+    nuevos_esperados = round(ritmo_agendados_dia * dias_restantes, 1)
+    venta_nuevos_esperada = round(nuevos_esperados * tasa_conversion * ticket_promedio, 2)
+
+    total = round(ya_vendido + pipeline_esperado + venta_nuevos_esperada, 2)
+    # Piso de seguridad: la proyección lineal simple (ritmo actual llevado a
+    # fin de mes) nunca debería superar al modelo combinado si el mes venía
+    # fuerte y el pipeline es flojo — se informa como referencia, no se usa
+    # para recortar el resultado.
+    ritmo_lineal = round((ya_vendido / dias_transcurridos) * dias_mes, 2) if dias_transcurridos else 0.0
+
+    return {
+        'mes': mes, 'anio': anio, 'dias_mes': dias_mes,
+        'dias_transcurridos': dias_transcurridos, 'dias_restantes': dias_restantes,
+        'ya_vendido': round(ya_vendido, 2),
+        'citas_pendientes': citas_pendientes,
+        'pipeline_esperado': pipeline_esperado,
+        'nuevos_esperados': nuevos_esperados,
+        'venta_nuevos_esperada': venta_nuevos_esperada,
+        'tasa_conversion_pct': round(tasa_conversion * 100, 1),
+        'ticket_promedio': round(ticket_promedio, 2),
+        'ritmo_agendados_dia': round(ritmo_agendados_dia, 2),
+        'ritmo_lineal': ritmo_lineal,
+        'proyeccion': total,
+    }
 
 
 def perfil(mes, anio, desde, hasta):
