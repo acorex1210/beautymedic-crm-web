@@ -46,6 +46,7 @@
   .nav a .ico { width: 20px; height: 20px; flex: 0 0 20px; }
   .nav .sub { font-size: 11px; color: #6d80a8; text-transform: uppercase; letter-spacing: .6px; padding: 14px 12px 6px; }
   .side-pies { padding: 12px 16px 18px; border-top: 1px solid rgba(255,255,255,.08); font-size: 11px; color: #8fa3c8; }
+  .btn-menu-movil, .nav-fondo { display: none; }
   /* Ficha clínica: bloques de SÍ/NO en dos columnas, como el papel. */
   .his-grupo { margin: 20px 0 10px; }
   .sino-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 18px; }
@@ -441,20 +442,42 @@
     .sidebar {
       width: 100%; min-width: 0; height: 64px; min-height: 64px; flex: none;
       position: sticky; top: 0; z-index: 40; display: flex; align-items: center;
-      padding: 6px 10px; gap: 8px; overflow: hidden;
+      padding: 6px 10px; gap: 8px; overflow: visible;
     }
-    .logo { flex: 0 0 auto; padding: 0; border: 0; }
+    .logo { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; }
     .logo h1, .logo p { display: none; }
-    .nav {
-      display: flex; flex: 1 1 auto; min-width: 0; gap: 6px; padding: 0;
-      overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
-      -webkit-overflow-scrolling: touch;
+    /* 15 secciones no caben en una tira horizontal de 64px: en vez de
+       recortarlas a la mitad, el menú se abre como cajón deslizable desde
+       la izquierda, activado por el botón hamburguesa. */
+    .btn-menu-movil {
+      display: flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; width: 40px; height: 40px; border-radius: 9px; border: 0;
+      background: rgba(255,255,255,.08); color: #fff; cursor: pointer;
+      touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     }
-    .nav::-webkit-scrollbar { display: none; }
-    .nav a { flex: 0 0 auto; width: auto; margin: 0; padding: 8px 10px; gap: 6px; }
-    .nav a span.lab { display: inline; font-size: 12px; }
-    .nav a .ico { width: 18px; height: 18px; flex-basis: 18px; }
-    .nav .sub, .side-pies, .side-usuario .dat { display: none; }
+    .btn-menu-movil:hover { background: rgba(255,255,255,.14); }
+    .btn-menu-movil:focus-visible { outline: 2px solid #7aa6e0; outline-offset: 2px; }
+    .nav-fondo {
+      display: block; position: fixed; inset: 64px 0 0 0; z-index: 38;
+      background: rgba(9, 30, 66, .55); opacity: 0; pointer-events: none;
+      transition: opacity .2s ease;
+    }
+    .sidebar.menu-abierto .nav-fondo { opacity: 1; pointer-events: auto; }
+    .nav {
+      display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+      position: fixed; top: 64px; left: 0; bottom: 0; z-index: 39;
+      width: min(84vw, 320px); padding: 10px 12px 16px;
+      background: linear-gradient(180deg, #0e1f3d 0%, #13294b 58%, #0d1b33 100%);
+      box-shadow: 4px 0 24px rgba(9, 30, 66, .35);
+      overflow-y: auto; overscroll-behavior: contain;
+      transform: translateX(-105%); transition: transform .22s ease;
+    }
+    .sidebar.menu-abierto .nav { transform: translateX(0); }
+    .nav a { flex: 0 0 auto; width: 100%; margin: 0 0 2px; padding: 11px 12px; gap: 12px; }
+    .nav a span.lab { display: inline; font-size: 14px; }
+    .nav a .ico { width: 20px; height: 20px; flex-basis: 20px; }
+    .nav .sub { display: block; }
+    .side-pies, .side-usuario .dat { display: none; }
     .side-usuario { border: 0; padding: 4px 8px; }
     .main { min-width: 0; }
     .topbar { min-height: auto; padding: 13px 16px; align-items: flex-start; }
@@ -501,14 +524,18 @@
 <body>
 <div class="app">
   <!-- ======= Sidebar ======= -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebarApp">
     <div class="logo">
       <div class="marca">
         <div class="badge">{{BRAND_BADGE}}</div>
         <div><h1>{{BRAND_NOMBRE}}</h1><p>CRM &middot; Reportes de ventas</p></div>
       </div>
     </div>
-    <nav class="nav">
+    <button type="button" class="btn-menu-movil" id="btnMenuMovil" aria-label="Abrir menú" aria-expanded="false" aria-controls="navPrincipal">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="nav-fondo" id="navFondo"></div>
+    <nav class="nav" id="navPrincipal">
       <div class="sub">Principal</div>
       <a data-pagina="panel" class="activo">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
@@ -1687,7 +1714,22 @@ function pagina(nombre) {
   if (nombre === 'analitica') cargarAnalitica();
   if (nombre === 'metaads') cargarMeta();
 }
-document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', () => pagina(a.dataset.pagina)));
+document.querySelectorAll('.nav a').forEach(a => a.addEventListener('click', () => { pagina(a.dataset.pagina); cerrarMenuMovil(); }));
+
+/* ---------------- Menú móvil (cajón deslizable) ---------------- */
+function abrirMenuMovil() {
+  $('sidebarApp').classList.add('menu-abierto');
+  $('btnMenuMovil').setAttribute('aria-expanded', 'true');
+}
+function cerrarMenuMovil() {
+  $('sidebarApp').classList.remove('menu-abierto');
+  $('btnMenuMovil').setAttribute('aria-expanded', 'false');
+}
+$('btnMenuMovil').addEventListener('click', () => {
+  $('sidebarApp').classList.contains('menu-abierto') ? cerrarMenuMovil() : abrirMenuMovil();
+});
+$('navFondo').addEventListener('click', cerrarMenuMovil);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenuMovil(); });
 
 function cerrarModales() {
   document.querySelectorAll('.modal-fondo').forEach(m => m.classList.remove('abierto'));
