@@ -208,6 +208,7 @@ class ReporteReq(BaseModel):
     desde: int = 1
     hasta: int = 10
     fuente: str = 'maestro'
+    breve: bool = False
 
 
 class SyncReq(BaseModel):
@@ -829,10 +830,10 @@ async def generar_reporte(data: ReporteReq):
         # generar el reporte, sin importar la fuente elegida.
         am.ejecutar_sync(aplicar=True)
         ruta = _nombre_reporte(mes, data.anio, data.desde, data.hasta)
+        generador = rv.generar_reporte_breve if data.breve else rv.generar_reporte
         try:
-            res = rv.generar_reporte(mes=mes, anio=data.anio, desde=data.desde,
-                                     hasta=data.hasta, fuente=data.fuente,
-                                     salida=ruta)
+            res = generador(mes=mes, anio=data.anio, desde=data.desde,
+                            hasta=data.hasta, fuente=data.fuente, salida=ruta)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(500, f'Error generando el reporte: {e}')
     verificacion = None
@@ -876,7 +877,7 @@ async def generar_reporte(data: ReporteReq):
         pass
     return {'ok': True, 'archivo': os.path.basename(res['archivo']),
             'url': f'/api/reporte/download/{os.path.basename(res["archivo"])}',
-            'totales': res['totales'], 'por_crm': res['por_crm'],
+            'totales': res['totales'], 'por_crm': res.get('por_crm', {}),
             'detalle': res['detalle'], 'por_campana_meta': res.get('por_campana_meta', []),
             'verificacion': verificacion}
 

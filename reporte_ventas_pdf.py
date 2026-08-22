@@ -223,6 +223,30 @@ def monto(sol):
     return f"S/ {sol:,.0f}" if sol else "S/ 0"
 
 
+def _campana_origen_por_telefono(ag_path):
+    """Teléfono -> campaña de su PRIMERA cita en todo el historial de
+    AGENDADOS (no solo el periodo del reporte). Un cliente reagendado para
+    retoque/evaluación bajo otra "campaña" sigue contando en la que lo trajo,
+    igual que en el cuadre manual."""
+    agendados, ag_col = am.leer_agendados(ag_path)
+    if not ag_col:
+        return {}
+    orden_mes = list(NOMBRES_MES)
+
+    def clave(fc):
+        dia, mes, anio = fc
+        return (anio, orden_mes.index(mes) if mes in orden_mes else 99, dia)
+
+    por_tel = defaultdict(list)
+    for _r, f in agendados:
+        tel = am.norm_phone(f.get(ag_col['TELEFONO']))
+        camp = str(f.get(ag_col['CAMPANA']) or '').strip()
+        fc = am.norm_fecha(f.get(ag_col['DIA2']), f.get(ag_col['MES3']), f.get(ag_col['ANIO4']))
+        if tel and camp and fc:
+            por_tel[tel].append((fc, camp))
+    return {tel: min(opts, key=lambda x: clave(x[0]))[1] for tel, opts in por_tel.items()}
+
+
 def build_data():
     global COL
     ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
@@ -249,21 +273,15 @@ def build_data():
     for (camp, crm), counts in ag_counts.items():
         agg[(camp, crm)]['ag'] = counts['ag']
 
-    # Asistidos y monto: desde el maestro (fuente de verdad para VENTA)
+    # Asistidos y monto: desde el maestro (fuente de verdad para VENTA), con
+    # la campaña de origen (primera cita) del cliente por teléfono, para que
+    # una venta de un reagendado no se pierda en la campaña del día de venta.
+    origen_por_telefono = _campana_origen_por_telefono(ag_path)
     for r in range(5, ws.max_row + 1):
         crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
-        # Usar la campaña desde ag_counts (AGENDADOS reales) en lugar de
-        # la columna CAMPAÑA del maestro (que puede tener valores temporales)
+        tel = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
         camp_maestro = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
-        # Buscar la campaña en ag_counts (viene de AGENDADOS reales)
-        camp_ag_key = None
-        for (c, c_crm), counts in ag_counts.items():
-            if c_crm == crm:
-                camp_ag_key = c
-                break
-        if camp_ag_key is None:
-            # Fallback: usar el valor del maestro
-            camp_ag_key = camp_maestro if camp_maestro else '(SIN CAMPANA)'
+        camp_ag_key = origen_por_telefono.get(tel) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
         d = agg[(camp_ag_key, crm)]
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
@@ -546,7 +564,8 @@ def _fila_meta(nombre, mc, d):
     ag, as_, co, mon = d['ag'], d['as_'], d['co'], d['mon']
     return dict(campania=nombre, gasto=gasto, leads=leads, costo_res=costo_res,
                 ag=ag, pct_ag=pct(ag, leads), as_=as_, pct_as=pct(as_, ag),
-                co=co, mon=mon, ticket=mon / as_ if as_ else 0, organica=False)
+                co=co, pct_co=pct(co, as_), mon=mon,
+                ticket=mon / co if co else 0, organica=False)
 
 
 def _gasto_ads_total():
@@ -581,8 +600,8 @@ def build_campana_meta(agg):
         filas.append(dict(campania=camp + ' (organica)', gasto=0, leads=0,
                           costo_res=0, ag=d['ag'], pct_ag=0,
                           as_=d['as_'], pct_as=pct(d['as_'], d['ag']),
-                          co=d['co'], mon=d['mon'],
-                          ticket=d['mon'] / d['as_'] if d['as_'] else 0,
+                          co=d['co'], pct_co=pct(d['co'], d['as_']), mon=d['mon'],
+                          ticket=d['mon'] / d['co'] if d['co'] else 0,
                           organica=True))
     return filas
 
@@ -905,8 +924,9 @@ def pagina_campanas_meta(pdf, filas):
                 str(f['as_']),
                 f"{f['pct_as']:.0f}%",
                 str(f['co']),
+                f"{f['pct_co']:.0f}%",
                 monto(f['mon']),
-                monto(f['ticket']) if f['as_'] else '—']
+                monto(f['ticket']) if f['co'] else '—']
         datos.append(fila)
         if not f['organica']:
             total['gasto'] += f['gasto']; total['leads'] += f['leads']
@@ -918,18 +938,19 @@ def pagina_campanas_meta(pdf, filas):
                   str(total['ag']),
                   f"{pct(total['ag'], total['leads']):.0f}%" if total['leads'] else '—',
                   str(total['as_']), f"{pct(total['as_'], total['ag']):.0f}%",
-                  str(total['co']), monto(total['mon']),
-                  monto(total['mon'] / total['as_']) if total['as_'] else '—'])
+                  str(total['co']), f"{pct(total['co'], total['as_']):.0f}%",
+                  monto(total['mon']),
+                  monto(total['mon'] / total['co']) if total['co'] else '—'])
 
     axc = fig.add_axes([0.03, 0.10, 0.94, 0.72])
     estilo_tabla(axc, datos,
-                 [0.21, 0.07, 0.045, 0.07, 0.07, 0.07, 0.07, 0.07, 0.07, 0.085, 0.095],
+                 [0.19, 0.065, 0.04, 0.065, 0.06, 0.065, 0.06, 0.065, 0.06, 0.065, 0.08, 0.09],
                  header=['Campana', 'Gasto\nMeta', 'Leads', 'Costo\n/lead', 'Agend.',
-                         'Agend.\n/lead', 'Asist.', '%\nAsist.', 'Compr.',
-                         'Monto', 'Ticket\n/asist.'],
+                         'Agend.\n/lead', 'Asist.', '%\nAsist.', 'Compr.', '%\nCompr.',
+                         'Monto', 'Ticket\n/venta'],
                  fontsize=7.3, scale=3.6)
     ax.text(0.045, 0.055, 'Agend/lead = % de agendados logrados por cada lead de Meta.  '
-                          'Ticket/asist. = ventas entre los que asistieron.',
+                          'Ticket/venta = ventas entre los que compraron.',
             fontsize=7.5, color=GRIS, transform=fig.transFigure)
     ax.text(0.045, 0.035, 'El gasto y los leads de Meta son del rango del reporte cargado.',
             fontsize=7.5, color=GRIS, transform=fig.transFigure)
@@ -1678,6 +1699,29 @@ def generar_reporte(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
                             'total_recurrentes': rec['total_recurrentes'],
                             'ltv_promedio': rec['ltv_promedio']},
             'reactivacion': {'pendientes': len(react)}}
+
+
+def generar_reporte_breve(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maestro',
+                          salida=None):
+    """PDF de una sola página: la tabla de campañas (PPTO/CPL/LEAD/AGENDADO/
+    ASISTIDO/REALIZADO/FACTURADO/TICKET), igual al cuadre manual en Excel."""
+    global MES, ANIO, D1, D2, FUENTE, SALIDA
+    MES, ANIO, D1, D2, FUENTE = mes, int(anio), int(desde), int(hasta), fuente
+    if salida:
+        SALIDA = salida if os.path.isabs(salida) else os.path.join(BASE_DIR, salida)
+    agg = build_data()
+    tot = dict(ag=0, as_=0, co=0, mon=0.0)
+    for d in agg.values():
+        tot['ag'] += d['ag']; tot['as_'] += d['as_']
+        tot['co'] += d['co']; tot['mon'] += d['mon']
+    agg_campanas, _agg_otros = separar_campanas_otros(agg)
+    filas_meta = build_campana_meta(agg_campanas)
+    with PdfPages(SALIDA) as pdf:
+        pagina_campanas_meta(pdf, filas_meta)
+    return {'archivo': SALIDA, 'totales': tot,
+            'detalle': {f'{k[0]} | {k[1]}': dict(v) for k, v in sorted(
+                agg.items(), key=lambda kv: -kv[1]['ag'])},
+            'por_campana_meta': filas_meta}
 
 
 def main(argv=None):

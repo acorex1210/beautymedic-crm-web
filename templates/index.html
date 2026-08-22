@@ -638,6 +638,9 @@
             <label class="radio"><input type="radio" name="fuente" value="maestro" checked> Maestro (datos guardados del archivo BD DATA)</label>
             <label class="radio"><input type="radio" name="fuente" value="auto"> Automático (integra AGENDADOS + VENTA DIARIA de Drive)</label>
           </div>
+          <div style="margin:0 0 14px;">
+            <label class="radio"><input type="checkbox" id="repBreve"> Reporte breve (solo la tabla de campañas: PPTO, CPL, LEAD, agendado, asistido, realizado, facturado, ticket)</label>
+          </div>
           <button class="btn" id="btnReporte">Generar PDF</button>
           <div id="resultadoReporte" class="oculto">
             <div class="resumen" id="kpisReporte"></div>
@@ -1915,10 +1918,11 @@ $('btnReporte').addEventListener('click', async () => {
   $('msgReporte').classList.add('oculto'); $('resultadoReporte').classList.add('oculto');
   try {
     const fuente = document.querySelector('input[name=fuente]:checked').value;
+    const breve = $('repBreve').checked;
     const res = await api('/api/reporte', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mes: $('repMes').value, anio: +$('repAnio').value,
-        desde: +$('repDesde').value, hasta: +$('repHasta').value, fuente }),
+        desde: +$('repDesde').value, hasta: +$('repHasta').value, fuente, breve }),
     });
     const t = res.totales;
     $('kpisReporte').innerHTML = `

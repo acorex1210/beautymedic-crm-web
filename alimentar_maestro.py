@@ -712,7 +712,7 @@ class Calculo:
                 return c
         return None
 
-def _buscar_campana_por_fila_agendados(self, fila):
+    def _buscar_campana_por_fila_agendados(self, fila):
         """Busca la campaña de AGENDADOS usando un dict de fila (para filas nuevas)."""
         c_ph = self._ag('TELEFONO')
         c_nm = self._ag('NOMBRE')
@@ -743,7 +743,7 @@ def _buscar_campana_por_fila_agendados(self, fila):
                 return c
         return ''
 
-def _actualizar_campanas(self):
+    def _actualizar_campanas(self):
         """Actualiza CAMPAÑA desde AGENDADOS para TODAS las filas del maestro,
         incluyendo las nuevas y las que ya tenía ASISTIO (no depende de匹配 con VENTA)."""
         c_camp_m = self.col.get('CAMPANA')
@@ -758,7 +758,7 @@ def _actualizar_campanas(self):
                     u[c_camp_m] = camp_ag
         # Actualizar filas nuevas (provisionales)
         for fila_num, fila in self.new_rows:
-            camp_ag = self._buscar_campana_agendados_por_fila(fila)
+            camp_ag = self._buscar_campana_por_fila_agendados(fila)
             if camp_ag:
                 u = self.updates.setdefault(fila_num, {})
                 if c_camp_m not in u:
