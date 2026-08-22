@@ -897,9 +897,9 @@
         </div>
         <div class="tarjeta">
           <div class="toolbar">
-            <button class="btn gris" id="btnCalAnterior">&larr;</button>
+            <button class="btn gris" id="btnCalAnterior" aria-label="Mes anterior">&larr;</button>
             <b id="calTitulo" style="min-width:160px;text-align:center;"></b>
-            <button class="btn gris" id="btnCalSiguiente">&rarr;</button>
+            <button class="btn gris" id="btnCalSiguiente" aria-label="Mes siguiente">&rarr;</button>
             <button class="btn borde pequeno" id="btnCalHoy">Ir a hoy</button>
             <button class="btn gris" id="btnCalRecargar" style="margin-left:auto;">Actualizar</button>
             <span class="chip ok">Confirmado</span>
@@ -1102,7 +1102,7 @@
 <!-- ============ MODAL USUARIO ============ -->
 <div class="modal-fondo" id="modalUsuario">
   <div class="modal">
-    <div class="cab"><h3 id="usTitulo">Nuevo usuario</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="usTitulo">Nuevo usuario</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formUsuario">
       <div class="form-grid">
         <div class="campo"><label>Usuario</label><input type="text" id="usUsuario" placeholder="ej. CRM1" autocapitalize="characters" required></div>
@@ -1127,7 +1127,7 @@
 <!-- ============ MODAL NUEVO AGENDADO ============ -->
 <div class="modal-fondo" id="modalAgendado">
   <div class="modal">
-    <div class="cab"><h3>Nuevo agendado</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3>Nuevo agendado</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formAgendado">
       <div class="form-grid">
         <div class="grupo">Fecha de registro</div>
@@ -1168,7 +1168,7 @@
 <!-- ============ MODAL NUEVA VENTA ============ -->
 <div class="modal-fondo" id="modalVenta">
   <div class="modal">
-    <div class="cab"><h3 id="veTitulo">Nueva venta diaria</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="veTitulo">Nueva venta diaria</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formVenta">
       <div class="form-grid">
         <div class="campo"><label>Día</label><input type="number" id="veDia" min="1" max="31" required></div>
@@ -1203,7 +1203,7 @@
 <!-- ============ MODAL TARJETA (PIPELINE) ============ -->
 <div class="modal-fondo" id="modalTarjeta">
   <div class="modal">
-    <div class="cab"><h3 id="tarTitulo">Nueva tarjeta</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="tarTitulo">Nueva tarjeta</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formTarjeta">
       <div class="form-grid">
         <div class="campo ancho"><label>Nombre del paciente</label><input type="text" id="tarNombre"></div>
@@ -1231,7 +1231,7 @@
 <!-- ============ MODAL HISTORIA CLINICA ============ -->
 <div class="modal-fondo" id="modalHistoria">
   <div class="modal" style="max-width: 780px;">
-    <div class="cab"><h3 id="hisTitulo">Historia clínica</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="hisTitulo">Historia clínica</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formHistoriaClinica">
       <div class="form-grid">
         <div class="campo"><label>Paciente</label><input type="text" id="hisPaciente" required></div>
@@ -1281,7 +1281,7 @@
 <!-- ============ MODAL TAREA ============ -->
 <div class="modal-fondo" id="modalTarea">
   <div class="modal">
-    <div class="cab"><h3 id="tareaTitulo">Nueva tarea</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="tareaTitulo">Nueva tarea</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formTarea">
       <div class="form-grid">
         <div class="campo ancho"><label>Título</label><input type="text" id="tareaTituloInput" required></div>
@@ -1305,7 +1305,7 @@
 <!-- ============ MODAL PACIENTE (detalle + notas) ============ -->
 <div class="modal-fondo" id="modalPaciente">
   <div class="modal" style="max-width: 780px;">
-    <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="resumen" id="paDetKpis"></div>
     <div class="grupo" style="margin:6px 0 10px;">Tratamientos realizados</div>
     <div class="tabla-wrap"><table class="drive" id="paDetTratamientos"></table></div>
@@ -1343,7 +1343,7 @@
 <!-- ============ MODAL CUOTA ============ -->
 <div class="modal-fondo" id="modalCuota">
   <div class="modal">
-    <div class="cab"><h3 id="cuotaTitulo">Nueva cuota</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="cuotaTitulo">Nueva cuota</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formCuota">
       <div class="form-grid">
         <div class="campo"><label>Paciente</label><input type="text" id="cuPaciente" required></div>
@@ -1369,7 +1369,7 @@
 <!-- ============ MODAL PRODUCTO (inventario) ============ -->
 <div class="modal-fondo" id="modalProducto">
   <div class="modal">
-    <div class="cab"><h3 id="prodTitulo">Nuevo producto</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="prodTitulo">Nuevo producto</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formProducto">
       <div class="form-grid">
         <div class="campo"><label>Código</label><input type="text" id="prodCodigo" placeholder="ej. AH-001" required></div>
@@ -1392,7 +1392,7 @@
 <!-- ============ MODAL MOVIMIENTO DE STOCK ============ -->
 <div class="modal-fondo" id="modalMovStock">
   <div class="modal">
-    <div class="cab"><h3 id="movStockTitulo">Movimiento de stock</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="movStockTitulo">Movimiento de stock</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formMovStock">
       <div class="form-grid">
         <div class="campo"><label>Tipo</label>
@@ -1418,7 +1418,7 @@
 <!-- ============ MODAL TRABAJADOR (planilla) ============ -->
 <div class="modal-fondo" id="modalTrabajador">
   <div class="modal">
-    <div class="cab"><h3 id="trabTitulo">Nuevo trabajador</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="trabTitulo">Nuevo trabajador</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formTrabajador">
       <div class="form-grid">
         <div class="campo ancho"><label>Nombre</label><input type="text" id="trabNombre" placeholder="ej. DR. BORIS" required></div>
@@ -1450,7 +1450,7 @@
 <!-- ============ MODAL MONTO EXTRA ============ -->
 <div class="modal-fondo" id="modalExtra">
   <div class="modal" style="max-width:520px;">
-    <div class="cab"><h3 id="extraTitulo">Agregar monto</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="extraTitulo">Agregar monto</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formExtra">
       <div class="form-grid">
         <div class="campo"><label>Monto extra (S/)</label><input type="number" id="extraMonto" step="0.01" value="0" required></div>
@@ -1470,7 +1470,7 @@
 <!-- ============ MODAL PAGO PLANILLA ============ -->
 <div class="modal-fondo" id="modalPago">
   <div class="modal">
-    <div class="cab"><h3 id="pagoTitulo">Pago de planilla</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3 id="pagoTitulo">Pago de planilla</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <form id="formPago">
       <div class="form-grid">
         <div class="campo"><label>Sueldo base (S/)</label><input type="number" id="pagoSueldo" step="0.01" min="0"></div>
@@ -1494,12 +1494,12 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- ============ MODAL REPROGRAMAR CITA ============ -->
 <div class="modal-fondo" id="modalReprogramar">
   <div class="modal">
-    <div class="cab"><h3>Reprogramar cita</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3>Reprogramar cita</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="form-grid">
       <div class="campo"><label>Día</label><input type="number" id="rpDia" min="1" max="31"></div>
       <div class="campo"><label>Mes</label><select id="rpMes"></select></div>
@@ -1516,7 +1516,7 @@
 <!-- ============ MODAL COMPRÓ ============ -->
 <div class="modal-fondo" id="modalCompro">
   <div class="modal">
-    <div class="cab"><h3>Registrar compra</h3><button class="cerrar" onclick="cerrarModales()">&times;</button></div>
+    <div class="cab"><h3>Registrar compra</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="form-grid">
       <div class="campo ancho"><label>Nombre</label><input type="text" id="coNombre"></div>
       <div class="campo"><label>Teléfono</label><input type="text" id="coCel"></div>
@@ -1621,7 +1621,7 @@ async function cargarSesion() {
   $('sideUsuario').innerHTML = `
     <div class="av">${esc((YO.nombre || YO.usuario).slice(0, 2).toUpperCase())}</div>
     <div class="dat"><b>${esc(YO.nombre || YO.usuario)}</b><span>${esc(YO.rol_nombre)}</span></div>
-    <button class="salir" id="btnSalir" title="Cerrar sesión">
+    <button class="salir" id="btnSalir" title="Cerrar sesión" aria-label="Cerrar sesión">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
     </button>`;
   $('btnSalir').addEventListener('click', async () => {
@@ -3410,7 +3410,7 @@ function coAgregarLinea() {
     <input type="number" class="co-venta" step="0.01" min="0" placeholder="S/ monto">
     <select class="co-producto" title="Producto de inventario a descontar (opcional)">${coOpcionesProducto()}</select>
     <input type="number" class="co-cantidad" step="1" min="1" value="1" style="width:64px;" title="Cantidad">
-    <button type="button" class="btn rojo pequeno" onclick="coQuitarLinea(this)" title="Quitar">✕</button>`;
+    <button type="button" class="btn rojo pequeno" onclick="coQuitarLinea(this)" title="Quitar" aria-label="Quitar tratamiento">✕</button>`;
   $('coLineas').appendChild(d);
   d.querySelector('.co-trat').focus();
 }
