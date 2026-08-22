@@ -382,6 +382,12 @@ FUENTE_AG_COLS = {
     'I': 'TELEFONO', 'J': 'CORREO', 'K': 'AGENDADO', 'L': 'DIA2', 'M': 'MES3',
     'N': 'ANIO4', 'O': 'CAMPANA',
 }
+# Semántico -> letra, sólo para cuando la detección por cabecera del formato
+# Derma Essenza falla por completo (ag_col vacío). NUNCA mezclar con un
+# ag_col ya detectado: sus letras son del formato BM (con columna CRM) y no
+# coinciden con las de Derma Essenza (p.ej. su 'O' es CAMPANA, pero en Derma
+# Essenza la O es HORA) — mezclarlas pisó CAMPAÑA con HORA en el maestro.
+FUENTE_AG_COLS_SEM = {sem: letra for letra, sem in FUENTE_AG_COLS.items()}
 
 
 def detectar_maestro(ws):
@@ -618,8 +624,9 @@ class Calculo:
         return openpyxl.utils.column_index_from_string(c) if c else None
 
     def _ag(self, sem):
-        """Letra de la fuente AGENDADOS para el semántico (o fallback BM)."""
-        c = self.ag_col.get(sem) or FUENTE_AG_COLS.get(sem)
+        """Letra de la fuente AGENDADOS para el semántico (o fallback BM si no
+        se detectó ningún formato)."""
+        c = self.ag_col.get(sem) if self.ag_col else FUENTE_AG_COLS_SEM.get(sem)
         return c if c else None
 
     # ----- índice del maestro -----
@@ -1142,7 +1149,11 @@ def aplicar_xml(origen, destino, new_rows, updates, col=None, ag_col=None):
 
     x = row_re.sub(reemplazar_row, x)
 
-    # letra de AGENDADOS -> semántico (detección por cabecera, fallback BM)
+    # letra de AGENDADOS -> semántico (detección por cabecera). Si esa
+    # detección funcionó (formato Derma Essenza u otro reconocido), NUNCA se
+    # mezcla con FUENTE_AG_COLS (posiciones fijas del formato BM): sus letras
+    # no coinciden entre formatos y mezclarlas escribía la HORA de AGENDADOS
+    # en la columna CAMPAÑA del maestro.
     letra_a_sem = {letra: sem for sem, letra in ag_col.items()}
 
     # ---- agregar filas nuevas ----
@@ -1150,7 +1161,7 @@ def aplicar_xml(origen, destino, new_rows, updates, col=None, ag_col=None):
     for i, (fila_num, fila) in enumerate(new_rows):
         celdas = {}
         for col_src, val in fila.items():
-            sem = letra_a_sem.get(col_src) or FUENTE_AG_COLS.get(col_src)
+            sem = letra_a_sem.get(col_src) if ag_col else FUENTE_AG_COLS.get(col_src)
             if not sem or sem not in AG_COPY_SEMS:
                 continue
             mcol = col.get(sem)
