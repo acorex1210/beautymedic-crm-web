@@ -3304,6 +3304,7 @@ function estadoHoy(c) {
   const s = String(c.estado || '').trim().toUpperCase();
   if (!s) return 'PENDIENTE';
   if (s.includes('NO ASISTIO')) return 'NO_ASISTIO';
+  if (s.includes('ASISTIO SIN COMPRA')) return 'SIN_COMPRA';
   if (s.includes('ASISTIO')) return 'ASISTIO';
   if (s.includes('CANCEL')) return 'CANCELADA';
   if (s.includes('NO CONTEST')) return 'NO_CONTESTO';
@@ -3314,6 +3315,7 @@ function estadoHoy(c) {
 const CHIP_HOY = {
   CONFIRMADO: ['ok', '✓ Cita confirmada'],
   ASISTIO: ['ok', '✓ Asistió'],
+  SIN_COMPRA: ['warn', '✓ Asistió · no compró'],
   NO_ASISTIO: ['bad', '✕ No asistió'],
   CANCELADA: ['bad', '✕ Cita cancelada'],
   NO_CONTESTO: ['warn', '☎ No contestó'],
@@ -3345,17 +3347,23 @@ function renderCitasHoy() {
     </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
 }
 function renderConfirmadosHoy() {
-  const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'NO_ASISTIO'].includes(estadoHoy(c)));
+  const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'SIN_COMPRA', 'NO_ASISTIO'].includes(estadoHoy(c)));
   $('hoyListaConfirmados').innerHTML = lista.length ? lista.map(c => {
     const e = estadoHoy(c);
+    const yaDecidioCompra = HOY_ACCIONES[c.fila]?.compra;
     const acciones = e === 'CONFIRMADO' ? `
         <div class="acciones-hoy">
           <button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
           <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
-        </div>` : (e === 'ASISTIO' ? `
+        </div>` : (e === 'ASISTIO' && !yaDecidioCompra ? `
         <div class="acciones-hoy">
           <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
-        </div>` : '');
+          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">🛒 SÍ COMPRÓ</button>
+          <button class="btn rojo mini" onclick="noCompro(${c.fila})">✕ NO COMPRÓ</button>
+        </div>` : ((e === 'ASISTIO' || e === 'SIN_COMPRA') ? `
+        <div class="acciones-hoy">
+          <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
+        </div>` : ''));
     return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
       <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small>${acciones}</div>
       ${chipHoyCita(c)}
@@ -3393,8 +3401,11 @@ const cancelarCita = (fila) => marcarCita(fila, 'cancelar', 'CANCELADA', 'Cita c
 const noAsistioCita = (fila) => marcarCita(fila, 'noasistio', 'NO_ASISTIO', 'Registrado: no asistió');
 const noContestoCita = (fila) => marcarCita(fila, 'nocontesto', 'NO_CONTESTO', 'Registrado: no contestó');
 async function asistioCita(fila) {
-  if (await marcarCita(fila, 'asistio', 'ASISTIO', 'Registrado: asistió')) {
-    abrirHistoriaCita(fila);
+  await marcarCita(fila, 'asistio', 'ASISTIO', 'Registrado: asistió · ¿compró?');
+}
+async function noCompro(fila) {
+  if (await marcarCita(fila, 'nocompro', 'SIN_COMPRA', 'Registrado: no compró')) {
+    if (HOY_ACCIONES[fila]) HOY_ACCIONES[fila].compra = true;
   }
 }
 function abrirReprogramar(fila) {
@@ -3493,8 +3504,9 @@ async function guardarCompro() {
       }),
     });
     cerrarModales();
-    HOY_ACCIONES[fila] = { cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
+    HOY_ACCIONES[fila] = { estado: 'ASISTIO', compra: true, cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
     renderCitasHoy();
+    renderConfirmadosHoy();
     const recibo = res.venta && res.venta.hoja && res.venta.fila
       ? { hoja: res.venta.hoja, fila: res.venta.fila, n: res.venta.n || lineas.length }
       : null;
