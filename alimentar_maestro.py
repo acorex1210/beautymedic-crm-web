@@ -359,9 +359,24 @@ def leer_venta(path):
     return filas
 
 
+_WB_CACHE = {}  # path -> (mtime, Worksheet)
+
+
 def leer_maestro(path):
+    """Parsea el maestro una sola vez por archivo (por mtime).
+
+    Todos los llamadores solo LEEN celdas (las escrituras van por aplicar_xml,
+    edición cruda del XML, nunca por este Workbook). analitica.py llama a esto
+    varias veces por request (una por mes histórico en la proyección de
+    venta) — sin este caché cada llamada volvía a parsear el .xlsx completo,
+    y esa era la causa real de que /api/analitica/proyeccion tardara ~3.4s."""
+    mtime = os.path.getmtime(path)
+    cache = _WB_CACHE.get(path)
+    if cache and cache[0] == mtime:
+        return cache[1]
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb['BD DATA']
+    _WB_CACHE[path] = (mtime, ws)
     return ws
 
 
