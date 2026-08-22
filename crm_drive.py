@@ -121,13 +121,38 @@ def _campo_de_header(texto, mapas_header, contador):
     return mapas_header.get(t)
 
 
+_WB_CACHE = {}  # ruta -> (mtime, Workbook)
+
+
+def _cargar_wb(ruta):
+    """Parsea un .xlsx una sola vez por archivo (por mtime).
+
+    leer_agendados/leer_venta llamaban a _detectar_columnas (que abre el
+    libro de nuevo) y encima abrían su propia copia para leer las celdas:
+    2-3 parseos completos del mismo archivo en una sola petición. Ese
+    reparseo repetido era el cuello de botella real detrás de las
+    pantallas lentas, no la descarga (que ya tenía su propio caché)."""
+    mtime = os.path.getmtime(ruta)
+    cache = _WB_CACHE.get(ruta)
+    if cache and cache[0] == mtime:
+        return cache[1]
+    if cache:
+        try:
+            cache[1].close()
+        except Exception:  # noqa: BLE001
+            pass
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    _WB_CACHE[ruta] = (mtime, wb)
+    return wb
+
+
 def _detectar_columnas(ruta, hoja, mapas_header):
     """Detecta la fila de encabezados de la hoja.
 
     Devuelve (n_fila_encabezados, {letra_real: campo},
     {letra_real: encabezado_texto}).
     """
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    wb = _cargar_wb(ruta)
     ws = wb[hoja]
     mejor = None
     for r in range(1, 13):
@@ -146,7 +171,6 @@ def _detectar_columnas(ruta, hoja, mapas_header):
         if len(campos) >= 3 and (mejor is None
                                  or len(campos) > len(mejor[1])):
             mejor = (r, campos, textos)
-    wb.close()
     if mejor is None:
         return 4, {}, {}
     return mejor
@@ -1220,14 +1244,18 @@ def leer_agendados():
     for cl, real in sorted(inverso.items(),
                            key=lambda kv: openpyxl.utils.column_index_from_string(kv[1])):
         columnas[cl] = textos[real]
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    # Letra -> índice numérico calculado una sola vez: recalcularlo por cada
+    # celda (antes, dentro del doble for) era el costo dominante de esta
+    # lectura en hojas con cientos de filas.
+    inverso_idx = {cl: openpyxl.utils.column_index_from_string(real)
+                   for cl, real in inverso.items()}
+    wb = _cargar_wb(ruta)
     ws = wb['AGENDADOS']
     filas = []
     for r in range(n_fila + 1, ws.max_row + 1):
         fila = {}
-        for cl, real in inverso.items():
-            v = ws.cell(row=r,
-                        column=openpyxl.utils.column_index_from_string(real)).value
+        for cl, idx in inverso_idx.items():
+            v = ws.cell(row=r, column=idx).value
             if v is None:
                 continue
             if isinstance(v, float) and v == int(v):
@@ -1236,7 +1264,6 @@ def leer_agendados():
         if any(v is not None and v != '' for v in fila.values()):
             fila['_fila'] = r
             filas.append(fila)
-    wb.close()
     return {'filas': filas, 'total': len(filas),
             'descargado': fecha_descarga('AGENDADOS'), 'columnas': columnas}
 
@@ -1244,7 +1271,7 @@ def leer_agendados():
 def leer_venta():
     """Devuelve {'hojas': {hoja: {'filas': [...], 'columnas': {...}}}}."""
     ruta = descargar('VENTA_DIARIA', am.VENTA_FID)
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    wb = _cargar_wb(ruta)
     out = {}
     for hoja in ('VENTA 2026', 'VENTA 2025'):
         if hoja not in wb.sheetnames:
@@ -1259,13 +1286,14 @@ def leer_venta():
         for cl, real in sorted(inverso.items(),
                                key=lambda kv: openpyxl.utils.column_index_from_string(kv[1])):
             columnas[cl] = textos[real]
+        inverso_idx = {cl: openpyxl.utils.column_index_from_string(real)
+                       for cl, real in inverso.items()}
         ws = wb[hoja]
         filas = []
         for r in range(n_fila + 1, ws.max_row + 1):
             fila = {}
-            for cl, real in inverso.items():
-                v = ws.cell(row=r,
-                            column=openpyxl.utils.column_index_from_string(real)).value
+            for cl, idx in inverso_idx.items():
+                v = ws.cell(row=r, column=idx).value
                 if v is None:
                     continue
                 if isinstance(v, float) and v == int(v):
@@ -1275,7 +1303,6 @@ def leer_venta():
                 fila['_fila'] = r
                 filas.append(fila)
         out[hoja] = {'filas': filas, 'columnas': columnas}
-    wb.close()
     return {'hojas': out, 'descargado': fecha_descarga('VENTA_DIARIA')}
 
 

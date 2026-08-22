@@ -190,11 +190,32 @@ def _bajar():
     return ruta
 
 
+_WB_CACHE = {}  # ruta -> (mtime, Workbook)
+
+
+def _cargar_wb(ruta):
+    """Parsea CRM.xlsx una sola vez por archivo (por mtime): una sola vista
+    de HOJA/AS puede pedir 10+ hojas del mismo libro (p.ej. generar_planilla_
+    quincena lee todo HOJAS), y reabrir+parsear el .xlsx en cada una era el
+    cuello de botella real de las pantallas lentas."""
+    mtime = os.path.getmtime(ruta)
+    cache = _WB_CACHE.get(ruta)
+    if cache and cache[0] == mtime:
+        return cache[1]
+    if cache:
+        try:
+            cache[1].close()
+        except Exception:  # noqa: BLE001
+            pass
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    _WB_CACHE[ruta] = (mtime, wb)
+    return wb
+
+
 def _leer_hoja(nombre):
     ruta = _bajar()
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    wb = _cargar_wb(ruta)
     if nombre not in wb.sheetnames:
-        wb.close()
         return []
     ws = wb[nombre]
     cols = [c for c in range(1, ws.max_column + 1)
@@ -209,7 +230,6 @@ def _leer_hoja(nombre):
             f[openpyxl.utils.get_column_letter(c)] = v
         if f:
             filas.append(f)
-    wb.close()
     return filas
 
 
