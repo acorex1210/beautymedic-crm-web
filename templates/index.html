@@ -3620,6 +3620,26 @@ function chipHoyCita(c) {
   return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
 }
 
+/* ---------------- Recordatorio por WhatsApp ---------------- */
+function limpiarTelPeru(tel) {
+  let d = String(tel || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.startsWith('51') && d.length > 9) d = d.slice(2);
+  if (d.length > 9) d = d.slice(-9);
+  return d.length === 9 ? '51' + d : '';
+}
+function abrirWhatsAppRecordatorio(nombre, telefono, fechaTxt, horaTxt) {
+  const tel = limpiarTelPeru(telefono);
+  if (!tel) { toast('Ese paciente no tiene un teléfono válido', 'err'); return; }
+  const msg = `Hola ${nombre || ''}! Te escribimos de Derma Essenza para recordarte tu cita`
+    + (fechaTxt ? ` del ${fechaTxt}` : '') + (horaTxt ? ` a las ${horaTxt}` : '')
+    + `. Te esperamos ✨ Si necesitas reprogramar, avísanos por este medio.`;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+function btnWhatsApp(nombre, telefono, fechaTxt, horaTxt) {
+  if (!limpiarTelPeru(telefono)) return '';
+  return `<button class="btn borde mini" title="Enviar recordatorio por WhatsApp"
+    onclick="abrirWhatsAppRecordatorio('${esc(nombre || '').replace(/'/g, "\\'")}','${esc(telefono || '')}','${esc(fechaTxt || '').replace(/'/g, "\\'")}','${esc(horaTxt || '').replace(/'/g, "\\'")}')">💬 Recordar</button>`;
+}
 function chipRiesgoNoShow(c) {
   if (!c.riesgo_alto) return '';
   return `<span class="chip bad" title="${c.riesgo_no_show} de ${c.riesgo_citas} citas anteriores sin asistir">⚠ Alto riesgo</span>`;
@@ -3629,7 +3649,8 @@ function accionesHoyCita(c) {
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
           <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
           <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
-          <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>`;
+          <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
 }
 function renderCitasHoy() {
   const h = HOY_DATA;
@@ -3651,6 +3672,7 @@ function renderConfirmadosHoy() {
         <div class="acciones-hoy">
           <button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
           <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}
         </div>` : (e === 'ASISTIO' && !yaDecidioCompra ? `
         <div class="acciones-hoy">
           <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
@@ -3915,8 +3937,11 @@ function pintarCalDetalle() {
     const e = estadoCita(f.Q);
     const hist = parsearHistorialReagenda(f.T);
     const badge = hist.length ? `<span class="chip warn" title="${esc(hist.map(h => `${h.de} → ${h.a}`).join('\n'))}">↻ reagendada ${hist.length}x</span>` : '';
+    const fechaTxt = `${calDiaSel}/${MESES[calMes]}/${calAnio}`;
     return `<div class="item-hoy"><span class="hora">${esc(f.P || '—')}</span>
-      <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small></div>
+      <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small>
+        <div class="acciones-hoy">${btnWhatsApp(f.G, f.I, fechaTxt, f.P)}</div>
+      </div>
       ${badge}
       <span class="chip ${CAL_CLASE[e]}">${CAL_ETIQUETA[e]}</span>
     </div>`;
