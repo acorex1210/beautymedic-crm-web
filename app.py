@@ -1041,11 +1041,30 @@ async def analitica_proyeccion(mes: str = '', anio: str = ''):
         'venta_nuevos_esperada': congelada['venta_nuevos_esperada'],
         'nuevos_esperados': congelada['nuevos_esperados'],
         'tasa_conversion_pct': congelada['tasa_conversion_pct'],
+        'tasa_efectividad_pct': congelada['tasa_efectividad_pct'],
         'ticket_promedio': congelada['ticket_promedio'],
         'ritmo_agendados_dia': congelada['ritmo_agendados_dia'],
         'ya_vendido': avance_real, 'avance_real': avance_real,
         'avance_pct': avance_pct, 'ritmo_lineal': en_vivo['ritmo_lineal'],
     }
+
+
+@app.post('/api/analitica/proyeccion/recalcular')
+async def analitica_proyeccion_recalcular(mes: str = '', anio: str = ''):
+    """Borra la meta fija guardada de un mes para que se vuelva a calcular
+    (con los parámetros actuales) la próxima vez que se pida. Útil cuando se
+    ajusta el modelo de proyección y hay que refrescar meses ya congelados."""
+    m, a, _d, _h = _filtros(mes, anio)
+    en_vivo = ana.proyeccion_mes(m, a)
+    if en_vivo is None:
+        raise HTTPException(400, f'Mes inválido: {m}')
+    clave = f"{en_vivo['mes']}-{en_vivo['anio']}"
+    congeladas = _leer_proyecciones_congeladas()
+    if clave in congeladas:
+        del congeladas[clave]
+        with open(PROYECCION_MES_PATH, 'w', encoding='utf-8') as f:
+            json.dump(congeladas, f, ensure_ascii=False, indent=2)
+    return {'ok': True, 'mes': m, 'anio': a}
 
 
 @app.get('/api/analitica/serie')

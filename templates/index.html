@@ -1813,7 +1813,7 @@ async function cargarMetaMensual() {
       <div style="margin-top:8px;color:var(--gris);font-size:12px;line-height:1.7;">
         Proyección calculada al inicio del mes con: ${fmtMon(py.pipeline_esperado)} esperado de ${py.citas_pendientes} cita(s) ya agendada(s)
         + ${fmtMon(py.venta_nuevos_esperada)} esperado de ~${py.nuevos_esperados} lead(s) nuevo(s) aún sin agendar (según ritmo de los últimos 30 días).<br>
-        Conversión histórica ${py.tasa_conversion_pct}% · ticket promedio ${fmtMon(py.ticket_promedio)}.
+        Efectividad real agendado→compra ${py.tasa_efectividad_pct}% (conversión asistió→compró ${py.tasa_conversion_pct}%) · ticket promedio ${fmtMon(py.ticket_promedio)}.
         Ritmo lineal simple con lo vendido hasta hoy: ${fmtMon(py.ritmo_lineal)}.
       </div>`;
   } catch (e) { /* sin datos del maestro aún */ }

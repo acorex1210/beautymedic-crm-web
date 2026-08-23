@@ -326,16 +326,24 @@ def proyeccion_mes(mes, anio, dia_referencia=None):
     dias_transcurridos = min(dia_hoy, dias_mes)
     dias_restantes = max(0, dias_mes - dias_transcurridos)
 
-    # ---- tasa de conversión y ticket promedio: últimos 3 meses (incluye el
-    # actual) para no depender de un solo mes con pocos datos ----
+    # ---- tasa de conversión, tasa de efectividad y ticket promedio: últimos
+    # 3 meses (incluye el actual) para no depender de un solo mes con pocos
+    # datos ----
     meses_hist = [(mes, anio)] + _meses_previos(mes, anio, 2)
-    as_hist = co_hist = 0
+    ag_hist = as_hist = co_hist = 0
     mon_hist = 0.0
     for m, a in meses_hist:
         k = _kpis_core(m, a, 1, 31)
-        as_hist += k['asistidos']; co_hist += k['compraron']; mon_hist += k['monto']
+        ag_hist += k['agendados']; as_hist += k['asistidos']
+        co_hist += k['compraron']; mon_hist += k['monto']
     tasa_conversion = co_hist / as_hist if as_hist else 0.0
     ticket_promedio = mon_hist / co_hist if co_hist else 0.0
+    # tasa_efectividad = agendado -> compra (agendado -> asiste -> compra),
+    # a diferencia de tasa_conversion que solo mide asiste -> compra. Una
+    # cita agendada que todavía no ocurre puede no llegar a asistir nunca
+    # (no contesta, cancela...), así que aplicarle sólo tasa_conversion
+    # infla el pipeline: asume que TODO agendado se presenta.
+    tasa_efectividad = co_hist / ag_hist if ag_hist else 0.0
 
     filas, _ = _filas_maestro()
     ya_vendido = 0.0
@@ -351,7 +359,7 @@ def proyeccion_mes(mes, anio, dia_referencia=None):
                 ya_vendido += _monto(f)
         else:
             citas_pendientes += 1
-    pipeline_esperado = round(citas_pendientes * tasa_conversion * ticket_promedio, 2)
+    pipeline_esperado = round(citas_pendientes * tasa_efectividad * ticket_promedio, 2)
 
     # ---- ritmo de agendamiento reciente (últimos 30 días naturales, no el
     # mes en curso) para estimar cuántos leads NUEVOS (sin cita todavía)
@@ -364,7 +372,7 @@ def proyeccion_mes(mes, anio, dia_referencia=None):
             nuevos_30d += 1
     ritmo_agendados_dia = nuevos_30d / 30.0
     nuevos_esperados = round(ritmo_agendados_dia * dias_restantes, 1)
-    venta_nuevos_esperada = round(nuevos_esperados * tasa_conversion * ticket_promedio, 2)
+    venta_nuevos_esperada = round(nuevos_esperados * tasa_efectividad * ticket_promedio, 2)
 
     total = round(ya_vendido + pipeline_esperado + venta_nuevos_esperada, 2)
     # Piso de seguridad: la proyección lineal simple (ritmo actual llevado a
@@ -382,6 +390,7 @@ def proyeccion_mes(mes, anio, dia_referencia=None):
         'nuevos_esperados': nuevos_esperados,
         'venta_nuevos_esperada': venta_nuevos_esperada,
         'tasa_conversion_pct': round(tasa_conversion * 100, 1),
+        'tasa_efectividad_pct': round(tasa_efectividad * 100, 1),
         'ticket_promedio': round(ticket_promedio, 2),
         'ritmo_agendados_dia': round(ritmo_agendados_dia, 2),
         'ritmo_lineal': ritmo_lineal,
