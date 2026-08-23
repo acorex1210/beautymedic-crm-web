@@ -1469,6 +1469,7 @@
   <div class="modal" style="max-width: 780px;">
     <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="resumen" id="paDetKpis"></div>
+    <div id="paDetSugerencia"></div>
     <div class="grupo" style="margin:6px 0 10px;">Línea de tiempo</div>
     <div id="paDetLinea" style="max-height:340px;overflow:auto;"></div>
     <div class="grupo" style="margin:16px 0 10px;">Tratamientos realizados</div>
@@ -4272,6 +4273,7 @@ async function abrirModalPaciente(pidx) {
     <div class="kpi verde"><div class="eti">Compras</div><div class="num">${p.compras}</div></div>
     <div class="kpi naranja"><div class="eti">Total</div><div class="num" style="font-size:18px;">${fmtMon(p.total)}</div></div>`;
   pintarTratamientosPaciente(p);
+  pintarSugerenciaPaciente(p);
   $('notaTipo').value = 'LLAMADA';
   $('notaTexto').value = '';
   $('hcArchivo').value = ''; $('hcNota').value = '';
@@ -4401,6 +4403,65 @@ $('btnPaHistoriaNueva').addEventListener('click', () => {
     motivo: pacienteActual.campana || '',
   });
 });
+/* ---------------- Sugerencia comercial de siguiente tratamiento ----------------
+   Regla simple basada en lo que el paciente ya compró (VENTA DIARIA, en
+   p.tratamientos) y la campaña por la que llegó. NO es indicación médica:
+   es solo un empujón comercial/reactivación para que el staff sepa qué
+   ofrecer. Catálogo tomado de los valores reales de la pestaña DATA de
+   VENTA_DIARIA (dropdown de TRATAMIENTO). */
+const CATALOGO_TRATAMIENTOS = [
+  { fam: 'TOXINA', label: 'Toxina botulínica' },
+  { fam: 'ACIDO HIALU', label: 'Ácido hialurónico' },
+  { fam: 'DERMAPEN', label: 'Dermapen' },
+  { fam: 'PRP FACIAL', label: 'PRP facial' },
+  { fam: 'RADIOFRECUENCIA', label: 'Radiofrecuencia' },
+  { fam: 'ULTRASONIDO', label: 'Ultrasonido' },
+];
+function diasDesde(fechaISO) {
+  if (!fechaISO) return null;
+  const f = new Date(fechaISO + 'T00:00:00');
+  if (isNaN(f)) return null;
+  return Math.round((Date.now() - f.getTime()) / 86400000);
+}
+function pintarSugerenciaPaciente(p) {
+  const cont = $('paDetSugerencia');
+  const ts = (p.tratamientos || []).filter(t => t.tratamiento);
+  const avisos = [];
+
+  const ultimaToxina = ts.find(t => t.tratamiento.toUpperCase().includes('TOXINA'));
+  if (ultimaToxina) {
+    const d = diasDesde(ultimaToxina.fecha);
+    if (d !== null && d >= 100) {
+      avisos.push(`Su última toxina (<b>${esc(ultimaToxina.tratamiento)}</b>) fue hace <b>${d} días</b>.
+        El efecto suele durar ~4 meses: buen momento para ofrecerle un retoque.`);
+    }
+  }
+
+  if (ts.length) {
+    const ultima = ts[0];
+    const d = diasDesde(ultima.fecha);
+    if (d !== null) {
+      avisos.push(`Han pasado <b>${d} días</b> desde su última compra (${esc(ultima.tratamiento)}).`);
+    }
+  } else if (p.campana) {
+    avisos.push(`Aún no registra compras. Llegó por la campaña <b>${esc(p.campana)}</b>: puede valer la pena
+      contactarlo para agendar el tratamiento de esa campaña.`);
+  }
+
+  const probados = new Set(ts.map(t => t.tratamiento.toUpperCase()));
+  const noProbados = CATALOGO_TRATAMIENTOS.filter(c =>
+    !ts.some(t => t.tratamiento.toUpperCase().includes(c.fam)));
+  if (noProbados.length && ts.length) {
+    avisos.push(`Tratamientos que aún no ha probado: ${noProbados.map(c => esc(c.label)).join(', ')}.`);
+  }
+
+  if (!avisos.length) { cont.innerHTML = ''; return; }
+  cont.innerHTML = `<div class="tarjeta" style="margin:0 0 14px;background:var(--dorado-fondo);border-color:var(--dorado);">
+    <b style="font-size:12px;color:var(--dorado);">💡 Sugerencia de reactivación</b>
+    <div class="nota" style="margin:6px 0 0;">${avisos.join('<br>')}</div>
+    <div class="nota" style="margin:6px 0 0;font-style:italic;">No es una indicación médica, es solo un empujón comercial para el seguimiento.</div>
+  </div>`;
+}
 function pintarTratamientosPaciente(p) {
   const ts = p.tratamientos || [];
   if (!ts.length) {
