@@ -2178,6 +2178,39 @@ async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
     return {'ok': True, 'pacientes': pacientes}
 
 
+@app.get('/api/buscar')
+async def buscar(q: str = ''):
+    """Búsqueda global (Cmd+K) por nombre o teléfono.
+
+    Reutiliza cp.leer_pacientes(solo_atendidos=False), que ya combina
+    AGENDADOS + VENTA DIARIA (ambos cacheados por mtime en crm_drive.py),
+    así que no se vuelve a parsear el Excel en cada tecla: el costo real
+    es el debounce del frontend, no este endpoint.
+    """
+    q = (q or '').strip()
+    if len(q) < 2:
+        return {'ok': True, 'resultados': []}
+    try:
+        pacientes = cp.leer_pacientes(solo_atendidos=False)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo buscar: {e}')
+    qn = q.lower()
+    qd = ''.join(ch for ch in q if ch.isdigit())
+    resultados = []
+    for p in pacientes:
+        nombre = str(p.get('nombre') or '')
+        tel = str(p.get('telefono') or '')
+        if (qn and qn in nombre.lower()) or (qd and len(qd) >= 3 and qd in tel):
+            resultados.append({
+                'clave': p.get('clave'), 'nombre': nombre, 'telefono': tel,
+                'campana': p.get('campana'), 'crm': p.get('crm'),
+                'ultima_atencion': p.get('ultima_atencion') or p.get('ultima_actividad'),
+            })
+        if len(resultados) >= 15:
+            break
+    return {'ok': True, 'resultados': resultados}
+
+
 @app.get('/api/crm/historias')
 async def crm_historias_clinicas(telefono: str = '', paciente: str = '',
                                  desde: str = '', hasta: str = ''):

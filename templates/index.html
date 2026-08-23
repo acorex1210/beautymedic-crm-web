@@ -1488,6 +1488,19 @@
   </div>
 </div>
 
+<!-- ============ BÚSQUEDA GLOBAL (Cmd+K) ============ -->
+<div class="modal-fondo" id="modalBuscar" style="align-items:flex-start;">
+  <div class="modal" style="max-width:560px;padding:0;overflow:hidden;">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--borde);display:flex;align-items:center;gap:10px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none;color:var(--gris);"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="buscarGlobalInput" placeholder="Buscar paciente por nombre o teléfono&hellip;"
+             style="border:0;outline:0;flex:1;font-size:15px;background:transparent;color:var(--texto);" autocomplete="off">
+      <span style="font-size:11px;color:var(--gris);border:1px solid var(--borde);border-radius:5px;padding:2px 6px;">ESC</span>
+    </div>
+    <div id="buscarGlobalResultados" style="max-height:60vh;overflow:auto;"></div>
+  </div>
+</div>
+
 <!-- ============ MODAL CUOTA ============ -->
 <div class="modal-fondo" id="modalCuota">
   <div class="modal">
@@ -1869,13 +1882,87 @@ $('btnMenuMovil').addEventListener('click', () => {
   $('sidebarApp').classList.contains('menu-abierto') ? cerrarMenuMovil() : abrirMenuMovil();
 });
 $('navFondo').addEventListener('click', cerrarMenuMovil);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenuMovil(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarMenuMovil(); cerrarModales(); } });
 
 function cerrarModales() {
   document.querySelectorAll('.modal-fondo').forEach(m => m.classList.remove('abierto'));
 }
 document.querySelectorAll('.modal-fondo').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('abierto'); });
+});
+
+/* ---------------- Búsqueda global (Cmd+K / Ctrl+K) ---------------- */
+let BUSQ_RESULTADOS = [], BUSQ_SEL = -1, BUSQ_TIMER = null;
+function abrirBuscarGlobal() {
+  $('modalBuscar').classList.add('abierto');
+  $('buscarGlobalInput').value = '';
+  $('buscarGlobalResultados').innerHTML = '<div class="vacio" style="padding:22px;">Escribe un nombre o teléfono&hellip;</div>';
+  BUSQ_RESULTADOS = []; BUSQ_SEL = -1;
+  setTimeout(() => $('buscarGlobalInput').focus(), 20);
+}
+function pintarBuscarGlobal() {
+  const cont = $('buscarGlobalResultados');
+  if (!BUSQ_RESULTADOS.length) {
+    cont.innerHTML = '<div class="vacio" style="padding:22px;">Sin resultados.</div>';
+    return;
+  }
+  cont.innerHTML = BUSQ_RESULTADOS.map((r, i) => `
+    <div class="item-hoy" data-i="${i}" style="margin:6px 10px;cursor:pointer;${i === BUSQ_SEL ? 'border-color:var(--azul2);background:#f2f6ff;' : ''}"
+         onclick="seleccionarBuscarGlobal(${i})">
+      <span class="chip info">PAC</span>
+      <div class="info"><b>${esc(r.nombre || 'Sin nombre')}</b>
+        <small>${esc(r.telefono || '')}${r.campana ? ' · ' + esc(r.campana) : ''}${r.crm ? ' · ' + esc(r.crm) : ''}</small></div>
+    </div>`).join('');
+}
+async function buscarGlobal(q) {
+  if (q.trim().length < 2) {
+    BUSQ_RESULTADOS = []; BUSQ_SEL = -1;
+    $('buscarGlobalResultados').innerHTML = '<div class="vacio" style="padding:22px;">Escribe un nombre o teléfono&hellip;</div>';
+    return;
+  }
+  try {
+    const r = await api('/api/buscar?q=' + encodeURIComponent(q));
+    BUSQ_RESULTADOS = r.resultados || []; BUSQ_SEL = BUSQ_RESULTADOS.length ? 0 : -1;
+    pintarBuscarGlobal();
+  } catch (e) {
+    $('buscarGlobalResultados').innerHTML = `<div class="vacio">${esc(e.message)}</div>`;
+  }
+}
+$('buscarGlobalInput').addEventListener('input', (e) => {
+  clearTimeout(BUSQ_TIMER);
+  const q = e.target.value;
+  BUSQ_TIMER = setTimeout(() => buscarGlobal(q), 250);
+});
+$('buscarGlobalInput').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (BUSQ_RESULTADOS.length) { BUSQ_SEL = (BUSQ_SEL + 1) % BUSQ_RESULTADOS.length; pintarBuscarGlobal(); } }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); if (BUSQ_RESULTADOS.length) { BUSQ_SEL = (BUSQ_SEL - 1 + BUSQ_RESULTADOS.length) % BUSQ_RESULTADOS.length; pintarBuscarGlobal(); } }
+  else if (e.key === 'Enter') { e.preventDefault(); if (BUSQ_SEL >= 0) seleccionarBuscarGlobal(BUSQ_SEL); }
+});
+/* El resultado de /api/buscar trae "clave" pero no un índice dentro del
+   arreglo PACIENTES que ya esté cargado en memoria (paginación propia de
+   Pacientes): se navega a la página, se asegura que PACIENTES esté
+   cargado (con todos=true si hace falta, para incluir agendados que aún
+   no asistieron) y recién se resuelve el índice para abrirModalPaciente. */
+async function seleccionarBuscarGlobal(i) {
+  const r = BUSQ_RESULTADOS[i];
+  if (!r) return;
+  cerrarModales();
+  pagina('pacientes');
+  if (!PACIENTES) await cargarPacientes();
+  let idx = PACIENTES.pacientes.findIndex(p => p.clave === r.clave);
+  if (idx < 0 && !$('paTodos').checked) {
+    $('paTodos').checked = true;
+    await cargarPacientes();
+    idx = PACIENTES.pacientes.findIndex(p => p.clave === r.clave);
+  }
+  if (idx >= 0) abrirModalPaciente(idx);
+  else toast('No se encontró el paciente en el directorio actual', 'err');
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    abrirBuscarGlobal();
+  }
 });
 
 /* ---------------- Estado (sidebar) ---------------- */
