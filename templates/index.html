@@ -4471,7 +4471,6 @@ function pintarSugerenciaPaciente(p) {
       contactarlo para agendar el tratamiento de esa campaña.`);
   }
 
-  const probados = new Set(ts.map(t => t.tratamiento.toUpperCase()));
   const noProbados = CATALOGO_TRATAMIENTOS.filter(c =>
     !ts.some(t => t.tratamiento.toUpperCase().includes(c.fam)));
   if (noProbados.length && ts.length) {
