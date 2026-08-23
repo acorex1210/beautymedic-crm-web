@@ -755,6 +755,11 @@
           <div class="nota" id="metaNota" style="margin-top:10px;">Define una meta para ver el avance del mes contra las ventas registradas.</div>
         </div>
 
+        <div class="tarjeta oculto" id="panelAlertasCaja">
+          <h3><span class="pill-ico">⚠️</span> Alertas</h3>
+          <div id="panelAlertas"></div>
+        </div>
+
         <div class="tarjeta">
           <h3>Resumen general</h3>
           <p class="nota" style="margin:0 0 14px;">Un vistazo rápido a cada sección. Haz clic en una tarjeta para entrar.</p>
@@ -1966,6 +1971,48 @@ $('btnMetaGuardar').addEventListener('click', async () => {
    El resumen se arma con las secciones del usuario: sólo se piden los
    endpoints que su rol puede leer, así nadie dispara 403 de fondo ni ve un
    panel vacío por no tener acceso al dashboard completo. */
+/* ---------------- Panel: alertas ----------------
+   Se arma con datos que ya se piden para el resumen (HOY y AGENDADOS),
+   sin viajes nuevos al backend: NO CONTESTÓ de hoy, tareas vencidas
+   (ya las calcula leer_hoy() en crm_plus.py) y citas de mañana que
+   siguen sin confirmar. */
+function pintarAlertasPanel(hoyR, agR) {
+  const caja = $('panelAlertasCaja'), cont = $('panelAlertas');
+  const items = [];
+
+  if (hoyR.status === 'fulfilled') {
+    const h = hoyR.value;
+    const noContesto = h.citas.filter(c => estadoHoy(c) === 'NO_CONTESTO').length;
+    if (noContesto > 0) {
+      items.push({ n: noContesto, txt: noContesto === 1 ? 'cita de hoy sin contestar' : 'citas de hoy sin contestar',
+                   cls: 'warn', pag: 'hoy' });
+    }
+    const vencidas = (h.tareas_vencidas || []).length;
+    if (vencidas > 0) {
+      items.push({ n: vencidas, txt: vencidas === 1 ? 'tarea vencida' : 'tareas vencidas',
+                   cls: 'bad', pag: 'pipeline' });
+    }
+  }
+
+  if (agR.status === 'fulfilled') {
+    const manana = new Date(); manana.setDate(manana.getDate() + 1);
+    const dM = manana.getDate(), mM = MESES[manana.getMonth()], aM = manana.getFullYear();
+    const sinConfirmar = (agR.value.filas || []).filter(f =>
+      Number(f.L) === dM && String(f.M || '').trim() === mM && Number(f.N) === aM &&
+      estadoCita(f.Q) === 'PENDIENTE').length;
+    if (sinConfirmar > 0) {
+      items.push({ n: sinConfirmar, txt: sinConfirmar === 1 ? 'cita de mañana sin confirmar' : 'citas de mañana sin confirmar',
+                   cls: 'info', pag: 'agendados' });
+    }
+  }
+
+  if (!items.length) { caja.classList.add('oculto'); cont.innerHTML = ''; return; }
+  caja.classList.remove('oculto');
+  cont.innerHTML = `<div class="estado-line">` + items.map(it => `
+    <span class="pill" style="cursor:pointer;" onclick="pagina('${it.pag}')">
+      <span class="chip ${it.cls}">${it.n}</span> ${esc(it.txt)}
+    </span>`).join('') + `</div>`;
+}
 async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
@@ -1989,6 +2036,7 @@ async function cargarResumenPanel() {
     si('pacientes', () => api('/api/crm/pacientes')),
   ]);
   const tarjetas = [];
+  pintarAlertasPanel(hoyR, agR);
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
