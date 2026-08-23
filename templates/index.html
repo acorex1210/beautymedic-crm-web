@@ -3975,6 +3975,8 @@ $('btnPaHistoriaNueva').addEventListener('click', () => {
   abrirModalHistoria(null, {
     paciente: pacienteActual.nombre || '', telefono: pacienteActual.telefono || '',
     fecha: pacienteActual.ultima_atencion || hoyISO(),
+    hora: pacienteActual.ultima_atencion_hora || '',
+    motivo: pacienteActual.campana || '',
   });
 });
 function pintarTratamientosPaciente(p) {
@@ -4237,7 +4239,7 @@ async function abrirHistoriaCita(fila) {
   const hoy = hoyISO();
   const base = {
     paciente: c.nombre || '', telefono: c.telefono || '', hora: c.hora || '',
-    fecha: hoy, agendado_fila: fila,
+    fecha: hoy, agendado_fila: fila, motivo: c.campana || '',
   };
   try {
     const qs = new URLSearchParams();

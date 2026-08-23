@@ -595,14 +595,15 @@ def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
                  'compras': 0, 'total': 0.0, 'proxima_cita': None,
                  'ultima_actividad': None, 'notas': 0, 'doctores': '',
                  'atendido': False, 'atenciones': 0, 'ultima_atencion': None,
-                 'tratamientos': []}
+                 'ultima_atencion_hora': None, 'tratamientos': []}
             pacientes[k] = p
         return p
 
-    def marcar_atencion(p, fecha):
+    def marcar_atencion(p, fecha, hora=None):
         p['atendido'] = True
         if fecha and (p['ultima_atencion'] is None or fecha > p['ultima_atencion']):
             p['ultima_atencion'] = fecha
+            p['ultima_atencion_hora'] = str(hora).strip() if hora else None
 
     for f in ag:
         tel = f.get('I')
@@ -616,7 +617,7 @@ def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
             p['correo'] = str(f['J']).strip()
         p['citas'] += 1
         if _asistio_agendado(f.get('Q')):
-            marcar_atencion(p, _fecha_iso(f.get('L'), f.get('M'), f.get('N')))
+            marcar_atencion(p, _fecha_iso(f.get('L'), f.get('M'), f.get('N')), f.get('P'))
         if f.get('L') and f.get('M') and f.get('N'):
             fecha = f'{f["L"]}/{f["M"]}/{f["N"]}'
             hora = f.get('P') or ''
