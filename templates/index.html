@@ -97,7 +97,7 @@
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 18px; }
   .kpi { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(20,37,74,.05); }
   .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-  .resumen-card { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: box-shadow .15s ease, transform .15s ease; }
+  .resumen-card { background: var(--superficie); border: 1px solid var(--borde); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: box-shadow .15s ease, transform .15s ease; }
   .resumen-card:hover { box-shadow: 0 4px 14px rgba(20,37,74,.10); transform: translateY(-1px); }
   .resumen-card h4 { margin: 0 0 10px; font-size: 12px; color: var(--gris); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
   .resumen-card .fila { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
@@ -113,7 +113,7 @@
   .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
   .toolbar .buscar { flex: 1; min-width: 200px; position: relative; }
   .toolbar input[type=text], .toolbar input[type=search], .toolbar select {
-    width: 100%; padding: 9px 12px; border: 1px solid var(--borde); border-radius: 9px; font-size: 14px; background: #fff;
+    width: 100%; padding: 9px 12px; border: 1px solid var(--borde); border-radius: 9px; font-size: 14px; background: var(--superficie); color: var(--texto);
   }
   .toolbar select { width: auto; }
   .toolbar input:focus, .toolbar select:focus { outline: 2px solid #c6d8f2; border-color: var(--azul2); }
@@ -157,7 +157,7 @@
 
   /* ---------- Estado pills ---------- */
   .pill {
-    display: inline-flex; align-items: center; gap: 7px; background: #fff; border: 1px solid var(--borde);
+    display: inline-flex; align-items: center; gap: 7px; background: var(--superficie); border: 1px solid var(--borde);
     border-radius: 999px; padding: 5px 12px; font-size: 12px;
   }
   .punto { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -170,7 +170,7 @@
   .campo { display: flex; flex-direction: column; gap: 5px; }
   .campo label { font-size: 11px; color: var(--gris); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
   .campo input, .campo select {
-    padding: 9px 11px; border: 1px solid var(--borde); border-radius: 9px; font-size: 14px; background: #fff; width: 100%;
+    padding: 9px 11px; border: 1px solid var(--borde); border-radius: 9px; font-size: 14px; background: var(--superficie); color: var(--texto); width: 100%;
   }
   .campo input:focus, .campo select:focus { outline: 2px solid #c6d8f2; border-color: var(--azul2); }
   .grupo { grid-column: 1 / -1; font-size: 11px; color: var(--azul2); font-weight: 800; text-transform: uppercase;
@@ -224,7 +224,7 @@
   .lista { list-style: none; margin: 0; padding: 0; }
   .lista li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--borde); border-radius: 9px; padding: 9px 12px; margin-bottom: 8px; }
   .tab-horas { display: flex; gap: 6px; }
-  .tab-horas button { border: 1px solid var(--borde); background: #fff; color: var(--gris); padding: 7px 16px; border-radius: 9px; font-weight: 700; cursor: pointer; font-size: 13px; }
+  .tab-horas button { border: 1px solid var(--borde); background: var(--superficie); color: var(--gris); padding: 7px 16px; border-radius: 9px; font-weight: 700; cursor: pointer; font-size: 13px; }
   .tab-horas button.activo { background: var(--azul); color: #fff; border-color: var(--azul); }
 
   .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 14px; }
@@ -243,7 +243,7 @@
   .kcard .kd { font-size: 11px; color: var(--gris); margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   .kcard .valor { font-weight: 800; color: var(--azul2); }
   .kcol.dragsobre { outline: 2px dashed var(--azul3); outline-offset: -2px; }
-  .kadd { width: 100%; margin-top: 8px; border: 1px dashed var(--borde); background: #fff; border-radius: 9px; padding: 7px; color: var(--gris); cursor: pointer; font-size: 12px; font-weight: 700; }
+  .kadd { width: 100%; margin-top: 8px; border: 1px dashed var(--borde); background: var(--superficie); border-radius: 9px; padding: 7px; color: var(--gris); cursor: pointer; font-size: 12px; font-weight: 700; }
   .cal-cab { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 6px; }
   .cal-cab div { text-align: center; font-size: 11px; font-weight: 700; color: var(--gris); text-transform: uppercase; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
@@ -310,7 +310,8 @@
 
   /* ---------- Listas de actividades (Hoy) ---------- */
   .caja-hoy h3 { margin: 0 0 10px; font-size: 14px; color: var(--azul); display: flex; align-items: center; gap: 8px; }
-  .item-hoy { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 9px; margin-bottom: 7px; background: #fff; }
+  .item-hoy { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 9px; margin-bottom: 7px; background: var(--superficie); }
+  .item-hoy.sel { border-color: var(--azul2); background: var(--dorado-fondo); }
   .item-hoy .hora { font-weight: 800; color: var(--azul2); font-size: 12px; flex: 0 0 52px; }
   .item-hoy .info { flex: 1; min-width: 0; }
   .item-hoy .info b { display: block; font-size: 13px; }
@@ -468,6 +469,7 @@
   table.drive td { color: var(--texto); border-color: #edf0f4; }
   table.drive tbody tr:nth-child(even) td { background: var(--superficie-2); }
   table.drive tbody tr:hover td { background: #edf4ff; }
+  tr.fila-hoy td { background: var(--dorado-fondo) !important; color: var(--texto) !important; }
   .chip { padding: 3px 9px; font-weight: 750; border-radius: 999px; }
   .chip.ok { background: #e3f5ed; color: #0d6b4c; } .chip.info { background: #e9f1ff; color: #1b56a6; }
   .chip.warn, .chip.ambar { background: #fff4de; color: #8a5408; } .chip.bad { background: #ffeaed; color: #a9283a; }
@@ -555,7 +557,7 @@
     .modal-fondo { padding: 10px; align-items: flex-start; }
     .modal { width: 100%; max-width: none; max-height: calc(100dvh - 20px); margin: 0; padding: 18px 16px; overflow: auto; }
     .form-grid { grid-template-columns: 1fr; gap: 10px; }
-    .modal .pies { position: sticky; bottom: -18px; padding: 14px 0 2px; margin-top: 14px; background: #fff; flex-wrap: wrap; }
+    .modal .pies { position: sticky; bottom: -18px; padding: 14px 0 2px; margin-top: 14px; background: var(--superficie); flex-wrap: wrap; }
     .modal .pies .btn { flex: 1 1 130px; justify-content: center; }
     .lista li { align-items: flex-start; flex-wrap: wrap; }
     .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); max-width: none; }
@@ -618,6 +620,8 @@
   :root[data-theme="dark"] .hbar .barra, :root[data-theme="dark"] .me-barra { background: #1b2438; }
   :root[data-theme="dark"] .cal-dia { background: var(--superficie); }
   :root[data-theme="dark"] .cal-dia.cal-sel { background: #16233d; }
+  :root[data-theme="dark"] .kpi.dorado .num { color: var(--dorado2); }
+  :root[data-theme="dark"] .kpi.dorado { background: linear-gradient(180deg, var(--dorado-fondo), var(--superficie) 55%); }
   /* Toggle de tema en el pie del sidebar */
   .tema-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -849,7 +853,7 @@
       <section id="pag-venta" class="oculto">
         <div class="kpis">
           <div class="kpi"><div class="eti">Ventas registradas</div><div class="num" id="kpiVeTotal">-</div></div>
-          <div class="kpi verde"><div class="eti">Monto total</div><div class="num" id="kpiVeMonto">-</div></div>
+          <div class="kpi dorado"><div class="eti">Monto total</div><div class="num" id="kpiVeMonto">-</div></div>
           <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="kpiVeHoy">-</div></div>
           <div class="kpi"><div class="eti">Se realizaron</div><div class="num" id="kpiVeOk">-</div></div>
           <div class="kpi"><div class="eti">Dejaron pagado</div><div class="num" id="kpiVePagado">-</div></div>
@@ -1095,7 +1099,7 @@
         <div class="kpis">
           <div class="kpi"><div class="eti">Pacientes</div><div class="num" id="paTotal">-</div></div>
           <div class="kpi verde"><div class="eti">Con compras</div><div class="num" id="paCompras">-</div></div>
-          <div class="kpi naranja"><div class="eti">Monto total</div><div class="num" id="paMonto">-</div></div>
+          <div class="kpi dorado"><div class="eti">Monto total</div><div class="num" id="paMonto">-</div></div>
         </div>
         <div class="dos" id="paBloqueAnalitica">
           <div class="tarjeta">
@@ -1909,7 +1913,7 @@ function pintarBuscarGlobal() {
     return;
   }
   cont.innerHTML = BUSQ_RESULTADOS.map((r, i) => `
-    <div class="item-hoy" data-i="${i}" style="margin:6px 10px;cursor:pointer;${i === BUSQ_SEL ? 'border-color:var(--azul2);background:#f2f6ff;' : ''}"
+    <div class="item-hoy${i === BUSQ_SEL ? ' sel' : ''}" data-i="${i}" style="margin:6px 10px;cursor:pointer;"
          onclick="seleccionarBuscarGlobal(${i})">
       <span class="chip info">PAC</span>
       <div class="info"><b>${esc(r.nombre || 'Sin nombre')}</b>
@@ -2407,7 +2411,7 @@ function pintarAgendados() {
   $('tablaAgendados').innerHTML = '<thead><tr>' + orden.map(c => `<th${col[c] === 'TELEFONO' ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
     vis.map(f => {
       const esHoy = f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy;
-      const style = esHoy ? ' style="background:#fff8e8 !important;"' : '';
+      const style = esHoy ? ' class="fila-hoy"' : '';
       return `<tr${style}>` + orden.map(c => {
         const v = f[c];
         if (v === undefined || v === null || v === '') return '<td></td>';
