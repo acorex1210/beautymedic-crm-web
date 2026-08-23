@@ -286,7 +286,7 @@ def _fecha(dia, mes, anio):
         return None
 
 
-def proyeccion_mes(mes, anio):
+def proyeccion_mes(mes, anio, dia_referencia=None):
     """Proyección de venta al cierre del mes, sin asumir un ritmo diario
     plano. Combina tres factores:
 
@@ -301,6 +301,13 @@ def proyeccion_mes(mes, anio):
          (no del mes en curso, que puede estar a mitad de camino), y se les
          aplica la misma tasa de conversión y ticket promedio.
 
+    ``dia_referencia``, si se da, fuerza qué día del mes se usa como "hoy"
+    para el cálculo (por ejemplo 1, para obtener el pronóstico de cierre de
+    mes calculado en frío, antes de que avance ninguna venta real -- así se
+    puede congelar una única meta fija para todo el mes en vez de recalcular
+    un número que sube y baja según cuánto haya avanzado el mes). Por
+    defecto usa la fecha real de hoy.
+
     Devuelve el desglose completo para que la pantalla explique el número,
     no sólo lo muestre.
     """
@@ -310,7 +317,10 @@ def proyeccion_mes(mes, anio):
     if not mi:
         return None
     dias_mes = calendar.monthrange(anio, mi)[1]
-    hoy = datetime.now().date()
+    if dia_referencia is not None:
+        hoy = datetime(anio, mi, min(max(1, int(dia_referencia)), dias_mes)).date()
+    else:
+        hoy = datetime.now().date()
     es_mes_actual = (hoy.year, hoy.month) == (anio, mi)
     dia_hoy = hoy.day if es_mes_actual else dias_mes
     dias_transcurridos = min(dia_hoy, dias_mes)

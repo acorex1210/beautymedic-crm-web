@@ -985,16 +985,67 @@ async def analitica_kpis(mes: str = '', anio: str = '',
         raise HTTPException(502, f'No se pudo calcular KPIs: {e}')
 
 
+PROYECCION_MES_PATH = os.path.join(DATA_DIR, 'proyeccion_mensual.json')
+
+
+def _leer_proyecciones_congeladas():
+    if not os.path.exists(PROYECCION_MES_PATH):
+        return {}
+    try:
+        with open(PROYECCION_MES_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _guardar_proyeccion_congelada(clave, datos):
+    congeladas = _leer_proyecciones_congeladas()
+    congeladas[clave] = datos
+    with open(PROYECCION_MES_PATH, 'w', encoding='utf-8') as f:
+        json.dump(congeladas, f, ensure_ascii=False, indent=2)
+
+
 @app.get('/api/analitica/proyeccion')
 async def analitica_proyeccion(mes: str = '', anio: str = ''):
+    """La meta proyectada se calcula una sola vez por mes (como si fuera el
+    día 1, antes de que exista ninguna venta real) y queda fija en disco:
+    así no sube ni baja según avance el mes. El avance real (lo ya vendido)
+    sí se recalcula en cada llamada, para poder comparar el progreso contra
+    esa meta fija."""
     m, a, _d, _h = _filtros(mes, anio)
     try:
-        res = ana.proyeccion_mes(m, a)
+        en_vivo = ana.proyeccion_mes(m, a)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo calcular la proyección: {e}')
-    if res is None:
+    if en_vivo is None:
         raise HTTPException(400, f'Mes inválido: {m}')
-    return {'ok': True, **res}
+    clave = f"{en_vivo['mes']}-{en_vivo['anio']}"
+    congelada = _leer_proyecciones_congeladas().get(clave)
+    if not congelada:
+        try:
+            congelada = ana.proyeccion_mes(m, a, dia_referencia=1)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo calcular la proyección: {e}')
+        _guardar_proyeccion_congelada(clave, congelada)
+    proyeccion = congelada['proyeccion']
+    avance_real = en_vivo['ya_vendido']
+    avance_pct = round(avance_real / proyeccion * 100, 1) if proyeccion else 0.0
+    return {
+        'ok': True, 'mes': congelada['mes'], 'anio': congelada['anio'],
+        'dias_mes': en_vivo['dias_mes'],
+        'dias_transcurridos': en_vivo['dias_transcurridos'],
+        'dias_restantes': en_vivo['dias_restantes'],
+        'proyeccion': proyeccion,
+        'pipeline_esperado': congelada['pipeline_esperado'],
+        'citas_pendientes': congelada['citas_pendientes'],
+        'venta_nuevos_esperada': congelada['venta_nuevos_esperada'],
+        'nuevos_esperados': congelada['nuevos_esperados'],
+        'tasa_conversion_pct': congelada['tasa_conversion_pct'],
+        'ticket_promedio': congelada['ticket_promedio'],
+        'ritmo_agendados_dia': congelada['ritmo_agendados_dia'],
+        'ya_vendido': avance_real, 'avance_real': avance_real,
+        'avance_pct': avance_pct, 'ritmo_lineal': en_vivo['ritmo_lineal'],
+    }
 
 
 @app.get('/api/analitica/serie')
