@@ -2081,11 +2081,13 @@ $('btnMetaGuardar').addEventListener('click', async () => {
    endpoints que su rol puede leer, así nadie dispara 403 de fondo ni ve un
    panel vacío por no tener acceso al dashboard completo. */
 /* ---------------- Panel: alertas ----------------
-   Se arma con datos que ya se piden para el resumen (HOY y AGENDADOS),
-   sin viajes nuevos al backend: NO CONTESTÓ de hoy, tareas vencidas
-   (ya las calcula leer_hoy() en crm_plus.py) y citas de mañana que
-   siguen sin confirmar. */
-function pintarAlertasPanel(hoyR, agR) {
+   Una sola bandeja de "esto necesita acción hoy": se arma con datos que ya
+   se piden para el resumen (HOY, AGENDADOS y pacientes inactivos), sin
+   viajes nuevos al backend salvo el de reactivación (liviano, ya cacheado
+   igual que /api/crm/pacientes): NO CONTESTÓ de hoy, citas de hoy aún sin
+   confirmar, tareas vencidas (leer_hoy() en crm_plus.py), citas de mañana
+   sin confirmar y pacientes para reactivar por inactividad. */
+function pintarAlertasPanel(hoyR, agR, inactR) {
   const caja = $('panelAlertasCaja'), cont = $('panelAlertas');
   const items = [];
 
@@ -2095,6 +2097,11 @@ function pintarAlertasPanel(hoyR, agR) {
     if (noContesto > 0) {
       items.push({ n: noContesto, txt: noContesto === 1 ? 'cita de hoy sin contestar' : 'citas de hoy sin contestar',
                    cls: 'warn', pag: 'hoy' });
+    }
+    const pendientes = h.citas.filter(c => estadoHoy(c) === 'PENDIENTE').length;
+    if (pendientes > 0) {
+      items.push({ n: pendientes, txt: pendientes === 1 ? 'cita de hoy sin confirmar' : 'citas de hoy sin confirmar',
+                   cls: 'info', pag: 'hoy' });
     }
     const vencidas = (h.tareas_vencidas || []).length;
     if (vencidas > 0) {
@@ -2115,6 +2122,14 @@ function pintarAlertasPanel(hoyR, agR) {
     }
   }
 
+  if (inactR && inactR.status === 'fulfilled') {
+    const n = (inactR.value.pacientes || []).length;
+    if (n > 0) {
+      items.push({ n, txt: n === 1 ? 'paciente para reactivar' : 'pacientes para reactivar',
+                   cls: 'warn', pag: 'pacientes' });
+    }
+  }
+
   if (!items.length) { caja.classList.add('oculto'); cont.innerHTML = ''; return; }
   caja.classList.remove('oculto');
   cont.innerHTML = `<div class="estado-line">` + items.map(it => `
@@ -2132,7 +2147,7 @@ async function cargarResumenPanel() {
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
-  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR] = await Promise.allSettled([
+  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR, inactR] = await Promise.allSettled([
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
@@ -2144,9 +2159,10 @@ async function cargarResumenPanel() {
     // Con dashboard ya vienen los totales de venta: no se baja el libro entero.
     (puedeVer('venta') && !puedeVer('dashboard')) ? api('/api/crm/venta') : nada,
     si('pacientes', () => api('/api/crm/pacientes')),
+    si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
   ]);
   const tarjetas = [];
-  pintarAlertasPanel(hoyR, agR);
+  pintarAlertasPanel(hoyR, agR, inactR);
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
