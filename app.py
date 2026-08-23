@@ -1298,6 +1298,62 @@ async def exportar_csv(tipo: str):
     raise HTTPException(404, f'Tipo no soportado: {tipo}')
 
 
+def _xlsx_response(columnas, filas, nombre, titulo=None):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Reporte'
+    if titulo:
+        ws.append([titulo])
+        ws.append([])
+    ws.append(columnas)
+    for c in ws[ws.max_row]:
+        c.font = openpyxl.styles.Font(bold=True)
+    for f in filas:
+        ws.append([f.get(c) for c in columnas])
+    for col in ws.columns:
+        largo = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+        ws.column_dimensions[col[0].column_letter].width = min(largo + 2, 40)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(buf.getvalue(),
+                    media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    headers={'Content-Disposition': f'attachment; filename="{nombre}.xlsx"'})
+
+
+@app.get('/api/reportes/exportar')
+async def exportar_reporte_xlsx(tipo: str, mes: str = '', anio: str = '',
+                                desde: str = '', hasta: str = '', hoja: str = ''):
+    tipo = tipo.lower().strip()
+    try:
+        if tipo == 'kpis':
+            m, a, d, h = _filtros(mes, anio, desde, hasta)
+            datos = ana.kpis(m, a, d, h)
+            filas = [{'Metrica': k, 'Valor': v} for k, v in datos.items()]
+            return _xlsx_response(['Metrica', 'Valor'], filas, f'kpis_{m}_{a}',
+                                  titulo=f'KPIs {m} {a} (días {d}-{h})')
+        if tipo == 'venta_diaria':
+            d = crm.leer_venta()
+            hojas = d['hojas']
+            nombre_hoja = hoja if hoja in hojas else (next(iter(hojas), None))
+            if not nombre_hoja:
+                raise HTTPException(404, 'Sin datos de VENTA DIARIA')
+            filas = hojas[nombre_hoja]['filas']
+            if mes:
+                m = mes.upper().replace('SEP', 'SET')
+                filas = [f for f in filas if str(f.get('C') or '').strip().upper() == m]
+            cols = list(hojas[nombre_hoja]['columnas'].keys()) or ['A']
+            etiquetas = hojas[nombre_hoja]['columnas']
+            filas_out = [{etiquetas.get(c, c): f.get(c) for c in cols} for f in filas]
+            return _xlsx_response(list(etiquetas.values()) or cols, filas_out,
+                                  f'venta_diaria_{nombre_hoja.replace(" ", "_")}',
+                                  titulo=f'Venta diaria · {nombre_hoja}' + (f' · {mes}' if mes else ''))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo exportar el reporte: {e}')
+    raise HTTPException(404, f'Tipo no soportado: {tipo}')
+
+
 # ============================================================
 # CRM: Agendados y Venta diaria (lectura / alta en Drive)
 # ============================================================
@@ -2176,6 +2232,15 @@ async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
     for p in pacientes:
         p['historias'] = docs.get(hist.carpeta(p['clave']), 0)
     return {'ok': True, 'pacientes': pacientes}
+
+
+@app.get('/api/pacientes/inactivos')
+async def pacientes_inactivos(dias: int = 45):
+    try:
+        pacientes = cp.leer_pacientes_inactivos(dias=dias)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular pacientes inactivos (Drive): {e}')
+    return {'ok': True, 'dias': dias, 'pacientes': pacientes}
 
 
 @app.get('/api/buscar')

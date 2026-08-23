@@ -698,6 +698,27 @@ def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
     return out
 
 
+def leer_pacientes_inactivos(dias=45):
+    """Pacientes atendidos alguna vez pero sin visita en más de ``dias`` días.
+
+    Ordenados por gasto histórico (``total``) descendente, para priorizar a
+    quién llamar primero para reactivar.
+    """
+    hoy_iso = datetime.now(TZ).strftime('%Y-%m-%d')
+    out = []
+    for p in leer_pacientes(solo_atendidos=True):
+        if not p['ultima_atencion']:
+            continue
+        dias_inactivo = (datetime.strptime(hoy_iso, '%Y-%m-%d')
+                          - datetime.strptime(p['ultima_atencion'], '%Y-%m-%d')).days
+        if dias_inactivo > dias:
+            q = dict(p)
+            q['dias_inactivo'] = dias_inactivo
+            out.append(q)
+    out.sort(key=lambda p: (p['total'] or 0), reverse=True)
+    return out
+
+
 # ============================================================
 # DASHBOARD
 # ============================================================
@@ -803,8 +824,22 @@ def leer_hoy():
     clave_hoy = f'{dia}/{mes}/{anio}'
     hoy_iso = datetime.now(TZ).strftime('%Y-%m-%d')
 
+    ag_filas = cd.leer_agendados()['filas']
+
+    riesgo = {}
+    for f in ag_filas:
+        st = str(f.get('Q') or '').upper().strip()
+        if not st:
+            continue
+        tel = re.sub(r'\D', '', str(f.get('I') or ''))
+        k = _clave(tel, f.get('G'))
+        r = riesgo.setdefault(k, {'total': 0, 'no_show': 0})
+        r['total'] += 1
+        if 'NO ASISTIO' in st or 'NO CONTEST' in st:
+            r['no_show'] += 1
+
     citas = []
-    for f in cd.leer_agendados()['filas']:
+    for f in ag_filas:
         if not (f.get('L') and f.get('M') and f.get('N')):
             continue
         if f'{f["L"]}/{f["M"]}/{f["N"]}' != clave_hoy:
@@ -812,11 +847,15 @@ def leer_hoy():
         st = str(f.get('Q') or '').upper()
         if 'NO ASISTIO' in st or 'CANCEL' in st or 'NO CONFIRM' in st:
             continue
+        tel = re.sub(r'\D', '', str(f.get('I') or ''))
+        r = riesgo.get(_clave(tel, f.get('G')), {'total': 0, 'no_show': 0})
         citas.append({'nombre': f.get('G'), 'telefono': f.get('I'),
                       'hora': f.get('P'), 'crm': f.get('B'),
                       'campana': f.get('O'), 'estado': f.get('Q'),
                       'dia': f.get('L'), 'mes': f.get('M'),
-                      'fila': f.get('_fila')})
+                      'fila': f.get('_fila'),
+                      'riesgo_no_show': r['no_show'], 'riesgo_citas': r['total'],
+                      'riesgo_alto': r['no_show'] >= 2})
     citas.sort(key=lambda c: c['hora'] or '99')
 
     ventas = []

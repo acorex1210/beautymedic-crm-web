@@ -765,7 +765,10 @@
         </div>
 
         <div class="tarjeta">
-          <h3>Resumen general</h3>
+          <div class="toolbar" style="margin:0 0 6px;">
+            <h3 style="margin:0;flex:1;">Resumen general</h3>
+            <a class="btn borde pequeno" id="linkPanelExportarExcel" href="#" target="_blank">Exportar Excel del mes</a>
+          </div>
           <p class="nota" style="margin:0 0 14px;">Un vistazo rápido a cada sección. Haz clic en una tarjeta para entrar.</p>
           <div class="resumen-grid" id="panelResumen">
             <div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>
@@ -866,6 +869,7 @@
             <select id="veFiltroDoctor"><option value="">Doctor: todos</option></select>
             <select id="veFiltroStatus"><option value="">Status: todos</option></select>
             <button class="btn gris" id="btnVeRecargar">Actualizar</button>
+            <a class="btn borde pequeno" id="linkVeExportarExcel" href="#" target="_blank">Exportar Excel</a>
             <button class="btn verde" id="btnVeNuevo">+ Nueva venta</button>
           </div>
           <div class="nota" id="veNota" style="margin:0 0 10px;"></div>
@@ -1125,6 +1129,16 @@
         </div>
         <div class="tarjeta" style="margin-top:18px;">
           <div class="toolbar">
+            <h3 style="margin:0;flex:1;">Pacientes inactivos · reactivación por valor</h3>
+            <label style="font-size:12px;color:var(--gris);">Sin visita hace más de
+              <select id="paInactivosDias" style="width:auto;padding:4px 8px;"><option value="30">30</option><option value="45" selected>45</option><option value="60">60</option><option value="90">90</option></select> días</label>
+          </div>
+          <div class="nota" style="margin:0 0 8px;">Ordenados por gasto histórico, para saber a quién llamar primero.</div>
+          <div class="tabla-wrap"><table class="drive" id="tablaInactivos"></table></div>
+          <div id="paInactivosNota" class="nota"></div>
+        </div>
+        <div class="tarjeta" style="margin-top:18px;">
+          <div class="toolbar">
             <div class="buscar"><input type="search" id="paBuscar" placeholder="Buscar por nombre o teléfono&hellip;"></div>
             <label style="font-size:12px;color:var(--gris);">Desde
               <input type="date" id="paDesde" style="width:auto;padding:4px 8px;"></label>
@@ -1172,6 +1186,7 @@
           </select></div>
           <button class="btn" id="btnAnaActualizar">Actualizar</button>
           <a class="btn borde pequeno" href="/api/exportar/analitica">Exportar KPIs CSV</a>
+          <a class="btn borde pequeno" id="linkAnaExportarExcel" href="#" target="_blank">Exportar Excel</a>
         </div>
         <div class="kpis-grid" id="anaKpis"></div>
         <div class="charts-wrap">
@@ -1459,6 +1474,7 @@
   <div class="modal" style="max-width: 780px;">
     <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="resumen" id="paDetKpis"></div>
+    <div id="paDetSugerencia"></div>
     <div class="grupo" style="margin:6px 0 10px;">Línea de tiempo</div>
     <div id="paDetLinea" style="max-height:340px;overflow:auto;"></div>
     <div class="grupo" style="margin:16px 0 10px;">Tratamientos realizados</div>
@@ -2065,11 +2081,13 @@ $('btnMetaGuardar').addEventListener('click', async () => {
    endpoints que su rol puede leer, así nadie dispara 403 de fondo ni ve un
    panel vacío por no tener acceso al dashboard completo. */
 /* ---------------- Panel: alertas ----------------
-   Se arma con datos que ya se piden para el resumen (HOY y AGENDADOS),
-   sin viajes nuevos al backend: NO CONTESTÓ de hoy, tareas vencidas
-   (ya las calcula leer_hoy() en crm_plus.py) y citas de mañana que
-   siguen sin confirmar. */
-function pintarAlertasPanel(hoyR, agR) {
+   Una sola bandeja de "esto necesita acción hoy": se arma con datos que ya
+   se piden para el resumen (HOY, AGENDADOS y pacientes inactivos), sin
+   viajes nuevos al backend salvo el de reactivación (liviano, ya cacheado
+   igual que /api/crm/pacientes): NO CONTESTÓ de hoy, citas de hoy aún sin
+   confirmar, tareas vencidas (leer_hoy() en crm_plus.py), citas de mañana
+   sin confirmar y pacientes para reactivar por inactividad. */
+function pintarAlertasPanel(hoyR, agR, inactR) {
   const caja = $('panelAlertasCaja'), cont = $('panelAlertas');
   const items = [];
 
@@ -2079,6 +2097,11 @@ function pintarAlertasPanel(hoyR, agR) {
     if (noContesto > 0) {
       items.push({ n: noContesto, txt: noContesto === 1 ? 'cita de hoy sin contestar' : 'citas de hoy sin contestar',
                    cls: 'warn', pag: 'hoy' });
+    }
+    const pendientes = h.citas.filter(c => estadoHoy(c) === 'PENDIENTE').length;
+    if (pendientes > 0) {
+      items.push({ n: pendientes, txt: pendientes === 1 ? 'cita de hoy sin confirmar' : 'citas de hoy sin confirmar',
+                   cls: 'info', pag: 'hoy' });
     }
     const vencidas = (h.tareas_vencidas || []).length;
     if (vencidas > 0) {
@@ -2099,6 +2122,14 @@ function pintarAlertasPanel(hoyR, agR) {
     }
   }
 
+  if (inactR && inactR.status === 'fulfilled') {
+    const n = (inactR.value.pacientes || []).length;
+    if (n > 0) {
+      items.push({ n, txt: n === 1 ? 'paciente para reactivar' : 'pacientes para reactivar',
+                   cls: 'warn', pag: 'pacientes' });
+    }
+  }
+
   if (!items.length) { caja.classList.add('oculto'); cont.innerHTML = ''; return; }
   caja.classList.remove('oculto');
   cont.innerHTML = `<div class="estado-line">` + items.map(it => `
@@ -2109,13 +2140,14 @@ function pintarAlertasPanel(hoyR, agR) {
 async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
+  $('linkPanelExportarExcel').href = `/api/reportes/exportar?tipo=kpis&mes=${HOY_M}&anio=${HOY_A}`;
   const qNow = HOY_D <= 15 ? 1 : 2;
   const nada = Promise.reject(new Error('sin acceso'));
   const si = (sec, p) => (puedeVer(sec) ? p() : nada);
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
-  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR] = await Promise.allSettled([
+  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR, inactR] = await Promise.allSettled([
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
@@ -2127,9 +2159,10 @@ async function cargarResumenPanel() {
     // Con dashboard ya vienen los totales de venta: no se baja el libro entero.
     (puedeVer('venta') && !puedeVer('dashboard')) ? api('/api/crm/venta') : nada,
     si('pacientes', () => api('/api/crm/pacientes')),
+    si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
   ]);
   const tarjetas = [];
-  pintarAlertasPanel(hoyR, agR);
+  pintarAlertasPanel(hoyR, agR, inactR);
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
@@ -2601,6 +2634,7 @@ function pintarVenta() {
   $('kpiVeOk').textContent = ventasRegistradas.filter(f => esRealizado(f.N)).length;
   $('kpiVePagado').textContent = ventasRegistradas.filter(f => esDejoPagado(f.N)).length;
   $('veNota').textContent = `VENTA DIARIA (Drive) · último refresco ${VE.descargado || '—'}`;
+  $('linkVeExportarExcel').href = '/api/reportes/exportar?tipo=venta_diaria&hoja=' + encodeURIComponent(veAnioActivo);
 
   const vis = filt.slice(0, veLimite);
   $('tablaVenta').innerHTML = '<thead><tr>' + orden.map(c => `<th${(c === 'O' || c === 'Q' || c === 'J') ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
@@ -3610,18 +3644,43 @@ function chipHoyCita(c) {
   return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
 }
 
+/* ---------------- Recordatorio por WhatsApp ---------------- */
+function limpiarTelPeru(tel) {
+  let d = String(tel || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.startsWith('51') && d.length > 9) d = d.slice(2);
+  if (d.length > 9) d = d.slice(-9);
+  return d.length === 9 ? '51' + d : '';
+}
+function abrirWhatsAppRecordatorio(nombre, telefono, fechaTxt, horaTxt) {
+  const tel = limpiarTelPeru(telefono);
+  if (!tel) { toast('Ese paciente no tiene un teléfono válido', 'err'); return; }
+  const msg = `Hola ${nombre || ''}! Te escribimos de Derma Essenza para recordarte tu cita`
+    + (fechaTxt ? ` del ${fechaTxt}` : '') + (horaTxt ? ` a las ${horaTxt}` : '')
+    + `. Te esperamos ✨ Si necesitas reprogramar, avísanos por este medio.`;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+function btnWhatsApp(nombre, telefono, fechaTxt, horaTxt) {
+  if (!limpiarTelPeru(telefono)) return '';
+  return `<button class="btn borde mini" title="Enviar recordatorio por WhatsApp"
+    onclick="abrirWhatsAppRecordatorio('${esc(nombre || '').replace(/'/g, "\\'")}','${esc(telefono || '')}','${esc(fechaTxt || '').replace(/'/g, "\\'")}','${esc(horaTxt || '').replace(/'/g, "\\'")}')">💬 Recordar</button>`;
+}
+function chipRiesgoNoShow(c) {
+  if (!c.riesgo_alto) return '';
+  return `<span class="chip bad" title="${c.riesgo_no_show} de ${c.riesgo_citas} citas anteriores sin asistir">⚠ Alto riesgo</span>`;
+}
 function accionesHoyCita(c) {
   return `
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
           <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
           <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
-          <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>`;
+          <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
 }
 function renderCitasHoy() {
   const h = HOY_DATA;
   $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
     <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
-      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+      <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
         ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
         <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
       </div>
@@ -3637,6 +3696,7 @@ function renderConfirmadosHoy() {
         <div class="acciones-hoy">
           <button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
           <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}
         </div>` : (e === 'ASISTIO' && !yaDecidioCompra ? `
         <div class="acciones-hoy">
           <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
@@ -3901,8 +3961,11 @@ function pintarCalDetalle() {
     const e = estadoCita(f.Q);
     const hist = parsearHistorialReagenda(f.T);
     const badge = hist.length ? `<span class="chip warn" title="${esc(hist.map(h => `${h.de} → ${h.a}`).join('\n'))}">↻ reagendada ${hist.length}x</span>` : '';
+    const fechaTxt = `${calDiaSel}/${MESES[calMes]}/${calAnio}`;
     return `<div class="item-hoy"><span class="hora">${esc(f.P || '—')}</span>
-      <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small></div>
+      <div class="info"><b>${esc(f.G || '—')}</b><small>${esc(f.I || '')} ${f.B ? '· ' + esc(f.B) : ''} ${f.O ? '· ' + esc(f.O) : ''}</small>
+        <div class="acciones-hoy">${btnWhatsApp(f.G, f.I, fechaTxt, f.P)}</div>
+      </div>
       ${badge}
       <span class="chip ${CAL_CLASE[e]}">${CAL_ETIQUETA[e]}</span>
     </div>`;
@@ -4112,6 +4175,31 @@ async function cargarPacientes() {
     : `${PACIENTES.pacientes.length} pacientes${rango}: solo quienes fueron al consultorio, hayan comprado o no.`;
   pintarPacientes();
   if (puedeVer('analitica')) cargarReactivar();
+  cargarInactivos();
+}
+async function cargarInactivos() {
+  const dias = $('paInactivosDias').value;
+  $('tablaInactivos').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Buscando pacientes inactivos&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/pacientes/inactivos?dias=' + dias);
+    if (!r.pacientes.length) {
+      $('tablaInactivos').innerHTML = '';
+      $('paInactivosNota').textContent = `Nadie lleva más de ${dias} días sin visita.`;
+      return;
+    }
+    $('tablaInactivos').innerHTML = '<thead><tr><th>Paciente</th><th>Teléfono</th><th>Última atención</th><th>Días sin volver</th><th>Gasto histórico</th></tr></thead><tbody>' +
+      r.pacientes.slice(0, 100).map(p => `<tr>
+        <td><b>${esc(p.nombre || '—')}</b></td>
+        <td class="num">${esc(p.telefono || '')}</td>
+        <td>${esc(p.ultima_atencion || '')}</td>
+        <td class="num">${p.dias_inactivo}</td>
+        <td class="num mon">${fmtMon(p.total)}</td>
+      </tr>`).join('') + '</tbody>';
+    $('paInactivosNota').textContent = `${r.pacientes.length} pacientes sin visita hace más de ${dias} días, ordenados por gasto histórico.`;
+  } catch (e) {
+    $('tablaInactivos').innerHTML = '';
+    $('paInactivosNota').textContent = e.message;
+  }
 }
 async function buscarHistorial() {
   const q = $('paBuscarHist').value.trim();
@@ -4208,6 +4296,7 @@ async function abrirModalPaciente(pidx) {
     <div class="kpi verde"><div class="eti">Compras</div><div class="num">${p.compras}</div></div>
     <div class="kpi naranja"><div class="eti">Total</div><div class="num" style="font-size:18px;">${fmtMon(p.total)}</div></div>`;
   pintarTratamientosPaciente(p);
+  pintarSugerenciaPaciente(p);
   $('notaTipo').value = 'LLAMADA';
   $('notaTexto').value = '';
   $('hcArchivo').value = ''; $('hcNota').value = '';
@@ -4337,6 +4426,64 @@ $('btnPaHistoriaNueva').addEventListener('click', () => {
     motivo: pacienteActual.campana || '',
   });
 });
+/* ---------------- Sugerencia comercial de siguiente tratamiento ----------------
+   Regla simple basada en lo que el paciente ya compró (VENTA DIARIA, en
+   p.tratamientos) y la campaña por la que llegó. NO es indicación médica:
+   es solo un empujón comercial/reactivación para que el staff sepa qué
+   ofrecer. Catálogo tomado de los valores reales de la pestaña DATA de
+   VENTA_DIARIA (dropdown de TRATAMIENTO). */
+const CATALOGO_TRATAMIENTOS = [
+  { fam: 'TOXINA', label: 'Toxina botulínica' },
+  { fam: 'ACIDO HIALU', label: 'Ácido hialurónico' },
+  { fam: 'DERMAPEN', label: 'Dermapen' },
+  { fam: 'PRP FACIAL', label: 'PRP facial' },
+  { fam: 'RADIOFRECUENCIA', label: 'Radiofrecuencia' },
+  { fam: 'ULTRASONIDO', label: 'Ultrasonido' },
+];
+function diasDesde(fechaISO) {
+  if (!fechaISO) return null;
+  const f = new Date(fechaISO + 'T00:00:00');
+  if (isNaN(f)) return null;
+  return Math.round((Date.now() - f.getTime()) / 86400000);
+}
+function pintarSugerenciaPaciente(p) {
+  const cont = $('paDetSugerencia');
+  const ts = (p.tratamientos || []).filter(t => t.tratamiento);
+  const avisos = [];
+
+  const ultimaToxina = ts.find(t => t.tratamiento.toUpperCase().includes('TOXINA'));
+  if (ultimaToxina) {
+    const d = diasDesde(ultimaToxina.fecha);
+    if (d !== null && d >= 100) {
+      avisos.push(`Su última toxina (<b>${esc(ultimaToxina.tratamiento)}</b>) fue hace <b>${d} días</b>.
+        El efecto suele durar ~4 meses: buen momento para ofrecerle un retoque.`);
+    }
+  }
+
+  if (ts.length) {
+    const ultima = ts[0];
+    const d = diasDesde(ultima.fecha);
+    if (d !== null) {
+      avisos.push(`Han pasado <b>${d} días</b> desde su última compra (${esc(ultima.tratamiento)}).`);
+    }
+  } else if (p.campana) {
+    avisos.push(`Aún no registra compras. Llegó por la campaña <b>${esc(p.campana)}</b>: puede valer la pena
+      contactarlo para agendar el tratamiento de esa campaña.`);
+  }
+
+  const noProbados = CATALOGO_TRATAMIENTOS.filter(c =>
+    !ts.some(t => t.tratamiento.toUpperCase().includes(c.fam)));
+  if (noProbados.length && ts.length) {
+    avisos.push(`Tratamientos que aún no ha probado: ${noProbados.map(c => esc(c.label)).join(', ')}.`);
+  }
+
+  if (!avisos.length) { cont.innerHTML = ''; return; }
+  cont.innerHTML = `<div class="tarjeta" style="margin:0 0 14px;background:var(--dorado-fondo);border-color:var(--dorado);">
+    <b style="font-size:12px;color:var(--dorado);">💡 Sugerencia de reactivación</b>
+    <div class="nota" style="margin:6px 0 0;">${avisos.join('<br>')}</div>
+    <div class="nota" style="margin:6px 0 0;font-style:italic;">No es una indicación médica, es solo un empujón comercial para el seguimiento.</div>
+  </div>`;
+}
 function pintarTratamientosPaciente(p) {
   const ts = p.tratamientos || [];
   if (!ts.length) {
@@ -4738,6 +4885,7 @@ function anaKpi(eti, num, sub = '') {
 }
 async function cargarAnalitica() {
   const q = anaFiltros();
+  $('linkAnaExportarExcel').href = '/api/reportes/exportar?tipo=kpis&' + q.slice(1);
   $('anaKpis').innerHTML = '<div class="carga">Cargando KPIs&hellip;</div>';
   try {
     const kpis = await api('/api/analitica/kpis' + q);
@@ -5142,6 +5290,7 @@ $('btnAnaActualizar').addEventListener('click', cargarAnalitica);
 $('btnPaBuscarHist').addEventListener('click', buscarHistorial);
 $('paBuscarHist').addEventListener('keydown', e => { if (e.key === 'Enter') buscarHistorial(); });
 $('paReactivarMeses').addEventListener('change', cargarReactivar);
+$('paInactivosDias').addEventListener('change', cargarInactivos);
 $('btnPaCuotaNueva').addEventListener('click', cuotaNueva);
 $('formCuota').addEventListener('submit', cuotaGuardar);
 $('btnCuotaBorrar').addEventListener('click', cuotaBorrar);
