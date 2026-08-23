@@ -3620,6 +3620,10 @@ function chipHoyCita(c) {
   return c.estado ? `<span class="chip info">${esc(c.estado)}</span>` : '';
 }
 
+function chipRiesgoNoShow(c) {
+  if (!c.riesgo_alto) return '';
+  return `<span class="chip bad" title="${c.riesgo_no_show} de ${c.riesgo_citas} citas anteriores sin asistir">⚠ Alto riesgo</span>`;
+}
 function accionesHoyCita(c) {
   return `
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
@@ -3631,7 +3635,7 @@ function renderCitasHoy() {
   const h = HOY_DATA;
   $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
     <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
-      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+      <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
         ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
         <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
       </div>
