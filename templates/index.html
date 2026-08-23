@@ -3974,7 +3974,7 @@ $('btnPaHistoriaNueva').addEventListener('click', () => {
   HISTORIA_BASE = null;
   abrirModalHistoria(null, {
     paciente: pacienteActual.nombre || '', telefono: pacienteActual.telefono || '',
-    fecha: hoyISO(),
+    fecha: pacienteActual.ultima_atencion || hoyISO(),
   });
 });
 function pintarTratamientosPaciente(p) {
