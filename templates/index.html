@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{BRAND_NOMBRE}} &middot; CRM y Reportes</title>
+<script>
+  /* Se aplica el tema guardado ANTES de pintar la página, para evitar el
+     parpadeo de tema claro→oscuro en la primera carga. */
+  (function () {
+    try {
+      var t = localStorage.getItem('de_tema');
+      if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
 <script src="/static/chart.umd.min.js" defer></script>
 <style>
 :root {
@@ -336,12 +346,16 @@
     .topbar { padding: 12px 16px; }
   }
 
-  /* ---------- Tema CRM corporativo ---------- */
+  /* ---------- Tema CRM corporativo (premium) ---------- */
   :root {
     --azul: #172b4d;
     --azul2: #1f5fbf;
     --azul3: #4c8df6;
-    --crema: #f5f7fb;
+    --crema: #faf6ea;
+    --crema2: #f5f7fb;
+    --dorado: #c9a847;
+    --dorado2: #e0c169;
+    --dorado-fondo: #fbf3dc;
     --fondo: #f5f7fb;
     --gris: #5e6c84;
     --borde: #dfe5ee;
@@ -349,13 +363,30 @@
     --verde: #16835d;
     --naranja: #bd7212;
     --rojo: #c9374a;
+    /* Superficie: fondo real de tarjetas/modales/topbar (se redefine en dark) */
+    --superficie: #ffffff;
+    --superficie-2: #fbfcfe;
+    --texto: #172b4d;
+    --texto-suave: #5e6c84;
+    /* Elevación: 3 niveles consistentes en vez de sombras ad-hoc */
+    --sombra-1: 0 1px 2px rgba(23, 43, 77, .05), 0 1px 3px rgba(23, 43, 77, .04);
+    --sombra-2: 0 2px 6px rgba(23, 43, 77, .06), 0 8px 20px rgba(23, 43, 77, .06);
+    --sombra-3: 0 10px 24px rgba(23, 43, 77, .10), 0 24px 48px rgba(23, 43, 77, .10);
+    /* Tipografía de cifras: los KPIs y montos (fmtMon) deben sentirse sólidos */
+    --font-num: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   }
   body {
-    color: #344563;
+    color: var(--texto);
     background:
       radial-gradient(circle at 100% 0%, rgba(76, 141, 246, .08), transparent 28rem),
       var(--fondo);
     line-height: 1.45;
+    transition: background-color .2s ease, color .2s ease;
+  }
+  /* Cifras y KPIs: peso y tracking distintivos, tabular para alinear columnas */
+  .kpi .num, .kpi-mini .num, .resumen-card .fila .num, table.drive td.mon, .mon,
+  .dtab td.valor, .cmp-tabla td.der, .item-hoy .hora {
+    font-variant-numeric: tabular-nums; letter-spacing: -.3px;
   }
   .sidebar {
     width: 252px; flex-basis: 252px;
@@ -379,63 +410,81 @@
   .nav a.activo {
     background: linear-gradient(90deg, rgba(55, 119, 215, .92), rgba(45, 102, 190, .82));
     border-color: rgba(167, 203, 255, .24); box-shadow: 0 5px 14px rgba(1, 19, 48, .22);
+    position: relative;
+  }
+  /* Acento dorado premium en el item activo del nav: detalle sutil, no ruidoso */
+  .nav a.activo::before {
+    content: ''; position: absolute; left: -10px; top: 4px; bottom: 4px; width: 3px;
+    border-radius: 3px; background: var(--dorado2); box-shadow: 0 0 8px rgba(224, 193, 105, .5);
   }
   .nav .sub { color: #7188ad; font-weight: 700; padding-top: 17px; }
   .topbar {
-    min-height: 71px; background: rgba(255,255,255,.94); border-bottom-color: #e4e9f1;
-    padding: 15px 30px; box-shadow: 0 1px 3px rgba(23, 43, 77, .025);
+    min-height: 71px; background: var(--superficie); border-bottom-color: #e4e9f1;
+    padding: 15px 30px; box-shadow: var(--sombra-1);
   }
-  .topbar h2 { color: #172b4d; font-size: 20px; font-weight: 750; letter-spacing: -.2px; }
+  .topbar h2 { color: var(--texto); font-size: 20px; font-weight: 750; letter-spacing: -.2px; }
   .topbar .ruta { color: #6b778c; }
   .contenido { padding: 26px 30px 38px; }
   .tarjeta, .kpi, .kpi-mini, .chart-caja {
-    border-color: #e1e7f0; border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(23, 43, 77, .035), 0 8px 20px rgba(23, 43, 77, .025);
+    background: var(--superficie); border-color: #e1e7f0; border-radius: 12px;
+    box-shadow: var(--sombra-2);
   }
-  .tarjeta { padding: 20px 22px; transition: box-shadow .18s ease, border-color .18s ease; }
-  .tarjeta:hover { border-color: #d1dbe9; box-shadow: 0 6px 18px rgba(23, 43, 77, .07); }
-  .tarjeta h3, .chart-caja h3, .caja-hoy h3 { color: #172b4d; font-weight: 750; }
+  .tarjeta { padding: 20px 22px; transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease; }
+  .tarjeta:hover { border-color: #d1dbe9; box-shadow: var(--sombra-3); }
+  .tarjeta h3, .chart-caja h3, .caja-hoy h3 { color: var(--texto); font-weight: 750; letter-spacing: -.1px; }
   .kpi { position: relative; overflow: hidden; padding: 16px 18px; }
   .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--azul3); }
   .kpi.verde::before { background: var(--verde); } .kpi.naranja::before { background: var(--naranja); } .kpi.rojo::before { background: var(--rojo); }
+  /* .kpi.dorado: para el número "estrella" de una página (meta del mes, total facturado) */
+  .kpi.dorado::before { background: linear-gradient(180deg, var(--dorado2), var(--dorado)); }
+  .kpi.dorado { background: linear-gradient(180deg, var(--dorado-fondo), var(--superficie) 55%); }
   .kpi .eti, .kpi-mini .et { color: #6b778c; letter-spacing: .55px; }
-  .kpi .num, .kpi-mini .num { color: #172b4d; letter-spacing: -.35px; }
+  .kpi .num, .kpi-mini .num { color: var(--texto); letter-spacing: -.4px; font-weight: 800; }
+  .kpi.dorado .num { color: #8a6b1c; }
   .btn {
-    border-radius: 7px; background: #1f5fbf; padding: 9px 15px;
-    box-shadow: 0 1px 2px rgba(9, 30, 66, .15); transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
+    border-radius: 8px; background: #1f5fbf; padding: 9px 15px;
+    box-shadow: var(--sombra-1); transition: background .16s ease, transform .16s ease, box-shadow .16s ease;
   }
-  .btn:hover { filter: none; background: #174d9e; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(9, 30, 66, .17); }
-  .btn:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(9, 30, 66, .15); }
+  .btn:hover { filter: none; background: #174d9e; transform: translateY(-1px); box-shadow: var(--sombra-2); }
+  .btn:active { transform: translateY(0); box-shadow: var(--sombra-1); }
   .btn.verde { background: #16835d; } .btn.verde:hover { background: #106c4c; }
   .btn.naranja { background: #bd7212; } .btn.naranja:hover { background: #965907; }
   .btn.rojo { background: #c9374a; } .btn.rojo:hover { background: #a9293b; }
   .btn.gris { background: #6b778c; } .btn.gris:hover { background: #505d73; }
-  .btn.borde { color: #1f5fbf; border-color: #b8cff3; box-shadow: none; }
+  .btn.borde { color: #1f5fbf; border-color: #b8cff3; box-shadow: none; background: var(--superficie); }
   .btn.borde:hover { background: #edf4ff; color: #174d9e; }
+  /* .btn.dorado: para la CTA "premium" de una pantalla (una sola por vista) */
+  .btn.dorado { background: linear-gradient(135deg, var(--dorado2), var(--dorado)); color: #493c10; box-shadow: 0 2px 8px rgba(201,168,71,.35); }
+  .btn.dorado:hover { background: linear-gradient(135deg, #e8cd83, #d1af52); }
   .toolbar input[type=text], .toolbar input[type=search], .toolbar select, .campo input, .campo select {
-    border-color: #cfd8e6; border-radius: 7px; color: #172b4d; transition: border-color .15s ease, box-shadow .15s ease;
+    border-color: #cfd8e6; border-radius: 8px; color: var(--texto); background: var(--superficie);
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
   .toolbar input:focus, .toolbar select:focus, .campo input:focus, .campo select:focus {
     outline: none; border-color: #4c8df6; box-shadow: 0 0 0 3px rgba(76, 141, 246, .16);
   }
-  .tabla-wrap { border-color: #dfe5ee; border-radius: 8px; }
+  .tabla-wrap { border-color: #dfe5ee; border-radius: 10px; }
   table.drive th { background: #f1f4f8; color: #42526e; border-bottom: 1px solid #d9e1eb; }
-  table.drive td { color: #344563; border-color: #edf0f4; }
-  table.drive tbody tr:nth-child(even) td { background: #fafbfc; }
+  table.drive td { color: var(--texto); border-color: #edf0f4; }
+  table.drive tbody tr:nth-child(even) td { background: var(--superficie-2); }
   table.drive tbody tr:hover td { background: #edf4ff; }
-  .chip { padding: 3px 9px; font-weight: 750; }
+  .chip { padding: 3px 9px; font-weight: 750; border-radius: 999px; }
   .chip.ok { background: #e3f5ed; color: #0d6b4c; } .chip.info { background: #e9f1ff; color: #1b56a6; }
   .chip.warn, .chip.ambar { background: #fff4de; color: #8a5408; } .chip.bad { background: #ffeaed; color: #a9283a; }
   .pill { border-color: rgba(161, 185, 221, .32); background: rgba(255,255,255,.06); color: #d5e1f5; }
-  .kcol { background: #f3f6fa; border-color: #dfe5ee; border-radius: 9px; }
-  .kcol h4 { color: #344563; } .kcol h4 .cuen { background: #e4ecf8; color: #275a9f; }
-  .kcard { border-color: #e0e6ee; border-radius: 8px; box-shadow: 0 1px 2px rgba(9, 30, 66, .06); transition: transform .16s ease, box-shadow .16s ease; }
-  .kcard:hover { transform: translateY(-2px); box-shadow: 0 6px 13px rgba(9, 30, 66, .12); }
+  .kcol { background: #f3f6fa; border-color: #dfe5ee; border-radius: 10px; }
+  .kcol h4 { color: var(--texto); } .kcol h4 .cuen { background: #e4ecf8; color: #275a9f; }
+  .kcard { background: var(--superficie); border-color: #e0e6ee; border-radius: 9px; box-shadow: var(--sombra-1); transition: transform .16s ease, box-shadow .16s ease; }
+  .kcard:hover { transform: translateY(-2px); box-shadow: var(--sombra-2); }
   .modal-fondo { background: rgba(9, 30, 66, .58); backdrop-filter: blur(3px); }
-  .modal { border-radius: 11px; box-shadow: 0 20px 55px rgba(9, 30, 66, .30); animation: modal-entrada .20s cubic-bezier(.2,.8,.2,1); }
+  .modal { background: var(--superficie); border-radius: 14px; box-shadow: var(--sombra-3); animation: modal-entrada .20s cubic-bezier(.2,.8,.2,1); }
   @keyframes modal-entrada { from { transform: translateY(12px) scale(.985); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-  .toast { background: #172b4d; border-radius: 8px; box-shadow: 0 10px 28px rgba(9,30,66,.24); animation: toast-entrada .2s ease; }
+  .modal .cab h3 { color: var(--texto); }
+  .toast { background: #172b4d; border-radius: 10px; box-shadow: var(--sombra-3); animation: toast-entrada .2s ease; }
   @keyframes toast-entrada { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  /* ---------- Empty / loading states pulidos ---------- */
+  .vacio { color: var(--texto-suave); }
+  .spinner { border-color: var(--celeste); border-top-color: var(--azul2); }
 
   /* ---------- Móvil ---------- */
   @media (max-width: 860px) {
@@ -522,6 +571,63 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   }
+
+  /* ---------- Modo oscuro ---------- */
+  :root[data-theme="dark"] {
+    --azul: #dbe6ff;
+    --azul2: #6fa0f8;
+    --azul3: #4c8df6;
+    --crema: #2a2410;
+    --crema2: #1a2130;
+    --dorado: #d8b95c;
+    --dorado2: #e9d18d;
+    --dorado-fondo: #2e2812;
+    --fondo: #0e1420;
+    --gris: #93a1bc;
+    --borde: #263149;
+    --celeste: #22314f;
+    --verde: #35c98c;
+    --naranja: #e2a13d;
+    --rojo: #ef6a76;
+    --superficie: #161d2c;
+    --superficie-2: #131a28;
+    --texto: #e8edf7;
+    --texto-suave: #93a1bc;
+  }
+  :root[data-theme="dark"] body {
+    background: radial-gradient(circle at 100% 0%, rgba(76, 141, 246, .10), transparent 28rem), var(--fondo);
+  }
+  :root[data-theme="dark"] .sidebar {
+    background: linear-gradient(180deg, #0a1220 0%, #0d1830 58%, #0a121f 100%);
+  }
+  :root[data-theme="dark"] .nav { background: linear-gradient(180deg, #0a1220 0%, #0d1830 58%, #0a121f 100%); }
+  :root[data-theme="dark"] .topbar { border-bottom-color: var(--borde); }
+  :root[data-theme="dark"] table.drive th { background: #1b2438; color: #b7c4de; border-bottom-color: var(--borde); }
+  :root[data-theme="dark"] table.drive tbody tr:hover td { background: #1c2740; }
+  :root[data-theme="dark"] .chip.ok { background: #16352a; color: #5fe3ab; }
+  :root[data-theme="dark"] .chip.info { background: #182a45; color: #8fb4f5; }
+  :root[data-theme="dark"] .chip.warn, :root[data-theme="dark"] .chip.ambar { background: #382c11; color: #eec372; }
+  :root[data-theme="dark"] .chip.bad { background: #3a1a20; color: #f296a0; }
+  :root[data-theme="dark"] .chip.gris { background: #202a3d; color: #9aa8c4; }
+  :root[data-theme="dark"] .kcol { background: #131c30; border-color: var(--borde); }
+  :root[data-theme="dark"] .kcol h4 .cuen { background: #1e2c48; color: #9dc0fb; }
+  :root[data-theme="dark"] .modal-fondo { background: rgba(2, 8, 20, .68); }
+  :root[data-theme="dark"] .mensaje.err { background: #3a1a20; color: #f296a0; border-color: #5a2732; }
+  :root[data-theme="dark"] .mensaje.okm { background: #16352a; color: #7fe8b8; border-color: #235a41; }
+  :root[data-theme="dark"] pre.salida { background: #060c17; color: #b9d5ff; }
+  :root[data-theme="dark"] .hbar .barra, :root[data-theme="dark"] .me-barra { background: #1b2438; }
+  :root[data-theme="dark"] .cal-dia { background: var(--superficie); }
+  :root[data-theme="dark"] .cal-dia.cal-sel { background: #16233d; }
+  /* Toggle de tema en el pie del sidebar */
+  .tema-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin: 4px 16px 10px; padding: 8px 10px; border-radius: 9px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+    color: #cfd9ec; font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  .tema-toggle:hover { background: rgba(255,255,255,.11); color: #fff; }
+  .tema-toggle .ico { width: 15px; height: 15px; flex: none; }
+  @media (max-width: 860px) { .tema-toggle { display: none; } }
 </style>
 </head>
 <body>
@@ -604,6 +710,13 @@
         <span class="lab">Usuarios</span>
       </a>
     </nav>
+    <button type="button" class="tema-toggle" id="btnTemaToggle" aria-label="Cambiar tema claro/oscuro">
+      <span style="display:flex;align-items:center;gap:8px;">
+        <svg class="ico" id="temaIcoSol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ico oculto" id="temaIcoLuna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <span id="temaTexto">Modo oscuro</span>
+      </span>
+    </button>
     <div class="side-usuario" id="sideUsuario"></div>
     <div class="side-pies" id="estadoPie"></div>
   </aside>
@@ -1579,6 +1692,25 @@ let agLimite = 400, veLimite = 400;
 let agEditando = null;
 let veAnioActivo = `VENTA ${HOY_A}`;
 let veEditando = null;
+
+/* ---------------- Modo oscuro ---------------- */
+function temaActual() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+function pintarTemaToggle() {
+  const oscuro = temaActual() === 'dark';
+  $('temaIcoSol').classList.toggle('oculto', oscuro);
+  $('temaIcoLuna').classList.toggle('oculto', !oscuro);
+  $('temaTexto').textContent = oscuro ? 'Modo claro' : 'Modo oscuro';
+}
+function aplicarTema(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('de_tema', t); } catch (e) {}
+  pintarTemaToggle();
+  document.dispatchEvent(new CustomEvent('de-cambio-tema', { detail: { tema: t } }));
+}
+$('btnTemaToggle').addEventListener('click', () => aplicarTema(temaActual() === 'dark' ? 'light' : 'dark'));
+pintarTemaToggle();
 
 const ETAPAS = ['NUEVO', 'AGENDADO', 'CONFIRMADO', 'ATENDIDO', 'GANADO', 'PERDIDO'];
 const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
@@ -4344,12 +4476,27 @@ let ANA_GRAFICOS = {};
 function destroyChart(id) {
   if (ANA_GRAFICOS[id]) { ANA_GRAFICOS[id].destroy(); delete ANA_GRAFICOS[id]; }
 }
+/* Chart.js no hereda las variables CSS: sin esto, los textos/grillas quedan
+   negros sobre fondo oscuro en modo noche. Se ajustan los defaults globales
+   justo antes de crear cada gráfico, según el tema activo. */
+function aplicarTemaCharts() {
+  if (typeof Chart === 'undefined') return;
+  const oscuro = temaActual() === 'dark';
+  Chart.defaults.color = oscuro ? '#93a1bc' : '#5e6c84';
+  Chart.defaults.borderColor = oscuro ? '#263149' : '#e4e9f1';
+}
 function crearChart(id, config) {
   const el = $(id);
   if (!el) return;
   destroyChart(id);
+  aplicarTemaCharts();
   ANA_GRAFICOS[id] = new Chart(el, config);
 }
+// Al cambiar de tema, se repintan los gráficos ya creados con la paleta correcta.
+document.addEventListener('de-cambio-tema', () => {
+  aplicarTemaCharts();
+  Object.keys(ANA_GRAFICOS).forEach(id => { try { ANA_GRAFICOS[id].update(); } catch (e) {} });
+});
 const COL_AZUL = '#2f5597', COL_VERDE = '#70ad47', COL_NARANJA = '#ed7d31';
 const COL_PALETA = ['#2f5597', '#70ad47', '#ed7d31', '#9dc3e6', '#7a5bb8', '#e0a020', '#d64545', '#5b6472'];
 
