@@ -765,7 +765,10 @@
         </div>
 
         <div class="tarjeta">
-          <h3>Resumen general</h3>
+          <div class="toolbar" style="margin:0 0 6px;">
+            <h3 style="margin:0;flex:1;">Resumen general</h3>
+            <a class="btn borde pequeno" id="linkPanelExportarExcel" href="#" target="_blank">Exportar Excel del mes</a>
+          </div>
           <p class="nota" style="margin:0 0 14px;">Un vistazo rápido a cada sección. Haz clic en una tarjeta para entrar.</p>
           <div class="resumen-grid" id="panelResumen">
             <div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>
@@ -866,6 +869,7 @@
             <select id="veFiltroDoctor"><option value="">Doctor: todos</option></select>
             <select id="veFiltroStatus"><option value="">Status: todos</option></select>
             <button class="btn gris" id="btnVeRecargar">Actualizar</button>
+            <a class="btn borde pequeno" id="linkVeExportarExcel" href="#" target="_blank">Exportar Excel</a>
             <button class="btn verde" id="btnVeNuevo">+ Nueva venta</button>
           </div>
           <div class="nota" id="veNota" style="margin:0 0 10px;"></div>
@@ -1182,6 +1186,7 @@
           </select></div>
           <button class="btn" id="btnAnaActualizar">Actualizar</button>
           <a class="btn borde pequeno" href="/api/exportar/analitica">Exportar KPIs CSV</a>
+          <a class="btn borde pequeno" id="linkAnaExportarExcel" href="#" target="_blank">Exportar Excel</a>
         </div>
         <div class="kpis-grid" id="anaKpis"></div>
         <div class="charts-wrap">
@@ -2120,6 +2125,7 @@ function pintarAlertasPanel(hoyR, agR) {
 async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
+  $('linkPanelExportarExcel').href = `/api/reportes/exportar?tipo=kpis&mes=${HOY_M}&anio=${HOY_A}`;
   const qNow = HOY_D <= 15 ? 1 : 2;
   const nada = Promise.reject(new Error('sin acceso'));
   const si = (sec, p) => (puedeVer(sec) ? p() : nada);
@@ -2612,6 +2618,7 @@ function pintarVenta() {
   $('kpiVeOk').textContent = ventasRegistradas.filter(f => esRealizado(f.N)).length;
   $('kpiVePagado').textContent = ventasRegistradas.filter(f => esDejoPagado(f.N)).length;
   $('veNota').textContent = `VENTA DIARIA (Drive) · último refresco ${VE.descargado || '—'}`;
+  $('linkVeExportarExcel').href = '/api/reportes/exportar?tipo=venta_diaria&hoja=' + encodeURIComponent(veAnioActivo);
 
   const vis = filt.slice(0, veLimite);
   $('tablaVenta').innerHTML = '<thead><tr>' + orden.map(c => `<th${(c === 'O' || c === 'Q' || c === 'J') ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
@@ -4863,6 +4870,7 @@ function anaKpi(eti, num, sub = '') {
 }
 async function cargarAnalitica() {
   const q = anaFiltros();
+  $('linkAnaExportarExcel').href = '/api/reportes/exportar?tipo=kpis&' + q.slice(1);
   $('anaKpis').innerHTML = '<div class="carga">Cargando KPIs&hellip;</div>';
   try {
     const kpis = await api('/api/analitica/kpis' + q);
