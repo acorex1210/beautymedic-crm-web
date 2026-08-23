@@ -1455,7 +1455,9 @@
   <div class="modal" style="max-width: 780px;">
     <div class="cab"><h3 id="paDetNombre"></h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="resumen" id="paDetKpis"></div>
-    <div class="grupo" style="margin:6px 0 10px;">Tratamientos realizados</div>
+    <div class="grupo" style="margin:6px 0 10px;">Línea de tiempo</div>
+    <div id="paDetLinea" style="max-height:340px;overflow:auto;"></div>
+    <div class="grupo" style="margin:16px 0 10px;">Tratamientos realizados</div>
     <div class="tabla-wrap"><table class="drive" id="paDetTratamientos"></table></div>
     <div class="grupo" style="margin:16px 0 10px;display:flex;align-items:center;gap:10px;">
       Historia clínica
@@ -4206,7 +4208,92 @@ async function abrirModalPaciente(pidx) {
   $('notaTexto').value = '';
   $('hcArchivo').value = ''; $('hcNota').value = '';
   $('modalPaciente').classList.add('abierto');
+  $('paDetLinea').innerHTML = '<div class="carga"><span class="spinner"></span>Armando línea de tiempo&hellip;</div>';
   await Promise.all([cargarNotasPaciente(), cargarHistoriasPaciente(), cargarFichasPaciente()]);
+  cargarLineaTiempoPaciente();
+}
+
+/* ---------------- Línea de tiempo unificada del paciente ----------------
+   Interleava citas/reagendas (AGENDADOS), ventas/tratamientos (VENTA
+   DIARIA, ya en p.tratamientos), notas y fichas/PDF de historia clínica en
+   una sola lista cronológica. Reutiliza parsearHistorialReagenda() (Calendario)
+   y el patrón visual .item-hoy usado en el resto de la app. */
+let NOTAS_PACIENTE = [], HIST_PDF_PACIENTE = [];
+const MESES_IDX = { ENE: 1, FEB: 2, MAR: 3, ABR: 4, MAY: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, SEP: 9, OCT: 10, NOV: 11, DIC: 12 };
+function fechaClave(s) {
+  s = String(s || '').trim();
+  if (!s) return '';
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[\/\-](\w{3})[\/\-](\d{4})/i);
+  if (m) {
+    const mm = MESES_IDX[m[2].toUpperCase()];
+    if (mm) return `${m[3]}-${String(mm).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+  }
+  return s;
+}
+/* Mismo criterio de "misma persona" que _clave() en crm_plus.py: por
+   teléfono si ambos lo tienen, si no por nombre exacto (sin distinguir
+   mayúsculas). */
+function coincidePaciente(f) {
+  const p = pacienteActual;
+  const telF = String(f.I || '').replace(/\D/g, '');
+  const telP = String(p.telefono || '').replace(/\D/g, '');
+  if (telP && telF) return telF === telP;
+  if (telP || telF) return false;
+  return String(f.G || '').trim().toLowerCase() === String(p.nombre || '').trim().toLowerCase() && !!p.nombre;
+}
+async function cargarLineaTiempoPaciente() {
+  const cont = $('paDetLinea');
+  try { if (!AG) AG = await api('/api/crm/agendados'); } catch (e) { /* sigue sin citas */ }
+  const eventos = [];
+  const misCitas = (AG && AG.filas ? AG.filas : []).filter(coincidePaciente);
+  misCitas.forEach(f => {
+    if (f.L && f.M && f.N) {
+      eventos.push({
+        fecha: `${f.N}-${String(MESES_IDX[String(f.M).toUpperCase()] || 0).padStart(2, '0')}-${String(f.L).padStart(2, '0')}`,
+        ico: '📅', titulo: 'Cita' + (f.P ? ' · ' + f.P : ''), detalle: f.campana || f.O || '',
+        chip: estadoCita(f.Q),
+      });
+    }
+    parsearHistorialReagenda(f.T).forEach(h => {
+      const [d, m, a] = h.a.split('-');
+      eventos.push({
+        fecha: `${a}-${String(MESES_IDX[m] || 0).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        ico: '↻', titulo: 'Reagendado', detalle: `del ${h.de} al ${h.a}`,
+      });
+    });
+  });
+  (pacienteActual.tratamientos || []).forEach(t => {
+    eventos.push({
+      fecha: t.fecha || '', ico: '🛒', titulo: t.tratamiento || 'Tratamiento realizado',
+      detalle: `${t.doctor ? t.doctor + ' · ' : ''}${fmtMon(t.precio)}`,
+    });
+  });
+  NOTAS_PACIENTE.forEach(n => {
+    eventos.push({ fecha: fechaClave(n.fecha), ico: '📝', titulo: n.tipo || 'Nota', detalle: n.texto || '' });
+  });
+  FICHAS_PACIENTE.forEach((h, i) => {
+    eventos.push({
+      fecha: fechaClave(h.fecha), ico: '🩺', titulo: 'Historia clínica (ficha)',
+      detalle: h.diagnostico || h.motivo || '',
+      accionHtml: `<button class="btn borde pequeno" onclick="abrirFichaPaciente(${i})">Abrir</button>`,
+    });
+  });
+  HIST_PDF_PACIENTE.forEach(d => {
+    eventos.push({
+      fecha: fechaClave(d.fecha), ico: '📄', titulo: 'Historia clínica (PDF)', detalle: d.archivo || '',
+      accionHtml: `<a class="btn borde pequeno" target="_blank" rel="noopener" href="/api/crm/pacientes/historias/${encodeURIComponent(d.id)}?clave=${encodeURIComponent(pacienteActual.clave)}">Ver</a>`,
+    });
+  });
+  eventos.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  cont.innerHTML = eventos.length ? eventos.map(ev => `
+    <div class="item-hoy">
+      <span class="chip info" title="${esc(ev.titulo)}">${ev.ico}</span>
+      <div class="info"><b>${esc(ev.titulo)}${ev.chip ? ' · ' + esc(ev.chip) : ''}</b>
+        <small>${esc(ev.fecha || 'Sin fecha')}${ev.detalle ? ' · ' + esc(ev.detalle) : ''}</small></div>
+      ${ev.accionHtml || ''}
+    </div>`).join('') : '<div class="vacio">Sin actividad registrada para este paciente.</div>';
 }
 
 /* Fichas clínicas estructuradas del paciente (las que se llenan en el
@@ -4268,6 +4355,7 @@ async function cargarHistoriasPaciente() {
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
   try {
     const r = await api('/api/crm/pacientes/historias?clave=' + encodeURIComponent(pacienteActual.clave));
+    HIST_PDF_PACIENTE = r.documentos || [];
     cont.innerHTML = r.documentos.length ? r.documentos.map(d => `
       <div class="item-hoy">
         <span class="chip info">PDF</span>
@@ -4316,6 +4404,7 @@ async function cargarNotasPaciente() {
   if (p.nombre) qs.set('contacto', p.nombre);
   try {
     const r = await api('/api/crm/notas?' + qs.toString());
+    NOTAS_PACIENTE = r.notas || [];
     cont.innerHTML = r.notas.length ? r.notas.map(n => `
       <div class="item-hoy" style="align-items:flex-start;">
         <span class="chip info">${esc(n.tipo)}</span>
