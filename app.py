@@ -2178,6 +2178,15 @@ async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
     return {'ok': True, 'pacientes': pacientes}
 
 
+@app.get('/api/pacientes/inactivos')
+async def pacientes_inactivos(dias: int = 45):
+    try:
+        pacientes = cp.leer_pacientes_inactivos(dias=dias)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular pacientes inactivos (Drive): {e}')
+    return {'ok': True, 'dias': dias, 'pacientes': pacientes}
+
+
 @app.get('/api/buscar')
 async def buscar(q: str = ''):
     """Búsqueda global (Cmd+K) por nombre o teléfono.

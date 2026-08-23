@@ -698,6 +698,27 @@ def leer_pacientes(desde=None, hasta=None, solo_atendidos=True):
     return out
 
 
+def leer_pacientes_inactivos(dias=45):
+    """Pacientes atendidos alguna vez pero sin visita en más de ``dias`` días.
+
+    Ordenados por gasto histórico (``total``) descendente, para priorizar a
+    quién llamar primero para reactivar.
+    """
+    hoy_iso = datetime.now(TZ).strftime('%Y-%m-%d')
+    out = []
+    for p in leer_pacientes(solo_atendidos=True):
+        if not p['ultima_atencion']:
+            continue
+        dias_inactivo = (datetime.strptime(hoy_iso, '%Y-%m-%d')
+                          - datetime.strptime(p['ultima_atencion'], '%Y-%m-%d')).days
+        if dias_inactivo > dias:
+            q = dict(p)
+            q['dias_inactivo'] = dias_inactivo
+            out.append(q)
+    out.sort(key=lambda p: (p['total'] or 0), reverse=True)
+    return out
+
+
 # ============================================================
 # DASHBOARD
 # ============================================================

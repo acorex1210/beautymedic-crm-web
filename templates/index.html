@@ -1125,6 +1125,16 @@
         </div>
         <div class="tarjeta" style="margin-top:18px;">
           <div class="toolbar">
+            <h3 style="margin:0;flex:1;">Pacientes inactivos · reactivación por valor</h3>
+            <label style="font-size:12px;color:var(--gris);">Sin visita hace más de
+              <select id="paInactivosDias" style="width:auto;padding:4px 8px;"><option value="30">30</option><option value="45" selected>45</option><option value="60">60</option><option value="90">90</option></select> días</label>
+          </div>
+          <div class="nota" style="margin:0 0 8px;">Ordenados por gasto histórico, para saber a quién llamar primero.</div>
+          <div class="tabla-wrap"><table class="drive" id="tablaInactivos"></table></div>
+          <div id="paInactivosNota" class="nota"></div>
+        </div>
+        <div class="tarjeta" style="margin-top:18px;">
+          <div class="toolbar">
             <div class="buscar"><input type="search" id="paBuscar" placeholder="Buscar por nombre o teléfono&hellip;"></div>
             <label style="font-size:12px;color:var(--gris);">Desde
               <input type="date" id="paDesde" style="width:auto;padding:4px 8px;"></label>
@@ -4112,6 +4122,31 @@ async function cargarPacientes() {
     : `${PACIENTES.pacientes.length} pacientes${rango}: solo quienes fueron al consultorio, hayan comprado o no.`;
   pintarPacientes();
   if (puedeVer('analitica')) cargarReactivar();
+  cargarInactivos();
+}
+async function cargarInactivos() {
+  const dias = $('paInactivosDias').value;
+  $('tablaInactivos').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Buscando pacientes inactivos&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/pacientes/inactivos?dias=' + dias);
+    if (!r.pacientes.length) {
+      $('tablaInactivos').innerHTML = '';
+      $('paInactivosNota').textContent = `Nadie lleva más de ${dias} días sin visita.`;
+      return;
+    }
+    $('tablaInactivos').innerHTML = '<thead><tr><th>Paciente</th><th>Teléfono</th><th>Última atención</th><th>Días sin volver</th><th>Gasto histórico</th></tr></thead><tbody>' +
+      r.pacientes.slice(0, 100).map(p => `<tr>
+        <td><b>${esc(p.nombre || '—')}</b></td>
+        <td class="num">${esc(p.telefono || '')}</td>
+        <td>${esc(p.ultima_atencion || '')}</td>
+        <td class="num">${p.dias_inactivo}</td>
+        <td class="num mon">${fmtMon(p.total)}</td>
+      </tr>`).join('') + '</tbody>';
+    $('paInactivosNota').textContent = `${r.pacientes.length} pacientes sin visita hace más de ${dias} días, ordenados por gasto histórico.`;
+  } catch (e) {
+    $('tablaInactivos').innerHTML = '';
+    $('paInactivosNota').textContent = e.message;
+  }
 }
 async function buscarHistorial() {
   const q = $('paBuscarHist').value.trim();
@@ -5142,6 +5177,7 @@ $('btnAnaActualizar').addEventListener('click', cargarAnalitica);
 $('btnPaBuscarHist').addEventListener('click', buscarHistorial);
 $('paBuscarHist').addEventListener('keydown', e => { if (e.key === 'Enter') buscarHistorial(); });
 $('paReactivarMeses').addEventListener('change', cargarReactivar);
+$('paInactivosDias').addEventListener('change', cargarInactivos);
 $('btnPaCuotaNueva').addEventListener('click', cuotaNueva);
 $('formCuota').addEventListener('submit', cuotaGuardar);
 $('btnCuotaBorrar').addEventListener('click', cuotaBorrar);
