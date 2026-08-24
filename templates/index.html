@@ -782,29 +782,26 @@
 
         <div class="tarjeta" style="margin-top:18px;">
           <h3>Generar reporte PDF</h3>
+          <p class="nota" style="margin:0 0 12px;">Siempre con los datos guardados del maestro (BD DATA).</p>
           <div class="toolbar">
             <select id="repMes" style="width:auto;"></select>
             <input type="number" id="repAnio" value="2026" min="2020" max="2100" style="width:90px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;">
             <input type="number" id="repDesde" value="1" min="1" max="31" style="width:80px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;" title="Desde el día">
             <span style="color:var(--gris);">hasta</span>
             <input type="number" id="repHasta" value="10" min="1" max="31" style="width:80px;padding:9px 11px;border:1px solid var(--borde);border-radius:9px;" title="Hasta el día">
+            <button class="btn" id="btnReporte">Generar PDF</button>
           </div>
-          <div style="margin:4px 0 14px;">
-            <label class="radio"><input type="radio" name="fuente" value="maestro" checked> Maestro (datos guardados del archivo BD DATA)</label>
-            <label class="radio"><input type="radio" name="fuente" value="auto"> Automático (integra AGENDADOS + VENTA DIARIA de Drive)</label>
-          </div>
-          <div style="margin:0 0 14px;">
-            <label class="radio"><input type="checkbox" id="repBreve"> Reporte breve (solo la tabla de campañas: PPTO, CPL, LEAD, agendado, asistido, realizado, facturado, ticket)</label>
-          </div>
-          <button class="btn" id="btnReporte">Generar PDF</button>
           <div id="resultadoReporte" class="oculto">
-            <div class="resumen" id="kpisReporte"></div>
-            <div id="tablaCrm"></div>
             <p><a id="enlacePdf" download class="btn borde pequeno">Descargar PDF del reporte</a></p>
             <div id="verificacionReporte"></div>
-            <div id="detalleCampañas"></div>
           </div>
           <div class="mensaje err oculto" id="msgReporte"></div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Reporte breve</h3>
+          <p class="nota" style="margin:0 0 12px;">Embudo por campaña del periodo elegido arriba (PPTO, CPL, LEAD, agendado, asistido, realizado, facturado, ticket). Haz clic en una fila para ver qué pacientes agendaron, asistieron y compraron.</p>
+          <div id="repBreveCont"><div class="nota">Genera el reporte para ver el detalle.</div></div>
         </div>
 
         <div class="tarjeta">
@@ -2280,30 +2277,11 @@ $('btnReporte').addEventListener('click', async () => {
   const b = $('btnReporte'); b.disabled = true; b.textContent = 'Generando…';
   $('msgReporte').classList.add('oculto'); $('resultadoReporte').classList.add('oculto');
   try {
-    const fuente = document.querySelector('input[name=fuente]:checked').value;
-    const breve = $('repBreve').checked;
     const res = await api('/api/reporte', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mes: $('repMes').value, anio: +$('repAnio').value,
-        desde: +$('repDesde').value, hasta: +$('repHasta').value, fuente, breve }),
+        desde: +$('repDesde').value, hasta: +$('repHasta').value, fuente: 'maestro' }),
     });
-    const t = res.totales;
-    $('kpisReporte').innerHTML = `
-      <div class="kpi"><div class="num">${t.ag}</div><div class="eti">Agendados</div></div>
-      <div class="kpi"><div class="num">${t.as_}</div><div class="eti">Asistieron</div></div>
-      <div class="kpi rojo"><div class="num">${t.no_fueron ?? 0}</div><div class="eti">No fueron</div></div>
-      <div class="kpi"><div class="num">${t.co}</div><div class="eti">Compraron</div></div>
-      <div class="kpi naranja"><div class="num">${t.fueron_sin_compra ?? 0}</div><div class="eti">Fueron sin comprar</div></div>
-      <div class="kpi verde"><div class="num">${fmtMon(t.mon)}</div><div class="eti">Monto</div></div>`;
-    const crms = Object.entries(res.por_crm);
-    $('tablaCrm').innerHTML = crms.length ? `<div class="tabla-wrap" style="max-height:300px;"><table class="drive">
-      <tr><th>CRM</th><th>Agendados</th><th>Asistieron</th><th>Compraron</th><th>Monto</th></tr>
-      ${crms.map(([c, d]) => `<tr><td>${esc(c)}</td><td class="num">${d.ag}</td><td class="num">${d.as_}</td><td class="num">${d.co}</td><td class="num mon">${fmtMon(d.mon)}</td></tr>`).join('')}
-      <tr><td><b>TOTAL</b></td><td class="num"><b>${t.ag}</b></td><td class="num"><b>${t.as_}</b></td><td class="num"><b>${t.co}</b></td><td class="num mon"><b>${fmtMon(t.mon)}</b></td></tr>
-    </table></div>` : '<p>Sin datos en el periodo.</p>';
-    const det = Object.entries(res.detalle).slice(0, 15);
-    $('detalleCampañas').innerHTML = det.length
-      ? `<div class="nota" style="margin-top:10px;">Detalle por campaña: ${det.map(([k, d]) => `${esc(k)}: ${d.ag}/${d.as_}/${d.co}`).join(' · ')}</div>` : '';
     const v = res.verificacion;
     $('verificacionReporte').innerHTML = v ? `
       <div class="verif ${v.ok && v.coincide ? 'verif-ok' : 'verif-mal'}">
@@ -2313,10 +2291,69 @@ $('btnReporte').addEventListener('click', async () => {
     $('resultadoReporte').classList.remove('oculto');
     toast('Reporte generado', 'okm');
     cargarEstado();
+    cargarReporteBreve();
   } catch (e) {
     $('msgReporte').textContent = e.message; $('msgReporte').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = 'Generar PDF'; }
 });
+
+let REP_BREVE_DATA = [];
+let repBreveAbierta = null;
+async function cargarReporteBreve() {
+  const cont = $('repBreveCont');
+  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando reporte breve&hellip;</div>';
+  try {
+    const q = `?mes=${$('repMes').value}&anio=${+$('repAnio').value}&desde=${+$('repDesde').value}&hasta=${+$('repHasta').value}`;
+    const res = await api('/api/reporte/breve' + q);
+    REP_BREVE_DATA = res.campanas || [];
+    repBreveAbierta = null;
+    pintarReporteBreve();
+  } catch (e) {
+    cont.innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
+  }
+}
+function pintarReporteBreve() {
+  const cont = $('repBreveCont');
+  const filas = REP_BREVE_DATA;
+  if (!filas.length) { cont.innerHTML = '<div class="nota">Sin datos en el periodo.</div>'; return; }
+  cont.innerHTML = `<div class="tabla-wrap"><table class="drive">
+    <thead><tr><th>Campaña</th><th>PPTO</th><th>CPL</th><th>LEAD</th><th>Agendado</th><th>Asistido</th><th>Realizado</th><th>Facturado</th><th>Ticket</th></tr></thead>
+    <tbody>${filas.map((f, i) => `
+      <tr style="cursor:pointer;" onclick="toggleRepBreveDetalle(${i})">
+        <td><b>${esc(f.campania)}</b> ${repBreveAbierta === i ? '▾' : '▸'}</td>
+        <td class="num mon">${fmtMon(f.gasto)}</td>
+        <td class="num mon">${fmtMon(f.costo_res)}</td>
+        <td class="num">${f.leads}</td>
+        <td class="num">${f.ag}</td>
+        <td class="num">${f.as_}</td>
+        <td class="num">${f.co}</td>
+        <td class="num mon">${fmtMon(f.mon)}</td>
+        <td class="num mon">${fmtMon(f.ticket)}</td>
+      </tr>
+      ${repBreveAbierta === i ? `<tr><td colspan="9" style="cursor:default;">${pintarDetalleCampana(f.detalle)}</td></tr>` : ''}
+    `).join('')}</tbody>
+  </table></div>`;
+}
+function toggleRepBreveDetalle(i) {
+  repBreveAbierta = repBreveAbierta === i ? null : i;
+  pintarReporteBreve();
+}
+function pintarDetalleCampana(det) {
+  const columna = (titulo, lista, conMonto) => `
+    <div style="flex:1;min-width:220px;">
+      <b style="font-size:12px;color:var(--gris);">${esc(titulo)} (${lista.length})</b>
+      <div style="max-height:220px;overflow:auto;margin-top:6px;">
+        ${lista.length ? lista.map(p => `<div class="nota" style="padding:4px 0;border-bottom:1px solid var(--borde);">
+          ${esc(p.nombre || '—')} <span style="color:var(--gris);">· ${esc(p.telefono || '')} · ${esc(p.fecha || '')}${conMonto && p.monto ? ' · ' + fmtMon(p.monto) : ''}</span>
+        </div>`).join('') : '<div class="nota">—</div>'}
+      </div>
+    </div>`;
+  return `<div style="display:flex;gap:18px;flex-wrap:wrap;padding:10px 4px;">
+    ${columna('Agendaron', det.agendaron)}
+    ${columna('Asistieron', det.asistieron)}
+    ${columna('Compraron', det.compraron, true)}
+  </div>`;
+}
 
 async function sync() {
   const btn = $('btnSyncAplicar');

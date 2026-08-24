@@ -830,10 +830,9 @@ async def generar_reporte(data: ReporteReq):
         # generar el reporte, sin importar la fuente elegida.
         am.ejecutar_sync(aplicar=True)
         ruta = _nombre_reporte(mes, data.anio, data.desde, data.hasta)
-        generador = rv.generar_reporte_breve if data.breve else rv.generar_reporte
         try:
-            res = generador(mes=mes, anio=data.anio, desde=data.desde,
-                            hasta=data.hasta, fuente=data.fuente, salida=ruta)
+            res = rv.generar_reporte(mes=mes, anio=data.anio, desde=data.desde,
+                                     hasta=data.hasta, fuente='maestro', salida=ruta)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(500, f'Error generando el reporte: {e}')
     verificacion = None
@@ -880,6 +879,22 @@ async def generar_reporte(data: ReporteReq):
             'totales': res['totales'], 'por_crm': res.get('por_crm', {}),
             'detalle': res['detalle'], 'por_campana_meta': res.get('por_campana_meta', []),
             'verificacion': verificacion}
+
+
+@app.get('/api/reporte/breve')
+async def reporte_breve(mes: str = 'AGO', anio: int = 2026, desde: int = 1, hasta: int = 10):
+    mes = (mes or 'AGO').upper().replace('SEP', 'SET')
+    if mes not in rv.NOMBRES_MES:
+        raise HTTPException(400, f'Mes inválido: {mes}')
+    if not (1 <= desde <= 31 and 1 <= hasta <= 31 and desde <= hasta):
+        raise HTTPException(400, 'Rango de días inválido')
+    if not (am.MAESTRO_FID or os.path.exists(am.ruta_maestro_local())):
+        raise HTTPException(400, 'No hay maestro BD DATA.xlsx. Súbelo primero.')
+    try:
+        res = rv.datos_reporte_breve_web(mes=mes, anio=anio, desde=desde, hasta=hasta)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f'Error generando el reporte breve: {e}')
+    return {'ok': True, 'totales': res['totales'], 'campanas': res['campanas']}
 
 
 @app.get('/api/reportes')

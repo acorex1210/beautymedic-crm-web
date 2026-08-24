@@ -1437,7 +1437,7 @@ def agendados_por_periodo(ag_path, anio, mes, desde, hasta):
     c_camp = ag_col.get('CAMPANA')
     c_tel = ag_col.get('TELEFONO')
     c_nm = ag_col.get('NOMBRE')
-    agg = defaultdict(lambda: {'ag': 0})
+    agg = defaultdict(lambda: {'ag': 0, 'pacientes': []})
     for _r, fila in agendados:
         if (fila.get(c_anio) == anio
                 and fila.get(c_mes) == mes
@@ -1446,6 +1446,11 @@ def agendados_por_periodo(ag_path, anio, mes, desde, hasta):
             if fila.get(c_tel) or fila.get(c_nm):
                 camp = str(fila.get(c_camp) or '').strip() or '(SIN CAMPANA)'
                 agg[(camp, 'SIN CRM')]['ag'] += 1
+                agg[(camp, 'SIN CRM')]['pacientes'].append({
+                    'nombre': fila.get(c_nm) or '',
+                    'telefono': norm_phone(fila.get(c_tel)),
+                    'fecha': f"{int(fila.get(c_dia))}/{fila.get(c_mes)}/{int(fila.get(c_anio))}",
+                })
     return dict(agg)
 
 

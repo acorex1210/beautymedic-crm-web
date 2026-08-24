@@ -1724,6 +1724,77 @@ def generar_reporte_breve(mes='AGO', anio=2026, desde=1, hasta=10, fuente='maest
             'por_campana_meta': filas_meta}
 
 
+def datos_reporte_breve_web(mes='AGO', anio=2026, desde=1, hasta=10):
+    """Igual que generar_reporte_breve pero para la web: junto a la tabla de
+    campañas (PPTO/CPL/LEAD/agendado/asistido/realizado/facturado/ticket) arma
+    el detalle de pacientes por campaña (quién agendó/asistió/compró), sin
+    generar PDF. No vuelve a sincronizar Drive: usa el maestro y AGENDADOS ya
+    descargados por /api/reporte."""
+    global MES, ANIO, D1, D2, FUENTE, COL
+    MES, ANIO, D1, D2, FUENTE = mes, int(anio), int(desde), int(hasta), 'maestro'
+    ag_path = os.path.join(am.TMP_DIR, 'AGENDADOS.xlsx')
+    ws = am.leer_maestro(am.ruta_maestro_local())
+    COL = detectar_columnas(ws)
+
+    agg = defaultdict(lambda: dict(ag=0, as_=0, co=0, mon=0.0,
+                                   no_fueron=0, fueron_sin_compra=0))
+    pac = defaultdict(lambda: dict(agendaron=[], asistieron=[], compraron=[]))
+
+    ag_counts = am.agendados_por_periodo(ag_path, ANIO, MES, D1, D2)
+    for key, counts in ag_counts.items():
+        agg[key]['ag'] = counts['ag']
+        pac[key]['agendaron'] = counts.get('pacientes', [])
+
+    origen_por_telefono = _campana_origen_por_telefono(ag_path)
+    for r in range(5, ws.max_row + 1):
+        crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
+        tel = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+        nombre = ws.cell(row=r, column=COL['NOMBRE']).value or ''
+        camp_maestro = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
+        camp_ag_key = origen_por_telefono.get(tel) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
+        key = (camp_ag_key, crm)
+        d = agg[key]
+        if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
+                and ws.cell(row=r, column=COL['MES3']).value == MES
+                and en_periodo(ws.cell(row=r, column=COL['DIA2']).value)):
+            fecha = f"{ws.cell(row=r, column=COL['DIA2']).value}/{MES}/{ANIO}"
+            asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+            if asist == 'ASISTIO':
+                d['as_'] += 1
+                pac[key]['asistieron'].append({'nombre': nombre, 'telefono': tel, 'fecha': fecha})
+                p = pago_total(ws, r)
+                d['mon'] += p
+                if p > 0:
+                    d['co'] += 1
+                    pac[key]['compraron'].append({'nombre': nombre, 'telefono': tel,
+                                                  'fecha': fecha, 'monto': p})
+                else:
+                    d['fueron_sin_compra'] += 1
+            elif _cita_pasada(ws, r):
+                d['no_fueron'] += 1
+
+    agg_campanas, _agg_otros = separar_campanas_otros(dict(agg))
+    filas_meta = build_campana_meta(agg_campanas)
+
+    # El detalle de pacientes se junta por campaña (sumando entre canales/CRM,
+    # igual que build_campana_meta hace con los conteos).
+    detalle_por_campana = defaultdict(lambda: dict(agendaron=[], asistieron=[], compraron=[]))
+    for (camp, _crm), d in pac.items():
+        for k in ('agendaron', 'asistieron', 'compraron'):
+            detalle_por_campana[camp][k].extend(d[k])
+    for fila in filas_meta:
+        nombre_camp = fila['campania'].replace(' (organica)', '')
+        fila['detalle'] = detalle_por_campana.get(
+            nombre_camp, dict(agendaron=[], asistieron=[], compraron=[]))
+
+    tot = dict(ag=0, as_=0, co=0, mon=0.0)
+    for d in agg.values():
+        tot['ag'] += d['ag']; tot['as_'] += d['as_']
+        tot['co'] += d['co']; tot['mon'] += d['mon']
+
+    return {'totales': tot, 'campanas': filas_meta}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description='Reporte de ventas por campana de agendados (PDF)')
     ap.add_argument('--mes', default='AGO')
