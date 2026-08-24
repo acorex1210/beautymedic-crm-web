@@ -555,16 +555,16 @@ def _cargar_meta_campanas():
     return det.get('por_campania') or []
 
 
-def _fila_meta(nombre, mc, d):
+def _fila_meta(nombre, mc, d, maes=None):
     gasto = mc.get('gasto') or 0
     leads = mc.get('resultados') or 0
     costo_res = mc.get('costo_resultado')
     if costo_res is None:
         costo_res = round(gasto / leads, 2) if leads else 0
     ag, as_, co, mon = d['ag'], d['as_'], d['co'], d['mon']
-    return dict(campania=nombre, gasto=gasto, leads=leads, costo_res=costo_res,
-                ag=ag, pct_ag=pct(ag, leads), as_=as_, pct_as=pct(as_, ag),
-                co=co, pct_co=pct(co, as_), mon=mon,
+    return dict(campania=nombre, campania_maestro=maes, gasto=gasto, leads=leads,
+                costo_res=costo_res, ag=ag, pct_ag=pct(ag, leads), as_=as_,
+                pct_as=pct(as_, ag), co=co, pct_co=pct(co, as_), mon=mon,
                 ticket=mon / co if co else 0, organica=False)
 
 
@@ -592,12 +592,13 @@ def build_campana_meta(agg):
             d = camps.get(maes, cero) if maes else cero
             if maes:
                 usadas.add(maes)
-            filas.append(_fila_meta(nombre, mc, d))
+            filas.append(_fila_meta(nombre, mc, d, maes=maes))
         filas.sort(key=lambda x: -x['gasto'])
     for camp, d in sorted(camps.items(), key=lambda kv: -kv[1]['ag']):
         if camp in usadas or (not d['ag'] and not d['as_']):
             continue
-        filas.append(dict(campania=camp + ' (organica)', gasto=0, leads=0,
+        filas.append(dict(campania=camp + ' (organica)', campania_maestro=camp,
+                          gasto=0, leads=0,
                           costo_res=0, ag=d['ag'], pct_ag=0,
                           as_=d['as_'], pct_as=pct(d['as_'], d['ag']),
                           co=d['co'], pct_co=pct(d['co'], d['as_']), mon=d['mon'],
@@ -1783,7 +1784,7 @@ def datos_reporte_breve_web(mes='AGO', anio=2026, desde=1, hasta=10):
         for k in ('agendaron', 'asistieron', 'compraron'):
             detalle_por_campana[camp][k].extend(d[k])
     for fila in filas_meta:
-        nombre_camp = fila['campania'].replace(' (organica)', '')
+        nombre_camp = fila.get('campania_maestro') or fila['campania'].replace(' (organica)', '')
         fila['detalle'] = detalle_por_campana.get(
             nombre_camp, dict(agendaron=[], asistieron=[], compraron=[]))
 
