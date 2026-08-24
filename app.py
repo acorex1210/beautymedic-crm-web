@@ -254,6 +254,7 @@ class VentaReq(BaseModel):
     pago: str = ''
     comisiona: Optional[float] = None
     observacion: str = ''
+    campana: str = ''
     producto_codigo: str = ''
     cantidad: Optional[float] = None
     forzar: bool = False

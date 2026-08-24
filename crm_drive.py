@@ -59,7 +59,7 @@ VENTA_COLS = {
     'G': 'NOMBRE Y APELLIDO', 'H': 'NUEVO/RECURRENTE', 'I': 'DISTRITO',
     'J': 'EDAD', 'K': 'SEXO', 'L': 'TRATAMIENTO', 'M': 'DOCTOR',
     'N': 'STATUS', 'O': 'VENTA', 'P': 'PAGO', 'Q': 'COMISIONA',
-    'R': 'OBSERVACION',
+    'R': 'OBSERVACION', 'S': 'CAMPAÑA',
 }
 
 # Campo lógico -> letra canónica (layout fijo de AGENDADOS)
@@ -696,6 +696,7 @@ def normalizar_venta(d, hoja='VENTA 2026'):
     else:
         if _int(d.get('comisiona')): out['Q'] = _int(d['comisiona'])
         if _txt(d.get('observacion')): out['R'] = _txt(d['observacion'])
+        if _txt(d.get('campana')): out['S'] = _txt(d['campana'])
     return out
 
 
@@ -713,6 +714,7 @@ def normalizar_venta_edicion(d, hoja='VENTA 2026'):
     else:
         out['Q'] = _int(d.get('comisiona'))
         out['R'] = _txt(d.get('observacion'))
+        out['S'] = _txt(d.get('campana'))
     return out
 
 

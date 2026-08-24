@@ -1353,6 +1353,7 @@
         <div class="campo"><label>Distrito / Departamento</label><select id="veDistrito"></select></div>
         <div class="campo"><label>Tratamiento</label><select id="veTratamiento"></select></div>
         <div class="campo"><label>Doctor</label><select id="veDoctor"></select></div>
+        <div class="campo"><label>Campaña</label><input type="text" id="veCampana" placeholder="Se llena sola al elegir un agendado"></div>
         <div class="campo"><label>Status</label><select id="veStatus"></select></div>
         <div class="campo"><label>Venta (S/)</label><input type="number" id="veVenta" step="0.01" min="0"></div>
         <div class="campo"><label>Pago</label><select id="vePago"></select></div>
@@ -2727,6 +2728,7 @@ async function abrirModalVenta() {
   $('veObservacion').value = ''; $('veNuevo').value = 'NUEVO'; $('veSexo').value = 'F';
   $('veStatus').value = 'SE REALIZO'; $('vePago').value = '';
   $('veDistrito').value = ''; $('veTratamiento').value = ''; $('veDoctor').value = '';
+  $('veCampana').value = '';
   $('veCantidad').value = 1;
   await asegurarInventario();
   $('veProducto').innerHTML = coOpcionesProducto();
@@ -2755,7 +2757,7 @@ function editarVenta(fila, hoja) {
   $('veTratamiento').value = tr(f.L); $('veDoctor').value = tr(f.M);
   $('veStatus').value = tr(f.N); $('veVenta').value = f.O ?? '';
   $('vePago').value = tr(f.P); $('veComisiona').value = f.Q ?? '';
-  $('veObservacion').value = tr(f.R);
+  $('veObservacion').value = tr(f.R); $('veCampana').value = tr(f.S);
   $('msgVeForm').classList.add('oculto');
   $('veAgPanel').style.display = 'none';
   $('modalVenta').classList.add('abierto');
@@ -2794,6 +2796,7 @@ function seleccionarAgendadoVenta(i) {
   $('veNombre').value = f.G || '';
   const digitos = String(f.I || '').replace(/\D/g, '');
   $('veCel').value = digitos ? digitos.slice(-9) : (f.I || '');
+  $('veCampana').value = f.O || '';
   pintarAgendadosVentaPanel();
   $('veVenta').focus();
 }
@@ -2814,6 +2817,7 @@ $('formVenta').addEventListener('submit', async (e) => {
     status: $('veStatus').value, venta: $('veVenta').value ? +$('veVenta').value : null,
     pago: $('vePago').value, comisiona: $('veComisiona').value ? +$('veComisiona').value : null,
     observacion: $('veObservacion').value.trim(),
+    campana: $('veCampana').value.trim(),
     producto_codigo: veEditando ? '' : $('veProducto').value,
     cantidad: $('veCantidad').value ? +$('veCantidad').value : 1,
   };
