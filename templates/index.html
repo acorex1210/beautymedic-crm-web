@@ -1331,9 +1331,15 @@
 
 <!-- ============ MODAL NUEVA VENTA ============ -->
 <div class="modal-fondo" id="modalVenta">
-  <div class="modal">
+  <div class="modal" id="modalVentaCaja" style="max-width: 1040px;">
     <div class="cab"><h3 id="veTitulo">Nueva venta diaria</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
-    <form id="formVenta">
+    <div style="display:flex;gap:20px;align-items:flex-start;">
+    <div id="veAgPanel" style="width:270px;flex-shrink:0;">
+      <div class="nota" style="margin:0 0 8px;font-weight:600;">Agendados del día</div>
+      <div class="nota" style="margin:0 0 8px;">Clic en un paciente para llenar sus datos. Solo falta registrar el monto, pago y lo demás que AGENDADOS no tiene.</div>
+      <div id="veAgLista" style="max-height:520px;overflow:auto;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+    <form id="formVenta" style="flex:1;min-width:0;">
       <div class="form-grid">
         <div class="campo"><label>Día</label><input type="number" id="veDia" min="1" max="31" required></div>
         <div class="campo"><label>Mes</label><select id="veMes" required></select></div>
@@ -1361,6 +1367,7 @@
         <button type="submit" class="btn verde" id="btnVeGuardar">Guardar venta</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
@@ -2724,8 +2731,10 @@ async function abrirModalVenta() {
   await asegurarInventario();
   $('veProducto').innerHTML = coOpcionesProducto();
   $('msgVeForm').classList.add('oculto');
+  $('veAgPanel').style.display = '';
   $('modalVenta').classList.add('abierto');
   $('veNombre').focus();
+  cargarAgendadosVentaPanel();
 }
 
 function editarVenta(fila, hoja) {
@@ -2748,9 +2757,49 @@ function editarVenta(fila, hoja) {
   $('vePago').value = tr(f.P); $('veComisiona').value = f.Q ?? '';
   $('veObservacion').value = tr(f.R);
   $('msgVeForm').classList.add('oculto');
+  $('veAgPanel').style.display = 'none';
   $('modalVenta').classList.add('abierto');
   $('veNombre').focus();
 }
+
+/* ---------------- Nueva venta: panel de agendados del día ---------------- */
+let VE_AG_LISTA = [];
+let veAgSeleccionado = null;
+async function cargarAgendadosVentaPanel() {
+  const cont = $('veAgLista');
+  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
+  try {
+    const res = await api('/api/crm/agendados');
+    const dia = +$('veDia').value, mes = $('veMes').value, anio = +$('veAnio').value;
+    VE_AG_LISTA = res.filas.filter(f => Number(f.L) === dia && String(f.M || '').trim() === mes && Number(f.N) === anio);
+    veAgSeleccionado = null;
+    pintarAgendadosVentaPanel();
+  } catch (e) {
+    cont.innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
+  }
+}
+function pintarAgendadosVentaPanel() {
+  const cont = $('veAgLista');
+  if (!VE_AG_LISTA.length) { cont.innerHTML = '<div class="nota">Nadie agendado ese día.</div>'; return; }
+  cont.innerHTML = VE_AG_LISTA.map((f, i) => `
+    <div class="item-hoy${veAgSeleccionado === i ? ' sel' : ''}" style="cursor:pointer;padding:8px 10px;" onclick="seleccionarAgendadoVenta(${i})">
+      <b style="font-size:13px;">${esc(f.G || '—')}</b>
+      <div class="nota" style="margin:2px 0 0;">${esc(f.P || '')}${f.I ? ' · ' + esc(f.I) : ''}${f.O ? ' · ' + esc(f.O) : ''}</div>
+    </div>`).join('');
+}
+function seleccionarAgendadoVenta(i) {
+  const f = VE_AG_LISTA[i];
+  if (!f) return;
+  veAgSeleccionado = i;
+  $('veNombre').value = f.G || '';
+  const digitos = String(f.I || '').replace(/\D/g, '');
+  $('veCel').value = digitos ? digitos.slice(-9) : (f.I || '');
+  pintarAgendadosVentaPanel();
+  $('veVenta').focus();
+}
+$('veDia').addEventListener('change', () => { if (!veEditando) cargarAgendadosVentaPanel(); });
+$('veMes').addEventListener('change', () => { if (!veEditando) cargarAgendadosVentaPanel(); });
+$('veAnio').addEventListener('change', () => { if (!veEditando) cargarAgendadosVentaPanel(); });
 
 $('formVenta').addEventListener('submit', async (e) => {
   e.preventDefault();
