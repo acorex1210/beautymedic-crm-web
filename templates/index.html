@@ -835,6 +835,11 @@
             <div class="buscar"><input type="search" id="agBuscar" placeholder="Buscar por nombre, teléfono, campaña, CRM&hellip;"></div>
             <select id="agFiltroCampana"><option value="">Campaña: todas</option></select>
             <select id="agFiltroMes"><option value="">Mes: todos</option></select>
+            <span style="display:flex;align-items:center;gap:6px;color:var(--gris);font-size:13px;">Día
+              <input type="number" id="agDiaDesde" min="1" max="31" placeholder="1" style="width:60px;padding:9px 8px;border:1px solid var(--borde);border-radius:9px;">
+              a
+              <input type="number" id="agDiaHasta" min="1" max="31" placeholder="31" style="width:60px;padding:9px 8px;border:1px solid var(--borde);border-radius:9px;">
+            </span>
             <select id="agFiltroEstado">
               <option value="">Estado: todos</option>
               <option value="no_fueron">Agendaron pero no fueron</option>
@@ -2458,11 +2463,15 @@ function agFiltradas() {
   const q = $('agBuscar').value.trim().toLowerCase();
   const camp = $('agFiltroCampana').value, mes = $('agFiltroMes').value;
   const estado = $('agFiltroEstado').value;
+  const diaDesde = $('agDiaDesde').value ? +$('agDiaDesde').value : null;
+  const diaHasta = $('agDiaHasta').value ? +$('agDiaHasta').value : null;
   const hoy = hoyISO();
   return AG.filas.filter(f => {
     if (camp && String(f.O || '').trim() !== camp) return false;
-    // Columna D = MES (no M, que es MES 2).
+    // Columna D = MES (no M, que es MES 2). Columna C = DÍA agendado.
     if (mes && String(f.D || '').trim() !== mes) return false;
+    if (diaDesde !== null && !(Number(f.C) >= diaDesde)) return false;
+    if (diaHasta !== null && !(Number(f.C) <= diaHasta)) return false;
     // Sólo cuenta como "no fue" si la cita ya pasó; una cita futura aún no falló.
     if (estado === 'no_fueron' && (f._asistio || !f._fecha_cita || f._fecha_cita >= hoy)) return false;
     if (estado === 'sin_compra' && (!f._asistio || f._compro)) return false;
@@ -2509,6 +2518,8 @@ $('agBuscar').addEventListener('input', pintarAgendados);
 $('agFiltroCampana').addEventListener('change', pintarAgendados);
 $('agFiltroMes').addEventListener('change', pintarAgendados);
 $('agFiltroEstado').addEventListener('change', pintarAgendados);
+$('agDiaDesde').addEventListener('input', pintarAgendados);
+$('agDiaHasta').addEventListener('input', pintarAgendados);
 $('btnAgRecargar').addEventListener('click', () => { agLimite = 400; cargarAgendados(); });
 $('btnAgNuevo').addEventListener('click', abrirModalAgendado);
 
