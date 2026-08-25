@@ -18,7 +18,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
 import openpyxl
@@ -2440,16 +2440,166 @@ GEMINI_URL = (f'https://generativelanguage.googleapis.com/v1beta/models/'
 
 _IA_SYSTEM = """Eres el asistente de IA de crecimiento (AI Growth) del CRM de
 {marca}, una clínica de estética. Respondes en español, breve y directo
-(4-6 líneas como máximo), usando SOLO los datos del contexto de abajo. Si
-algo no está en el contexto, di que no lo tienes en vez de inventarlo.
-Puedes dar recomendaciones prácticas de negocio (qué priorizar hoy, campañas
-flojas, pacientes por recontactar), pero nunca inventes cifras. No des
-consejos médicos ni de tratamientos.
+(4-6 líneas como máximo salvo que te pidan una lista larga), usando los
+datos del contexto de abajo y, cuando haga falta más detalle (historial de
+un rango de fechas, pacientes inactivos, stock, un día en particular),
+llamando a las funciones disponibles en vez de decir que no tienes acceso:
+sí tienes acceso a AGENDADOS, VENTA DIARIA, pacientes, caja e inventario a
+través de esas funciones. Nunca inventes cifras que no vengan del contexto
+o de una función. Si de verdad una función no cubre lo que piden, dilo. No
+des consejos médicos ni de tratamientos.
 Responde en texto plano: sin markdown (nada de **, *, #, ni guiones de
 lista); si necesitas enumerar, usa líneas separadas con saltos de línea.
+Hoy es {dia}/{mes}/{anio} ({fecha_iso} en formato AAAA-MM-DD).
 
 Contexto actual del negocio:
 {contexto}"""
+
+_MESES_ORDEN = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SET', 'OCT', 'NOV', 'DIC']
+
+
+def _ia_fecha(dia, mes, anio):
+    """'D', 'MES', AAAA (como vienen en las hojas) -> date, o None si no arma."""
+    try:
+        idx = _MESES_ORDEN.index(str(mes).strip().upper()) + 1
+        return date(int(anio), idx, int(dia))
+    except (ValueError, TypeError):
+        return None
+
+
+def _ia_rango(desde, hasta):
+    try:
+        d0 = datetime.strptime(desde, '%Y-%m-%d').date()
+        d1 = datetime.strptime(hasta, '%Y-%m-%d').date()
+        return d0, d1
+    except (ValueError, TypeError):
+        return None, None
+
+
+def _ia_tool_venta_diaria(desde='', hasta=''):
+    """Ventas de VENTA DIARIA (todas las hojas/años) en un rango de fechas."""
+    d0, d1 = _ia_rango(desde, hasta)
+    if not d0:
+        return {'error': 'Fechas inválidas, usa formato AAAA-MM-DD'}
+    out = []
+    for hoja, v in crm.leer_venta()['hojas'].items():
+        for f in v['filas']:
+            fecha = _ia_fecha(f.get('B'), f.get('C'), f.get('D'))
+            if not fecha or not (d0 <= fecha <= d1):
+                continue
+            out.append({
+                'fecha': fecha.isoformat(), 'nombre': f.get('G'), 'tratamiento': f.get('L'),
+                'doctor': f.get('M'), 'status': f.get('N'), 'monto': am.num(f.get('O')) or 0,
+                'pago': f.get('P'), 'campana': f.get('S') or None,
+            })
+    out.sort(key=lambda x: x['fecha'])
+    return {'total_filas': len(out), 'monto_total': round(sum(v['monto'] for v in out), 2),
+            'ventas': out[:250]}
+
+
+def _ia_tool_agendados(desde='', hasta=''):
+    """Citas de AGENDADOS con fecha de cita en un rango (no fecha de creación)."""
+    d0, d1 = _ia_rango(desde, hasta)
+    if not d0:
+        return {'error': 'Fechas inválidas, usa formato AAAA-MM-DD'}
+    out = []
+    for f in crm.leer_agendados()['filas']:
+        fecha = _ia_fecha(f.get('L'), f.get('M'), f.get('N'))
+        if not fecha or not (d0 <= fecha <= d1):
+            continue
+        out.append({
+            'fecha_cita': fecha.isoformat(), 'nombre': f.get('G'), 'telefono': f.get('I'),
+            'campana': f.get('O'), 'hora': f.get('P'), 'estado': f.get('Q'), 'crm': f.get('B'),
+        })
+    out.sort(key=lambda x: (x['fecha_cita'], x['hora'] or ''))
+    return {'total_filas': len(out), 'agendados': out[:250]}
+
+
+def _ia_tool_resumen_mes(mes='', anio=0):
+    mes = str(mes).strip().upper().replace('SEP', 'SET') or None
+    anio = int(anio) or None
+    d = cp.leer_dashboard(anio, mes)
+    metas = _leer_metas_mensuales()
+    if mes and anio:
+        d['meta'] = metas.get(f'{mes}-{anio}', 0)
+    return d
+
+
+def _ia_tool_estado_caja(fecha=''):
+    fecha_txt = None
+    if fecha:
+        d, _ = _ia_rango(fecha, fecha)
+        if d:
+            fecha_txt = f'{d.day}/{_MESES_ORDEN[d.month - 1]}/{d.year}'
+    return cp.estado_caja(fecha_txt)
+
+
+def _ia_tool_pacientes_inactivos(dias=45):
+    out = cp.leer_pacientes_inactivos(dias=int(dias) or 45)
+    return {'total': len(out), 'pacientes': out[:100]}
+
+
+def _ia_tool_stock_bajo():
+    productos = [p for p in cp.leer_productos() if p.get('stock_bajo')]
+    return {'total': len(productos), 'productos': productos}
+
+
+_IA_TOOLS = [{
+    'functionDeclarations': [
+        {
+            'name': 'venta_diaria',
+            'description': 'Ventas registradas en VENTA DIARIA (cualquier fecha pasada o presente, no solo el mes actual).',
+            'parameters': {'type': 'OBJECT', 'properties': {
+                'desde': {'type': 'STRING', 'description': 'Fecha inicio, formato AAAA-MM-DD'},
+                'hasta': {'type': 'STRING', 'description': 'Fecha fin, formato AAAA-MM-DD'},
+            }, 'required': ['desde', 'hasta']},
+        },
+        {
+            'name': 'agendados',
+            'description': 'Citas agendadas (AGENDADOS) cuya fecha de CITA cae en un rango de fechas, pasado o futuro.',
+            'parameters': {'type': 'OBJECT', 'properties': {
+                'desde': {'type': 'STRING', 'description': 'Fecha inicio, formato AAAA-MM-DD'},
+                'hasta': {'type': 'STRING', 'description': 'Fecha fin, formato AAAA-MM-DD'},
+            }, 'required': ['desde', 'hasta']},
+        },
+        {
+            'name': 'resumen_mes',
+            'description': 'Resumen agregado de un mes: funnel, ventas por doctor, ventas por mes, agendados por CRM y por campaña, meta del mes.',
+            'parameters': {'type': 'OBJECT', 'properties': {
+                'mes': {'type': 'STRING', 'description': 'Abreviatura en mayúsculas: ENE, FEB, MAR, ABR, MAY, JUN, JUL, AGO, SET, OCT, NOV, DIC'},
+                'anio': {'type': 'INTEGER'},
+            }, 'required': ['mes', 'anio']},
+        },
+        {
+            'name': 'estado_caja',
+            'description': 'Arqueo de caja (apertura, ventas por forma de pago, cierre) de un día. Sin fecha, es la de hoy.',
+            'parameters': {'type': 'OBJECT', 'properties': {
+                'fecha': {'type': 'STRING', 'description': 'Formato AAAA-MM-DD, opcional'},
+            }},
+        },
+        {
+            'name': 'pacientes_inactivos',
+            'description': 'Pacientes que atendieron alguna vez pero no han vuelto en más de N días, ordenados por gasto histórico.',
+            'parameters': {'type': 'OBJECT', 'properties': {
+                'dias': {'type': 'INTEGER', 'description': 'Días sin visita, default 45'},
+            }},
+        },
+        {
+            'name': 'stock_bajo',
+            'description': 'Productos de inventario con stock bajo.',
+            'parameters': {'type': 'OBJECT', 'properties': {}},
+        },
+    ],
+}]
+
+_IA_TOOL_FN = {
+    'venta_diaria': _ia_tool_venta_diaria,
+    'agendados': _ia_tool_agendados,
+    'resumen_mes': _ia_tool_resumen_mes,
+    'estado_caja': _ia_tool_estado_caja,
+    'pacientes_inactivos': _ia_tool_pacientes_inactivos,
+    'stock_bajo': _ia_tool_stock_bajo,
+}
 
 
 def _ia_contexto():
@@ -2506,6 +2656,28 @@ async def asistente_estado():
     return {'ok': True, 'activo': bool(GEMINI_API_KEY)}
 
 
+def _ia_llamar(contents, system_prompt):
+    payload = {
+        'contents': contents,
+        'systemInstruction': {'parts': [{'text': system_prompt}]},
+        'tools': _IA_TOOLS,
+        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 1536,
+                             'thinkingConfig': {'thinkingBudget': 200}},
+    }
+    req = urllib.request.Request(
+        f'{GEMINI_URL}?key={GEMINI_API_KEY}',
+        data=json.dumps(payload).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode('utf-8', 'ignore')[:300]
+        raise HTTPException(502, f'Error del asistente de IA: {detalle}')
+    except urllib.error.URLError as e:
+        raise HTTPException(502, f'No se pudo contactar al asistente de IA: {e.reason}')
+
+
 @app.post('/api/asistente/chat')
 async def asistente_chat(data: ChatIAReq):
     if not GEMINI_API_KEY:
@@ -2524,31 +2696,42 @@ async def asistente_chat(data: ChatIAReq):
             contents.append({'role': rol, 'parts': [{'text': texto}]})
     contents.append({'role': 'user', 'parts': [{'text': mensaje}]})
 
-    system_prompt = _IA_SYSTEM.format(marca=BRAND['BRAND_NOMBRE'], contexto=_ia_contexto())
-    payload = {
-        'contents': contents,
-        'systemInstruction': {'parts': [{'text': system_prompt}]},
-        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 1536,
-                             'thinkingConfig': {'thinkingBudget': 200}},
-    }
-    req = urllib.request.Request(
-        f'{GEMINI_URL}?key={GEMINI_API_KEY}',
-        data=json.dumps(payload).encode('utf-8'),
-        headers={'Content-Type': 'application/json'}, method='POST')
-    try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            resultado = json.loads(resp.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        detalle = e.read().decode('utf-8', 'ignore')[:300]
-        raise HTTPException(502, f'Error del asistente de IA: {detalle}')
-    except urllib.error.URLError as e:
-        raise HTTPException(502, f'No se pudo contactar al asistente de IA: {e.reason}')
+    dia, mes, anio = cp._hoy()
+    system_prompt = _IA_SYSTEM.format(
+        marca=BRAND['BRAND_NOMBRE'], contexto=_ia_contexto(),
+        dia=dia, mes=mes, anio=anio, fecha_iso=cp._hoy_iso())
 
-    try:
-        respuesta = resultado['candidates'][0]['content']['parts'][0]['text'].strip()
-    except (KeyError, IndexError):
-        razon = (resultado.get('promptFeedback') or {}).get('blockReason', '')
-        raise HTTPException(502, f'El asistente no devolvió respuesta{f" ({razon})" if razon else ""}.')
+    # Bucle de function calling: el modelo puede pedir datos puntuales
+    # (venta_diaria, agendados, etc.) varias veces antes de responder.
+    respuesta = None
+    for _ in range(4):
+        resultado = _ia_llamar(contents, system_prompt)
+        try:
+            partes = resultado['candidates'][0]['content']['parts']
+        except (KeyError, IndexError):
+            razon = (resultado.get('promptFeedback') or {}).get('blockReason', '')
+            raise HTTPException(502, f'El asistente no devolvió respuesta{f" ({razon})" if razon else ""}.')
+
+        llamadas = [p['functionCall'] for p in partes if 'functionCall' in p]
+        if not llamadas:
+            respuesta = ''.join(p.get('text', '') for p in partes).strip()
+            break
+
+        contents.append({'role': 'model', 'parts': partes})
+        respuestas_fn = []
+        for llamada in llamadas:
+            nombre = llamada.get('name')
+            args = llamada.get('args') or {}
+            fn = _IA_TOOL_FN.get(nombre)
+            try:
+                resultado_fn = fn(**args) if fn else {'error': f'Función desconocida: {nombre}'}
+            except Exception as e:  # noqa: BLE001
+                resultado_fn = {'error': str(e)}
+            respuestas_fn.append({'functionResponse': {'name': nombre, 'response': resultado_fn}})
+        contents.append({'role': 'user', 'parts': respuestas_fn})
+
+    if not respuesta:
+        respuesta = 'No pude terminar de armar la respuesta, intenta reformular la pregunta.'
     return {'ok': True, 'respuesta': respuesta}
 
 
