@@ -709,6 +709,10 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
         <span class="lab">Agendados</span>
       </a>
+      <a data-pagina="hoy">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
+        <span class="lab">Citas de hoy</span>
+      </a>
       <a data-pagina="venta">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
         <span class="lab">Venta diaria</span>
@@ -812,7 +816,7 @@
 
         <div class="tarjeta">
           <h3>Actividad de hoy <span class="nota" id="hoyFecha"></span></h3>
-          <p class="nota" style="margin:0 0 12px;">Solo informativo. Para confirmar, marcar asistencia o registrar una compra, hazlo desde Agendados.</p>
+          <p class="nota" style="margin:0 0 12px;">Solo informativo. Para confirmar, marcar asistencia o registrar una compra, hazlo desde Citas de hoy.</p>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;">
             <div class="caja-hoy">
               <h4 style="margin:0 0 8px;font-size:13px;">Citas de hoy</h4>
@@ -920,6 +924,31 @@
           <div class="mensaje err oculto" id="msgAgWhatsapp"></div>
           <div class="toolbar" style="margin-top:10px;">
             <button class="btn verde" id="btnAgWhatsappGuardar">Guardar palabras clave</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CITAS DE HOY (proceso operativo) ============ -->
+      <section id="pag-hoy" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Citas de hoy</div><div class="num" id="chKpiCitas">-</div></div>
+          <div class="kpi azul"><div class="eti">Confirmadas</div><div class="num" id="chKpiConfirmadas">-</div></div>
+          <div class="kpi verde"><div class="eti">Asistieron</div><div class="num" id="chKpiAsistieron">-</div></div>
+          <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="chKpiVentas">-</div></div>
+        </div>
+        <div class="dos">
+          <div class="tarjeta caja-hoy">
+            <h3>Citas de hoy <span class="nota" id="chFecha"></span></h3>
+            <div id="chListaCitas"></div>
+          </div>
+          <div class="tarjeta caja-hoy">
+            <h3>Confirmados · ¿asistió?</h3>
+            <div class="nota" style="margin:0 0 8px;">Pacientes que confirmaron su cita. Al marcar <b>Asistió</b> se abre su historia clínica.</div>
+            <div id="chListaConfirmados"></div>
+          </div>
+          <div class="tarjeta caja-hoy">
+            <h3>Ventas de hoy</h3>
+            <div id="chListaVentas"></div>
           </div>
         </div>
       </section>
@@ -1851,6 +1880,7 @@ const TITULOS = {
   panel: ['Panel', 'Resumen general del negocio'],
   reportes: ['Reportes', 'Genera reportes PDF y sincroniza los datos del maestro'],
   agendados: ['Agendados', 'Citas y pacientes agendados desde el CRM'],
+  hoy: ['Citas de hoy', 'Confirma, marca asistencia y registra la compra de las citas del día'],
   venta: ['Venta diaria', 'Registro diario de ventas desde el CRM'],
   caja: ['Caja', 'Apertura y cierre de caja del día'],
   inventario: ['Inventario', 'Catálogo de productos y kardex de stock'],
@@ -1868,7 +1898,8 @@ function pagina(nombre) {
   $('pag-' + nombre).classList.remove('oculto');
   $('tituloPagina').textContent = TITULOS[nombre][0];
   $('subtituloPagina').textContent = TITULOS[nombre][1];
-  if (nombre === 'agendados') { cargarAgendados(); if (puedeVer('hoy')) cargarHoy(); }
+  if (nombre === 'agendados') cargarAgendados();
+  if (nombre === 'hoy') cargarHoy();
   if (nombre === 'venta') cargarVenta();
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
@@ -2089,12 +2120,12 @@ function pintarAlertasPanel(hoyR, agR, inactR) {
     const noContesto = h.citas.filter(c => estadoHoy(c) === 'NO_CONTESTO').length;
     if (noContesto > 0) {
       items.push({ n: noContesto, txt: noContesto === 1 ? 'cita de hoy sin contestar' : 'citas de hoy sin contestar',
-                   cls: 'warn', pag: 'agendados' });
+                   cls: 'warn', pag: 'hoy' });
     }
     const pendientes = h.citas.filter(c => estadoHoy(c) === 'PENDIENTE').length;
     if (pendientes > 0) {
       items.push({ n: pendientes, txt: pendientes === 1 ? 'cita de hoy sin confirmar' : 'citas de hoy sin confirmar',
-                   cls: 'info', pag: 'agendados' });
+                   cls: 'info', pag: 'hoy' });
     }
     const vencidas = (h.tareas_vencidas || []).length;
     if (vencidas > 0) {
@@ -2155,7 +2186,7 @@ async function cargarResumenPanel() {
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
-    tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('hoy')">
       <h4>Hoy</h4>
       <div class="fila"><span class="lab">Citas de hoy</span><span class="num">${h.citas.length}</span></div>
       <div class="fila"><span class="lab">Ventas de hoy</span><span class="num">${h.ventas.length}</span></div>
@@ -2459,9 +2490,6 @@ function pintarAgendados() {
     vis.map(f => {
       const esHoy = f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy;
       const style = esHoy ? ' class="fila-hoy"' : '';
-      const citaHoy = esHoy && HOY_DATA && Number.isInteger(f._fila)
-        ? HOY_DATA.citas.find(x => x.fila === f._fila) : null;
-      const accionesHoyTxt = citaHoy ? accionesCitaAgendado(citaHoy) : '';
       return `<tr${style}>` + orden.map(c => {
         const v = f[c];
         if (v === undefined || v === null || v === '') return '<td></td>';
@@ -2469,7 +2497,7 @@ function pintarAgendados() {
         if (c === 'I') return `<td class="num">${esc(v)}</td>`;
         return `<td>${esc(v)}</td>`;
       }).join('') + (Number.isInteger(f._fila)
-        ? `<td><div class="acciones-hoy" style="margin-bottom:${accionesHoyTxt ? '6px' : '0'};"><button class="btn borde pequeno" onclick="editarAgendado(${f._fila})">Editar</button> <button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></div>${accionesHoyTxt ? `<div class="acciones-hoy">${accionesHoyTxt}</div>` : ''}</td>`
+        ? `<td><button class="btn borde pequeno" onclick="editarAgendado(${f._fila})">Editar</button> <button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></td>`
         : '<td></td>') + '</tr>';
     }).join('') + '</tbody>';
   $('agMas').innerHTML = filt.length > agLimite
@@ -3676,10 +3704,16 @@ async function cargarHoy() {
   catch (e) { cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
   const h = HOY_DATA;
   $('hoyFecha').textContent = '· ' + h.fecha;
+  $('chFecha').textContent = '· ' + h.fecha;
+  $('chKpiCitas').textContent = h.citas.length;
+  $('chKpiConfirmadas').textContent = h.citas.filter(c => estadoHoy(c) === 'CONFIRMADO').length;
+  $('chKpiAsistieron').textContent = h.citas.filter(c => estadoHoy(c) === 'ASISTIO').length;
+  $('chKpiVentas').textContent = h.ventas.length;
   renderCitasHoy();
   renderConfirmadosHoy();
   renderVentasHoy();
-  if (AG) pintarAgendados();
+  renderCitasHoyOperativo();
+  renderConfirmadosHoyOperativo();
 }
 
 /* Estado del flujo del día. Se apoya en lo guardado en AGENDADOS, así el
@@ -3748,7 +3782,7 @@ function accionesHoyCita(c) {
           ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
 }
 /* Botones de flujo del día para una cita, según su etapa actual. Usados
-   sólo en Agendados (fila del día); el bloque de Hoy en el Panel es
+   sólo en la página "Citas de hoy"; el bloque de Hoy en el Panel es
    meramente informativo y no los muestra. */
 function accionesConfirmadoCita(c) {
   const e = estadoHoy(c);
@@ -3767,11 +3801,6 @@ function accionesConfirmadoCita(c) {
     return `<button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>`;
   }
   return '';
-}
-function accionesCitaAgendado(c) {
-  const e = estadoHoy(c);
-  if (e === 'PENDIENTE') return accionesHoyCita(c);
-  return accionesConfirmadoCita(c);
 }
 function renderCitasHoy() {
   const h = HOY_DATA;
@@ -3792,11 +3821,36 @@ function renderConfirmadosHoy() {
 
 function renderVentasHoy() {
   const h = HOY_DATA;
-  $('hoyListaVentas').innerHTML = h.ventas.length ? h.ventas.map(v => `
+  const html = h.ventas.length ? h.ventas.map(v => `
     <div class="item-hoy"><span class="hora">${fmtMon(v.monto)}</span>
       <div class="info"><b>${esc(v.nombre || '—')}</b><small>${esc(v.doctor || '')} ${v.status ? '· ' + esc(v.status) : ''}</small></div>
       ${v.recibo ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(v.recibo.hoja)}&fila=${v.recibo.fila}&n=${v.recibo.n}" target="_blank" rel="noopener">🧾 Recibo</a>` : ''}
     </div>`).join('') : '<div class="vacio">Sin ventas hoy.</div>';
+  $('hoyListaVentas').innerHTML = html;
+  $('chListaVentas').innerHTML = html;
+}
+
+/* ---------------- Citas de hoy (módulo operativo, con botones) ---------------- */
+function renderCitasHoyOperativo() {
+  const h = HOY_DATA;
+  $('chListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
+    <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+      <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+        ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
+        <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
+      </div>
+      ${chipHoyCita(c)}
+    </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
+}
+function renderConfirmadosHoyOperativo() {
+  const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'SIN_COMPRA', 'NO_ASISTIO'].includes(estadoHoy(c)));
+  $('chListaConfirmados').innerHTML = lista.length ? lista.map(c => {
+    const acciones = accionesConfirmadoCita(c);
+    return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small>${acciones ? `<div class="acciones-hoy">${acciones}</div>` : ''}</div>
+      ${chipHoyCita(c)}
+    </div>`;
+  }).join('') : '<div class="vacio">Nadie ha confirmado cita todavía.</div>';
 }
 
 /* Marca una cita y repinta ambos cuadros; el estado queda guardado en
@@ -3811,6 +3865,8 @@ async function marcarCita(fila, ruta, estado, aviso) {
     if (fAg) fAg.Q = c ? c.estado : fAg.Q;
     renderCitasHoy();
     renderConfirmadosHoy();
+    renderCitasHoyOperativo();
+    renderConfirmadosHoyOperativo();
     if (AG) pintarAgendados();
     toast(aviso, 'okm');
     return true;
@@ -3852,6 +3908,7 @@ async function guardarReprogramar() {
     cerrarModales();
     HOY_ACCIONES[fila] = { cls: 'info', txt: `↻ Reprogramada: ${dia}/${mes}/${anio}` };
     renderCitasHoy();
+    renderCitasHoyOperativo();
     if (AG) pintarAgendados();
     toast('Cita reprogramada', 'okm');
   } catch (e) { $('msgRpForm').textContent = e.message; $('msgRpForm').classList.remove('oculto'); }
@@ -3928,6 +3985,8 @@ async function guardarCompro() {
     HOY_ACCIONES[fila] = { estado: 'ASISTIO', compra: true, cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
     renderCitasHoy();
     renderConfirmadosHoy();
+    renderCitasHoyOperativo();
+    renderConfirmadosHoyOperativo();
     if (AG) pintarAgendados();
     const recibo = res.venta && res.venta.hoja && res.venta.fila
       ? { hoja: res.venta.hoja, fila: res.venta.fila, n: res.venta.n || lineas.length }
