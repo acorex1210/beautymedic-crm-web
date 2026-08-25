@@ -204,6 +204,40 @@
     display: none; max-width: 380px;
   }
   .toast.err { background: var(--rojo); } .toast.okm { background: var(--verde); }
+
+  /* ---------- Asistente de IA (AI Growth) ---------- */
+  .ia-dot { width: 8px; height: 8px; border-radius: 50%; background: #2e9e5b; display: inline-block; flex: none;
+    box-shadow: 0 0 0 3px rgba(46,158,91,.25); animation: ia-pulso 2s ease-in-out infinite; }
+  @keyframes ia-pulso { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  .ia-fab {
+    position: fixed; right: 20px; bottom: 20px; z-index: 55; display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, #1a2a52, #26408f); color: #fff; border: none; border-radius: 99px;
+    padding: 11px 18px 11px 14px; font-size: 12.5px; font-weight: 800; letter-spacing: .02em; cursor: pointer;
+    box-shadow: 0 8px 22px rgba(20,37,74,.32); transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .ia-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(20,37,74,.4); }
+  .ia-panel {
+    position: fixed; right: 20px; bottom: 20px; z-index: 56; width: 360px; max-width: calc(100vw - 32px);
+    height: 480px; max-height: calc(100vh - 40px); background: var(--superficie); border: 1px solid var(--borde);
+    border-radius: 16px; box-shadow: 0 16px 44px rgba(20,37,74,.28); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ia-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px;
+    background: linear-gradient(135deg, #1a2a52, #26408f); color: #fff; flex: none; }
+  .ia-cab > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ia-cab b { font-size: 14px; }
+  .ia-cab .nota { color: rgba(255,255,255,.75); }
+  .ia-cab .cerrar { color: #fff; }
+  .ia-mensajes { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--fondo); }
+  .ia-msg { max-width: 88%; padding: 9px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--texto); }
+  .ia-msg.asistente { align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde); border-bottom-left-radius: 3px; }
+  .ia-msg.usuario { align-self: flex-end; background: var(--azul2); color: #fff; border-bottom-right-radius: 3px; }
+  .ia-msg.ia-cargando { display: flex; align-items: center; }
+  .ia-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--borde); flex: none; background: var(--superficie); }
+  .ia-form input { flex: 1; padding: 9px 12px; border: 1px solid var(--borde); border-radius: 9px; font-size: 13.5px; background: var(--superficie); color: var(--texto); }
+  @media (max-width: 480px) {
+    .ia-panel { right: 12px; left: 12px; width: auto; bottom: 12px; height: min(480px, calc(100vh - 24px)); }
+    .ia-fab { right: 12px; bottom: 12px; }
+  }
   .mensaje { border-radius: 9px; padding: 10px 14px; margin-top: 12px; font-size: 13px; }
   .mensaje.err { background: #fdecea; color: #9c1c1c; border: 1px solid #f5c6c6; }
   .mensaje.okm { background: #eef7e7; color: #3c6b1e; border: 1px solid #d2e8c0; }
@@ -1629,6 +1663,24 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ============ ASISTENTE IA (AI Growth) ============ -->
+<button type="button" class="ia-fab oculto" id="iaFab" aria-label="Abrir asistente de IA">
+  <span class="ia-dot"></span> AI GROWTH ACTIVO
+</button>
+<div class="ia-panel oculto" id="iaPanel">
+  <div class="ia-cab">
+    <div><span class="ia-dot"></span><b>AI Growth</b><div class="nota" style="margin:0;">Asistente de negocio</div></div>
+    <button type="button" class="cerrar" id="btnIACerrar" aria-label="Cerrar">&times;</button>
+  </div>
+  <div class="ia-mensajes" id="iaMensajes">
+    <div class="ia-msg asistente">Hola, soy tu asistente de crecimiento. Pregúntame sobre ventas, citas de hoy, campañas o qué priorizar.</div>
+  </div>
+  <form id="formIA" class="ia-form">
+    <input type="text" id="iaInput" placeholder="Escribe tu pregunta…" autocomplete="off" maxlength="2000">
+    <button type="submit" class="btn verde pequeno" id="btnIAEnviar">Enviar</button>
+  </form>
+</div>
 
 <!-- ============ MODAL REPROGRAMAR CITA ============ -->
 <div class="modal-fondo" id="modalReprogramar">
@@ -5161,10 +5213,67 @@ $('meSelect').addEventListener('change', mostrarMeta);
 $('btnMeRecargar').addEventListener('click', () => { meActual = null; cargarMeta(); });
 $('btnMeBorrar').addEventListener('click', borrarMeta);
 
+/* ---------------- Asistente de IA (AI Growth) ---------------- */
+let IA_HISTORIAL = [];
+async function verificarIA() {
+  try {
+    const r = await api('/api/asistente/estado');
+    $('iaFab').classList.toggle('oculto', !r.activo);
+  } catch (e) { /* si falla, simplemente no se muestra el botón */ }
+}
+function abrirIA() {
+  $('iaFab').classList.add('oculto');
+  $('iaPanel').classList.remove('oculto');
+  $('iaInput').focus();
+}
+function cerrarIA() {
+  $('iaPanel').classList.add('oculto');
+  $('iaFab').classList.remove('oculto');
+}
+$('iaFab').addEventListener('click', abrirIA);
+$('btnIACerrar').addEventListener('click', cerrarIA);
+function iaAgregarMensaje(rol, texto) {
+  const cont = $('iaMensajes');
+  const div = document.createElement('div');
+  div.className = 'ia-msg ' + rol;
+  div.textContent = texto;
+  cont.appendChild(div);
+  cont.scrollTop = cont.scrollHeight;
+  return div;
+}
+$('formIA').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('iaInput');
+  const mensaje = input.value.trim();
+  if (!mensaje) return;
+  input.value = '';
+  iaAgregarMensaje('usuario', mensaje);
+  const cargando = iaAgregarMensaje('asistente', '');
+  cargando.classList.add('ia-cargando');
+  cargando.innerHTML = '<span class="spinner"></span>Pensando&hellip;';
+  $('btnIAEnviar').disabled = true;
+  try {
+    const r = await api('/api/asistente/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensaje, historial: IA_HISTORIAL }),
+    });
+    cargando.remove();
+    iaAgregarMensaje('asistente', r.respuesta);
+    IA_HISTORIAL.push({ rol: 'usuario', texto: mensaje }, { rol: 'asistente', texto: r.respuesta });
+    if (IA_HISTORIAL.length > 20) IA_HISTORIAL = IA_HISTORIAL.slice(-20);
+  } catch (err) {
+    cargando.remove();
+    iaAgregarMensaje('asistente', 'No se pudo responder: ' + err.message);
+  } finally {
+    $('btnIAEnviar').disabled = false;
+    input.focus();
+  }
+});
+
 /* Arranque: primero se sabe quién entró, y recién ahí se abre una sección.
    Sin esto un rol limitado vería el Panel un instante antes de que lo tapen. */
 cargarSesion()
-  .then(() => pagina(YO.secciones.includes('panel') ? 'panel' : YO.secciones[0]))
+  .then(() => { pagina(YO.secciones.includes('panel') ? 'panel' : YO.secciones[0]); verificarIA(); })
   .catch(() => { location.href = '/login'; });
 </script>
 </body>

@@ -16,6 +16,8 @@ import shutil
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -2426,6 +2428,128 @@ async def crm_hoy():
         return {'ok': True, **cp.leer_hoy()}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo armar el panel de hoy (Drive): {e}')
+
+
+# ============================================================
+# Asistente de IA (AI Growth) — Google Gemini, capa gratuita
+# ============================================================
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-3.6-flash')
+GEMINI_URL = (f'https://generativelanguage.googleapis.com/v1beta/models/'
+              f'{GEMINI_MODEL}:generateContent')
+
+_IA_SYSTEM = """Eres el asistente de IA de crecimiento (AI Growth) del CRM de
+{marca}, una clínica de estética. Respondes en español, breve y directo
+(4-6 líneas como máximo), usando SOLO los datos del contexto de abajo. Si
+algo no está en el contexto, di que no lo tienes en vez de inventarlo.
+Puedes dar recomendaciones prácticas de negocio (qué priorizar hoy, campañas
+flojas, pacientes por recontactar), pero nunca inventes cifras. No des
+consejos médicos ni de tratamientos.
+Responde en texto plano: sin markdown (nada de **, *, #, ni guiones de
+lista); si necesitas enumerar, usa líneas separadas con saltos de línea.
+
+Contexto actual del negocio:
+{contexto}"""
+
+
+def _ia_contexto():
+    """Resumen compacto y no-sensible del estado actual del negocio, para
+    darle contexto al modelo sin mandarle la base de pacientes completa."""
+    dia, mes, anio = cp._hoy()
+    partes = [f'Fecha de hoy: {dia}/{mes}/{anio}.']
+
+    try:
+        h = cp.leer_hoy()
+        confirmadas = sum(1 for c in h['citas'] if 'CONFIRM' in str(c.get('estado') or '').upper())
+        partes.append(
+            f"Hoy hay {len(h['citas'])} cita(s) agendada(s) ({confirmadas} confirmada(s)) "
+            f"y {len(h['ventas'])} venta(s) registrada(s).")
+        if h.get('tareas_vencidas'):
+            partes.append(f"Hay {len(h['tareas_vencidas'])} tarea(s) vencida(s) sin atender.")
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        d = cp.leer_dashboard(anio, mes)
+        metas = _leer_metas_mensuales()
+        meta = metas.get(f'{mes}-{anio}', 0)
+        partes.append(
+            f"Ventas de {mes} {anio}: {d['ventas_registradas']} registradas por un total de "
+            f"S/ {d['total_ventas']:.2f}" + (f", meta del mes: S/ {meta:.2f}." if meta else "."))
+        if d.get('ag_por_campana'):
+            top = sorted(d['ag_por_campana'].items(), key=lambda x: -x[1])[:5]
+            partes.append('Agendados del mes por campaña: ' +
+                           ', '.join(f'{k}: {v}' for k, v in top) + '.')
+        if d.get('ventas_doctor'):
+            partes.append('Ventas del mes por doctor: ' +
+                           ', '.join(f'{k}: S/ {v:.2f}' for k, v in d['ventas_doctor'].items()) + '.')
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        c = cp.estado_caja()
+        if c.get('abierta') and not c.get('cerrada'):
+            partes.append(f"La caja de hoy está abierta, ventas del día: S/ {c['ventas']['total']:.2f}.")
+    except Exception:  # noqa: BLE001
+        pass
+
+    return '\n'.join(partes)
+
+
+class ChatIAReq(BaseModel):
+    mensaje: str
+    historial: List[Dict] = []
+
+
+@app.get('/api/asistente/estado')
+async def asistente_estado():
+    return {'ok': True, 'activo': bool(GEMINI_API_KEY)}
+
+
+@app.post('/api/asistente/chat')
+async def asistente_chat(data: ChatIAReq):
+    if not GEMINI_API_KEY:
+        raise HTTPException(503, 'El asistente de IA no está configurado (falta GEMINI_API_KEY).')
+    mensaje = data.mensaje.strip()
+    if not mensaje:
+        raise HTTPException(400, 'Escribe un mensaje')
+    if len(mensaje) > 2000:
+        raise HTTPException(400, 'Mensaje demasiado largo')
+
+    contents = []
+    for turno in (data.historial or [])[-10:]:
+        rol = 'model' if turno.get('rol') == 'asistente' else 'user'
+        texto = str(turno.get('texto') or '').strip()[:2000]
+        if texto:
+            contents.append({'role': rol, 'parts': [{'text': texto}]})
+    contents.append({'role': 'user', 'parts': [{'text': mensaje}]})
+
+    system_prompt = _IA_SYSTEM.format(marca=BRAND['BRAND_NOMBRE'], contexto=_ia_contexto())
+    payload = {
+        'contents': contents,
+        'systemInstruction': {'parts': [{'text': system_prompt}]},
+        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 1536,
+                             'thinkingConfig': {'thinkingBudget': 200}},
+    }
+    req = urllib.request.Request(
+        f'{GEMINI_URL}?key={GEMINI_API_KEY}',
+        data=json.dumps(payload).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            resultado = json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode('utf-8', 'ignore')[:300]
+        raise HTTPException(502, f'Error del asistente de IA: {detalle}')
+    except urllib.error.URLError as e:
+        raise HTTPException(502, f'No se pudo contactar al asistente de IA: {e.reason}')
+
+    try:
+        respuesta = resultado['candidates'][0]['content']['parts'][0]['text'].strip()
+    except (KeyError, IndexError):
+        razon = (resultado.get('promptFeedback') or {}).get('blockReason', '')
+        raise HTTPException(502, f'El asistente no devolvió respuesta{f" ({razon})" if razon else ""}.')
+    return {'ok': True, 'respuesta': respuesta}
 
 
 # ============================================================
