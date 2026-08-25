@@ -1678,6 +1678,20 @@ async def crm_agendados_nocontesto(fila: int):
             raise HTTPException(502, f'No se pudo registrar el no contestó en Drive: {e}')
 
 
+@app.post('/api/crm/agendados/{fila}/noconfirma')
+async def crm_agendados_noconfirma(fila: int):
+    """El paciente contestó pero dijo que no va a confirmar (a diferencia de
+    NO CONTESTO, que es que no respondió, y de CANCELA, que es que ya tenía
+    la cita confirmada y la anuló)."""
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'Q': 'RECHAZADA'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar el no confirma en Drive: {e}')
+
+
 @app.get('/api/crm/venta')
 async def crm_venta():
     try:

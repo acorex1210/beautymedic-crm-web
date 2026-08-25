@@ -3727,6 +3727,7 @@ function estadoHoy(c) {
   if (s.includes('NO ASISTIO')) return 'NO_ASISTIO';
   if (s.includes('ASISTIO SIN COMPRA')) return 'SIN_COMPRA';
   if (s.includes('ASISTIO')) return 'ASISTIO';
+  if (s.includes('RECHAZ')) return 'RECHAZADA';
   if (s.includes('CANCEL')) return 'CANCELADA';
   if (s.includes('NO CONTEST')) return 'NO_CONTESTO';
   if (s.includes('NO CONFIRM')) return 'PENDIENTE';
@@ -3740,6 +3741,7 @@ const CHIP_HOY = {
   NO_ASISTIO: ['bad', '✕ No asistió'],
   CANCELADA: ['bad', '✕ Cita cancelada'],
   NO_CONTESTO: ['warn', '☎ No contestó'],
+  RECHAZADA: ['bad', '✕ No confirma'],
 };
 function chipHoyCita(c) {
   const acc = HOY_ACCIONES[c.fila];
@@ -3776,9 +3778,27 @@ function chipRiesgoNoShow(c) {
 function accionesHoyCita(c) {
   return `
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
+          <button class="btn gris mini" onclick="noConfirmaCita(${c.fila})">✕ NO CONFIRMA</button>
           <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
           <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
           <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
+}
+/* Pipeline: "no contestó" y "no confirma" no son un callejón sin salida,
+   siguen pudiendo moverse a cualquier otra etapa del día. */
+function accionesSeguimiento(c) {
+  return `
+          <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
+          <button class="btn naranja mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
+          <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
+          <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
+          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
+}
+/* Cancelada: el único paso siguiente con sentido es reabrir el pipeline
+   reprogramando, no queda otra acción disponible. */
+function accionesReprogramaSolo(c) {
+  return `
+          <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
           ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
 }
 /* Botones de flujo del día para una cita, según su etapa actual. Usados
@@ -3831,16 +3851,27 @@ function renderVentasHoy() {
 }
 
 /* ---------------- Citas de hoy (módulo operativo, con botones) ---------------- */
+/* Pipeline: cada etapa ofrece sus propios botones de transición, ninguna
+   es un callejón sin salida salvo Confirmado/Asistió (que viven en la
+   tarjeta de Confirmados) y Cancelada (que sólo puede reprogramarse). */
+function accionesPorEtapa(c) {
+  const e = estadoHoy(c);
+  if (e === 'PENDIENTE') return accionesHoyCita(c);
+  if (e === 'NO_CONTESTO' || e === 'RECHAZADA') return accionesSeguimiento(c);
+  if (e === 'CANCELADA') return accionesReprogramaSolo(c);
+  return '';
+}
 function renderCitasHoyOperativo() {
   const h = HOY_DATA;
-  $('chListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
-    <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+  $('chListaCitas').innerHTML = h.citas.length ? h.citas.map(c => {
+    const acciones = accionesPorEtapa(c);
+    return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
       <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
-        ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
-        <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
+        ${acciones ? `<div class="acciones-hoy">${acciones}</div>` : ''}
       </div>
       ${chipHoyCita(c)}
-    </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
+    </div>`;
+  }).join('') : '<div class="vacio">Sin citas para hoy.</div>';
 }
 function renderConfirmadosHoyOperativo() {
   const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'SIN_COMPRA', 'NO_ASISTIO'].includes(estadoHoy(c)));
@@ -3876,6 +3907,7 @@ const confirmarCita = (fila) => marcarCita(fila, 'confirmar', 'CONFIRMADO', 'Cit
 const cancelarCita = (fila) => marcarCita(fila, 'cancelar', 'CANCELADA', 'Cita cancelada');
 const noAsistioCita = (fila) => marcarCita(fila, 'noasistio', 'NO_ASISTIO', 'Registrado: no asistió');
 const noContestoCita = (fila) => marcarCita(fila, 'nocontesto', 'NO_CONTESTO', 'Registrado: no contestó');
+const noConfirmaCita = (fila) => marcarCita(fila, 'noconfirma', 'RECHAZADA', 'Registrado: no confirma');
 async function asistioCita(fila) {
   await marcarCita(fila, 'asistio', 'ASISTIO', 'Registrado: asistió · ¿compró?');
 }
@@ -4012,7 +4044,7 @@ const CAL_ETIQUETA = { CONFIRMADO: 'Confirmado', PENDIENTE: 'Pendiente por confi
 function estadoCita(q) {
   const s = String(q || '').trim().toUpperCase();
   if (!s) return 'PENDIENTE';
-  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM')) return 'NO_CONFIRMADO';
+  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM') || s.includes('RECHAZ')) return 'NO_CONFIRMADO';
   if (s.includes('CONFIRMADO') || s.includes('RECONFIRM')) return 'CONFIRMADO';
   return 'PENDIENTE';
 }

@@ -845,7 +845,9 @@ def leer_hoy():
         if f'{f["L"]}/{f["M"]}/{f["N"]}' != clave_hoy:
             continue
         st = str(f.get('Q') or '').upper()
-        if 'NO ASISTIO' in st or 'CANCEL' in st or 'NO CONFIRM' in st:
+        # Cancelada se queda en el pipeline de hoy (con opción de reprogramar);
+        # no asistió y el default "sin tocar" sí salen de la vista activa.
+        if 'NO ASISTIO' in st or 'NO CONFIRM' in st:
             continue
         tel = re.sub(r'\D', '', str(f.get('I') or ''))
         r = riesgo.get(_clave(tel, f.get('G')), {'total': 0, 'no_show': 0})
