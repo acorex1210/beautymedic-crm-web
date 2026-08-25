@@ -364,6 +364,23 @@
   .acciones-hoy { display: flex; flex-wrap: wrap; gap: 5px; }
   .item-hoy .acciones-hoy { margin-top: 4px; }
   .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
+
+  /* ---------- Citas de hoy: columnas de pipeline, más aire que las
+     listas compactas de otras páginas para que no se sienta amontonado ---------- */
+  .ch-pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start; }
+  .ch-pipeline .caja-hoy { padding: 22px 24px; }
+  .ch-pipeline .caja-hoy h3 { font-size: 15.5px; margin-bottom: 4px; }
+  .ch-pipeline #chListaCitas, .ch-pipeline #chListaConfirmados,
+  .ch-pipeline #chListaAsistieron, .ch-pipeline #chListaResultado { display: flex; flex-direction: column; gap: 10px; }
+  .ch-pipeline .item-hoy { flex-direction: column; align-items: stretch; gap: 8px; padding: 14px 16px; margin-bottom: 0; }
+  .ch-pipeline .item-hoy > .hora { flex: none; font-size: 12.5px; }
+  .ch-pipeline .item-hoy .info b { font-size: 14.5px; }
+  .ch-pipeline .item-hoy .info small { font-size: 12.5px; }
+  .ch-pipeline .item-hoy .acciones-hoy { gap: 8px; margin-top: 2px; }
+  .ch-pipeline .btn.mini { padding: 6px 12px; font-size: 12px; }
+  @media (max-width: 900px) {
+    .ch-pipeline { grid-template-columns: 1fr; }
+  }
   .co-linea { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
   .co-linea .co-trat { flex: 1; }
   .co-linea .co-venta { width: 130px; }
@@ -936,25 +953,25 @@
           <div class="kpi verde"><div class="eti">Asistieron</div><div class="num" id="chKpiAsistieron">-</div></div>
           <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="chKpiVentas">-</div></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;align-items:start;">
+        <div class="ch-pipeline">
           <div class="tarjeta caja-hoy">
             <h3>Citas de hoy <span class="nota" id="chFecha"></span></h3>
-            <div class="nota" style="margin:0 0 8px;">Por contactar, confirmar o reprogramar.</div>
+            <div class="nota" style="margin:0 0 10px;">Por contactar, confirmar o reprogramar.</div>
             <div id="chListaCitas"></div>
           </div>
           <div class="tarjeta caja-hoy">
             <h3>Confirmados</h3>
-            <div class="nota" style="margin:0 0 8px;">Confirmaron su cita. Al marcar <b>Asistió</b> pasan a la siguiente columna.</div>
+            <div class="nota" style="margin:0 0 10px;">Confirmaron su cita. Al marcar <b>Asistió</b> pasan a la siguiente columna.</div>
             <div id="chListaConfirmados"></div>
           </div>
           <div class="tarjeta caja-hoy">
             <h3>Asistieron</h3>
-            <div class="nota" style="margin:0 0 8px;">Ya están en consulta. Falta registrar si compraron.</div>
+            <div class="nota" style="margin:0 0 10px;">Ya están en consulta. Falta registrar si compraron.</div>
             <div id="chListaAsistieron"></div>
           </div>
           <div class="tarjeta caja-hoy">
             <h3>Compró / No compró</h3>
-            <div class="nota" style="margin:0 0 8px;">Resultado final de la cita de hoy.</div>
+            <div class="nota" style="margin:0 0 10px;">Resultado final de la cita de hoy.</div>
             <div id="chListaResultado"></div>
           </div>
         </div>
