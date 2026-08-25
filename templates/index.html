@@ -957,10 +957,6 @@
             <div class="nota" style="margin:0 0 8px;">Resultado final de la cita de hoy.</div>
             <div id="chListaResultado"></div>
           </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Ventas de hoy</h3>
-            <div id="chListaVentas"></div>
-          </div>
         </div>
       </section>
 
@@ -3743,7 +3739,6 @@ function estadoHoy(c) {
   if (s.includes('NO ASISTIO')) return 'NO_ASISTIO';
   if (s.includes('ASISTIO SIN COMPRA')) return 'SIN_COMPRA';
   if (s.includes('ASISTIO')) return 'ASISTIO';
-  if (s.includes('RECHAZ')) return 'RECHAZADA';
   if (s.includes('CANCEL')) return 'CANCELADA';
   if (s.includes('NO CONTEST')) return 'NO_CONTESTO';
   if (s.includes('NO CONFIRM')) return 'PENDIENTE';
@@ -3757,7 +3752,6 @@ const CHIP_HOY = {
   NO_ASISTIO: ['bad', '✕ No asistió'],
   CANCELADA: ['bad', '✕ Cita cancelada'],
   NO_CONTESTO: ['warn', '☎ No contestó'],
-  RECHAZADA: ['bad', '✕ No confirma'],
 };
 function chipHoyCita(c) {
   const acc = HOY_ACCIONES[c.fila];
@@ -3794,7 +3788,6 @@ function chipRiesgoNoShow(c) {
 function accionesHoyCita(c) {
   return `
           <button class="btn verde mini" onclick="confirmarCita(${c.fila})">✓ CONFIRMA CITA</button>
-          <button class="btn gris mini" onclick="noConfirmaCita(${c.fila})">✕ NO CONFIRMA</button>
           <button class="btn rojo mini" onclick="cancelarCita(${c.fila})">✕ CANCELA CITA</button>
           <button class="btn borde mini" onclick="abrirReprogramar(${c.fila})">↻ REPROGRAMA CITA</button>
           <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>
@@ -3867,7 +3860,6 @@ function renderVentasHoy() {
       ${v.recibo ? `<a class="btn borde pequeno" href="/api/crm/venta/recibo?hoja=${encodeURIComponent(v.recibo.hoja)}&fila=${v.recibo.fila}&n=${v.recibo.n}" target="_blank" rel="noopener">🧾 Recibo</a>` : ''}
     </div>`).join('') : '<div class="vacio">Sin ventas hoy.</div>';
   $('hoyListaVentas').innerHTML = html;
-  $('chListaVentas').innerHTML = html;
 }
 
 /* ---------------- Citas de hoy (módulo operativo, en columnas tipo pipeline) ----------------
@@ -3877,7 +3869,7 @@ function renderVentasHoy() {
 function accionesPorEtapa(c) {
   const e = estadoHoy(c);
   if (e === 'PENDIENTE') return accionesHoyCita(c);
-  if (e === 'NO_CONTESTO' || e === 'RECHAZADA') return accionesSeguimiento(c);
+  if (e === 'NO_CONTESTO') return accionesSeguimiento(c);
   if (e === 'CANCELADA') return accionesReprogramaSolo(c);
   return '';
 }
@@ -3895,7 +3887,7 @@ function renderColumnaHoy(idEl, citas, accionesFn, vacioTxt) {
     : `<div class="vacio">${vacioTxt}</div>`;
 }
 function renderCitasHoyOperativo() {
-  const citas = HOY_DATA.citas.filter(c => ['PENDIENTE', 'NO_CONTESTO', 'RECHAZADA', 'CANCELADA'].includes(estadoHoy(c)));
+  const citas = HOY_DATA.citas.filter(c => ['PENDIENTE', 'NO_CONTESTO', 'CANCELADA'].includes(estadoHoy(c)));
   renderColumnaHoy('chListaCitas', citas, accionesPorEtapa, 'Sin citas pendientes por gestionar.');
 }
 function renderConfirmadosHoyOperativo() {
@@ -3934,7 +3926,6 @@ const confirmarCita = (fila) => marcarCita(fila, 'confirmar', 'CONFIRMADO', 'Cit
 const cancelarCita = (fila) => marcarCita(fila, 'cancelar', 'CANCELADA', 'Cita cancelada');
 const noAsistioCita = (fila) => marcarCita(fila, 'noasistio', 'NO_ASISTIO', 'Registrado: no asistió');
 const noContestoCita = (fila) => marcarCita(fila, 'nocontesto', 'NO_CONTESTO', 'Registrado: no contestó');
-const noConfirmaCita = (fila) => marcarCita(fila, 'noconfirma', 'RECHAZADA', 'Registrado: no confirma');
 async function asistioCita(fila) {
   await marcarCita(fila, 'asistio', 'ASISTIO', 'Registrado: asistió · ¿compró?');
 }
@@ -4070,7 +4061,7 @@ const CAL_ETIQUETA = { CONFIRMADO: 'Confirmado', PENDIENTE: 'Pendiente por confi
 function estadoCita(q) {
   const s = String(q || '').trim().toUpperCase();
   if (!s) return 'PENDIENTE';
-  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM') || s.includes('RECHAZ')) return 'NO_CONFIRMADO';
+  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM')) return 'NO_CONFIRMADO';
   if (s.includes('CONFIRMADO') || s.includes('RECONFIRM')) return 'CONFIRMADO';
   return 'PENDIENTE';
 }
