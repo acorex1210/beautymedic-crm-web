@@ -40,7 +40,12 @@ import alimentar_maestro as am  # noqa: E402
 SCOPE = 'https://www.googleapis.com/auth/drive'
 MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 MIME_SHEETS = 'application/vnd.google-apps.spreadsheet'
-CACHE_TTL = 120          # segundos que se conserva la copia local antes de re-descargar
+CACHE_TTL = 600          # segundos que se conserva la copia local antes de re-descargar
+# (cualquier escritura desde la propia app invalida el caché al toque via
+# invalidar(); este TTL sólo cubre ediciones hechas fuera de la app
+# directamente en Drive/Sheets, así que se puede estirar sin perder cambios
+# propios. Antes en 120s: cada 2 minutos la primera pantalla que se abría
+# pagaba el costo completo de descargar+exportar el xlsx desde Drive.)
 MAX_REINTENTOS = 3       # reintentos ante conflicto 412 (alguien editó el xlsx a la vez)
 _SELECTO_LIMIT = 200
 

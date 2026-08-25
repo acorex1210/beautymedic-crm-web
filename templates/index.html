@@ -2459,11 +2459,17 @@ function chipAgendado(v) {
 
 async function cargarAgendados() {
   const tbody = $('tablaAgendados');
-  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando AGENDADOS de Drive&hellip;</div></td></tr>';
+  // Si ya había datos de una visita anterior a esta página, se repintan al
+  // toque (sin spinner) mientras se refrescan en segundo plano: así la
+  // navegación se siente instantánea en vez de parpadear a "Cargando" cada
+  // vez que se entra a una sección ya vista.
+  const habiaCache = !!AG;
+  if (habiaCache) pintarAgendados();
+  else tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando AGENDADOS de Drive&hellip;</div></td></tr>';
   try {
     AG = await api('/api/crm/agendados');
   } catch (e) {
-    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    if (!habiaCache) tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
     return;
   }
   const col = AG.columnas, orden = Object.keys(col);
@@ -2682,11 +2688,13 @@ function chipSexo(v) {
 
 async function cargarVenta() {
   const tbody = $('tablaVenta');
-  tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando VENTA DIARIA de Drive&hellip;</div></td></tr>';
+  const habiaCache = !!VE;
+  if (habiaCache) pintarVenta();
+  else tbody.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Cargando VENTA DIARIA de Drive&hellip;</div></td></tr>';
   try {
     VE = await api('/api/crm/venta');
   } catch (e) {
-    tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    if (!habiaCache) tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
     return;
   }
   if (!VE.hojas[veAnioActivo]) veAnioActivo = Object.keys(VE.hojas)[0] || veAnioActivo;
@@ -3754,9 +3762,10 @@ $('formMiClave').addEventListener('submit', async (e) => {
 /* ---------------- CRM PLUS: HOY ---------------- */
 async function cargarHoy() {
   const cont = $('hoyListaCitas');
-  cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando actividades&hellip;</div>';
+  const habiaCache = !!HOY_DATA;
+  if (!habiaCache) cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando actividades&hellip;</div>';
   try { HOY_DATA = await api('/api/crm/hoy'); }
-  catch (e) { cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
+  catch (e) { if (!habiaCache) cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
   const h = HOY_DATA;
   $('hoyFecha').textContent = '· ' + h.fecha;
   $('chFecha').textContent = '· ' + h.fecha;
@@ -4089,9 +4098,11 @@ function estadoCita(q) {
   return 'PENDIENTE';
 }
 async function cargarCalendario() {
-  $('calGrid').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando agendados&hellip;</div>';
+  const habiaCache = !!CAL_AG;
+  if (habiaCache) pintarCalendario();
+  else $('calGrid').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando agendados&hellip;</div>';
   try { CAL_AG = await api('/api/crm/agendados'); }
-  catch (e) { $('calGrid').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
+  catch (e) { if (!habiaCache) $('calGrid').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
   pintarCalendario();
 }
 function calCitasDia(dia) {
@@ -4244,13 +4255,15 @@ $('btnAgWhatsappGuardar').addEventListener('click', async () => {
 
 /* ---------------- CRM PLUS: PACIENTES ---------------- */
 async function cargarPacientes() {
-  $('tablaPacientes').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Armando directorio&hellip;</div></td></tr>';
+  const habiaCache = !!PACIENTES;
+  if (habiaCache) pintarPacientes();
+  else $('tablaPacientes').innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Armando directorio&hellip;</div></td></tr>';
   const qs = new URLSearchParams();
   if ($('paDesde').value) qs.set('desde', $('paDesde').value);
   if ($('paHasta').value) qs.set('hasta', $('paHasta').value);
   if ($('paTodos').checked) qs.set('todos', 'true');
   try { PACIENTES = await api('/api/crm/pacientes' + (qs.toString() ? '?' + qs : '')); }
-  catch (e) { $('tablaPacientes').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
+  catch (e) { if (!habiaCache) $('tablaPacientes').innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`; return; }
   const rango = ($('paDesde').value || $('paHasta').value)
     ? ` atendidos entre ${$('paDesde').value || 'el inicio'} y ${$('paHasta').value || 'hoy'}` : '';
   $('paNota').textContent = $('paTodos').checked
