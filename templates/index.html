@@ -686,6 +686,19 @@
   :root[data-theme="dark"] .cal-dia.cal-con-citas { background: linear-gradient(180deg, rgba(94,140,255,.08), transparent 60%); }
   :root[data-theme="dark"] .kpi.dorado .num { color: var(--dorado2); }
   :root[data-theme="dark"] .kpi.dorado { background: linear-gradient(180deg, var(--dorado-fondo), var(--superficie) 55%); }
+  /* Estos colores quedaron fijos en hex claro (pensados sólo para tema
+     claro) en vez de usar las variables: en oscuro el texto se perdía
+     contra el fondo de la tarjeta. */
+  :root[data-theme="dark"] .kpi .eti, :root[data-theme="dark"] .kpi-mini .et { color: var(--gris); }
+  :root[data-theme="dark"] .topbar .ruta { color: var(--gris); }
+  :root[data-theme="dark"] .cal-dia .cal-num { color: var(--texto); }
+  :root[data-theme="dark"] .cal-dia .cal-huella-txt { color: var(--texto-suave); }
+  :root[data-theme="dark"] .dtab tbody tr:hover { background: #1c2740; }
+  :root[data-theme="dark"] .kcard .kn { color: var(--texto); }
+  /* .btn.borde: azul oscuro sobre borde clarito, ambos pensados para
+     fondo blanco. En oscuro casi no se leía sobre la tarjeta. */
+  :root[data-theme="dark"] .btn.borde { color: var(--azul2); border-color: rgba(111,160,248,.5); }
+  :root[data-theme="dark"] .btn.borde:hover { background: rgba(111,160,248,.14); color: var(--azul2); }
   /* Toggle de tema en el pie del sidebar */
   .tema-toggle {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
