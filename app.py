@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 import openpyxl
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
                                RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
@@ -111,6 +112,10 @@ if not _ORIGENES:
                 ['http://localhost:8077', 'http://127.0.0.1:8077']
 app.add_middleware(CORSMiddleware, allow_origins=_ORIGENES, allow_credentials=True,
                    allow_methods=['*'], allow_headers=['*'])
+# El HTML/JS/CSS del SPA es todo inline (~500 KB sin comprimir) y las respuestas
+# JSON de los reportes pueden ser grandes: comprimir recorta la mayor parte de
+# ese peso en el transporte, que es lo que más pesa en la velocidad percibida.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 COOKIE_SESION = 'de_sesion'
 _sembrados = usr.sembrar()
@@ -157,12 +162,20 @@ BRAND = {
 }
 
 
+_HTML_CACHE: Dict[str, str] = {}
+
+
 def _html(nombre):
-    with open(os.path.join(BASE_DIR, 'templates', nombre), encoding='utf-8') as f:
-        html = f.read()
-    for k, v in BRAND.items():
-        html = html.replace('{{' + k + '}}', v)
-    return html
+    """El HTML de plantilla no cambia en caliente (BRAND se resuelve una sola
+    vez al arrancar), así que se procesa una vez y se sirve desde memoria en
+    vez de leer del disco y hacer los .replace() en cada request."""
+    if nombre not in _HTML_CACHE:
+        with open(os.path.join(BASE_DIR, 'templates', nombre), encoding='utf-8') as f:
+            html = f.read()
+        for k, v in BRAND.items():
+            html = html.replace('{{' + k + '}}', v)
+        _HTML_CACHE[nombre] = html
+    return _HTML_CACHE[nombre]
 
 
 def _html_index():
@@ -173,7 +186,18 @@ def _html_login():
     return _html('login.html')
 
 
-app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'static')),
+class _StaticFilesConCache(StaticFiles):
+    """Los assets estáticos (chart.umd.min.js, etc.) casi nunca cambian; sin
+    cache-control el navegador vuelve a pedirlos (aunque sea con 304) en cada
+    carga. Un año de caché evita ese viaje de red por completo."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+
+
+app.mount('/static', _StaticFilesConCache(directory=os.path.join(BASE_DIR, 'static')),
           name='static')
 
 
