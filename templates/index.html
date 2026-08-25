@@ -244,22 +244,33 @@
   .kcard .valor { font-weight: 800; color: var(--azul2); }
   .kcol.dragsobre { outline: 2px dashed var(--azul3); outline-offset: -2px; }
   .kadd { width: 100%; margin-top: 8px; border: 1px dashed var(--borde); background: var(--superficie); border-radius: 9px; padding: 7px; color: var(--gris); cursor: pointer; font-size: 12px; font-weight: 700; }
-  .cal-cab { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 6px; }
-  .cal-cab div { text-align: center; font-size: 11px; font-weight: 700; color: var(--gris); text-transform: uppercase; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-  .cal-dia { min-height: 84px; border: 1px solid var(--borde); border-radius: 9px; padding: 6px; cursor: pointer; background: #fff; display: flex; flex-direction: column; gap: 4px; }
-  .cal-dia:hover { box-shadow: 0 2px 8px rgba(20,37,74,.1); }
-  .cal-dia.cal-vacio { background: transparent; border-color: transparent; cursor: default; }
-  .cal-dia.cal-hoy { border-color: var(--azul2); box-shadow: 0 0 0 2px rgba(38,90,196,.15) inset; }
-  .cal-dia.cal-sel { border-color: var(--azul2); background: #f2f6ff; }
-  .cal-dia .cal-num { font-size: 12px; font-weight: 700; color: #2c3550; }
-  .cal-dia .cal-resumen { font-size: 10px; color: var(--gris); }
-  .cal-dia .cal-puntos { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
-  .cal-punto { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .cal-punto.ok { background: #1d7a42; } .cal-punto.ambar { background: #b07614; } .cal-punto.bad { background: #b03a3a; }
-  .cal-punto.huella { background: #7a7a7a; }
+  .cal-cab { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 8px; }
+  .cal-cab div { text-align: center; font-size: 11px; font-weight: 700; color: var(--gris); text-transform: uppercase; letter-spacing: .04em; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+  .cal-dia { min-height: 96px; border: 1px solid var(--borde); border-radius: 11px; padding: 8px; cursor: pointer;
+    background: #fff; display: flex; flex-direction: column; gap: 5px; transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+  .cal-dia:hover { box-shadow: 0 4px 14px rgba(20,37,74,.12); transform: translateY(-1px); border-color: var(--azul2); }
+  .cal-dia.cal-vacio { background: transparent; border-color: transparent; cursor: default; box-shadow: none; transform: none; }
+  .cal-dia.cal-vacio:hover { box-shadow: none; transform: none; }
+  .cal-dia.cal-con-citas { background: linear-gradient(180deg, rgba(38,90,196,.05), transparent 60%); }
+  .cal-dia.cal-hoy { border-color: var(--azul2); box-shadow: 0 0 0 2px rgba(38,90,196,.18) inset; }
+  .cal-dia.cal-sel { border-color: var(--azul2); background: #f2f6ff; box-shadow: 0 4px 14px rgba(20,37,74,.12); }
+  .cal-dia .cal-num { font-size: 13px; font-weight: 800; color: #2c3550; }
+  .cal-dia.cal-hoy .cal-num { color: var(--azul2); }
+  .cal-dia .cal-resumen { font-size: 10.5px; color: var(--gris); font-weight: 600; }
+  .cal-dia .cal-conteos { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
+  .cal-mini { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px;
+    padding: 0 4px; border-radius: 99px; font-size: 10px; font-weight: 800; color: #fff; }
+  .cal-mini.ok { background: #1d7a42; } .cal-mini.ambar { background: #b07614; } .cal-mini.bad { background: #b03a3a; }
   .cal-dia .cal-huella-txt { font-size: 10px; color: #7a7a7a; }
   .cal-huella-item { opacity: .75; }
+  .cal-expandido { grid-column: 1 / -1; background: var(--superficie); border: 1px solid var(--azul2); border-radius: 11px;
+    padding: 14px 16px; margin: 2px 0 4px; animation: cal-expandir .15s ease; }
+  @keyframes cal-expandir { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .cal-expandido .cab-exp { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .cal-expandido .cab-exp b { font-size: 14px; }
+  .cal-expandido .cerrar-exp { background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--gris); padding: 0 4px; }
+  .cal-expandido .cerrar-exp:hover { color: inherit; }
   .kadd:hover { color: var(--azul2); border-color: var(--azul3); }
 
   .etapa-NUEVO { --c: #5b6472; } .etapa-AGENDADO { --c: #2f5597; }
@@ -316,8 +327,9 @@
   .item-hoy .info { flex: 1; min-width: 0; }
   .item-hoy .info b { display: block; font-size: 13px; }
   .item-hoy .info small { color: var(--gris); }
-  .item-hoy .acciones-hoy { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-  .item-hoy .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
+  .acciones-hoy { display: flex; flex-wrap: wrap; gap: 5px; }
+  .item-hoy .acciones-hoy { margin-top: 4px; }
+  .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
   .co-linea { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
   .co-linea .co-trat { flex: 1; }
   .co-linea .co-venta { width: 130px; }
@@ -620,6 +632,7 @@
   :root[data-theme="dark"] .hbar .barra, :root[data-theme="dark"] .me-barra { background: #1b2438; }
   :root[data-theme="dark"] .cal-dia { background: var(--superficie); }
   :root[data-theme="dark"] .cal-dia.cal-sel { background: #16233d; }
+  :root[data-theme="dark"] .cal-dia.cal-con-citas { background: linear-gradient(180deg, rgba(94,140,255,.08), transparent 60%); }
   :root[data-theme="dark"] .kpi.dorado .num { color: var(--dorado2); }
   :root[data-theme="dark"] .kpi.dorado { background: linear-gradient(180deg, var(--dorado-fondo), var(--superficie) 55%); }
   /* Toggle de tema en el pie del sidebar */
@@ -679,25 +692,13 @@
         <span class="lab">Planillas</span>
       </a>
       <div class="sub">CRM</div>
-      <a data-pagina="hoy">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
-        <span class="lab">Hoy</span>
-      </a>
       <a data-pagina="calendario">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         <span class="lab">Calendario</span>
       </a>
-      <a data-pagina="pipeline">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="6" height="18" rx="1"/><rect x="11" y="3" width="6" height="18" rx="1"/><rect x="19" y="3" width="2" height="18" rx="1"/></svg>
-        <span class="lab">Pipeline</span>
-      </a>
       <a data-pagina="pacientes">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="lab">Pacientes</span>
-      </a>
-      <a data-pagina="dashboard">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16v-4M12 16V8M17 16v-6"/></svg>
-        <span class="lab">Dashboard</span>
       </a>
       <div class="sub">Analítica</div>
       <a data-pagina="analitica">
@@ -774,6 +775,25 @@
             <div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>
           </div>
         </div>
+
+        <div class="tarjeta">
+          <h3>Actividad de hoy <span class="nota" id="hoyFecha"></span></h3>
+          <p class="nota" style="margin:0 0 12px;">Solo informativo. Para confirmar, marcar asistencia o registrar una compra, hazlo desde Agendados.</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;">
+            <div class="caja-hoy">
+              <h4 style="margin:0 0 8px;font-size:13px;">Citas de hoy</h4>
+              <div id="hoyListaCitas"></div>
+            </div>
+            <div class="caja-hoy">
+              <h4 style="margin:0 0 8px;font-size:13px;">Confirmados · ¿asistió?</h4>
+              <div id="hoyListaConfirmados"></div>
+            </div>
+            <div class="caja-hoy">
+              <h4 style="margin:0 0 8px;font-size:13px;">Ventas de hoy</h4>
+              <div id="hoyListaVentas"></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ============ REPORTES ============ -->
@@ -846,11 +866,27 @@
               <option value="sin_compra">Asistieron pero no compraron</option>
             </select>
             <button class="btn gris" id="btnAgRecargar">Actualizar</button>
+            <button class="btn borde" id="btnAgWhatsapp">WhatsApp: palabras clave</button>
             <button class="btn verde" id="btnAgNuevo">+ Nuevo agendado</button>
           </div>
           <div class="nota" id="agNota" style="margin:0 0 10px;"></div>
           <div class="tabla-wrap"><table class="drive" id="tablaAgendados"></table></div>
           <div class="mas" id="agMas"></div>
+        </div>
+
+        <div class="tarjeta oculto" id="agWhatsappBloque">
+          <h3>Detección de campaña por WhatsApp</h3>
+          <p style="font-size:13px;color:var(--gris);margin:0 0 12px;">
+            Cuando llega un mensaje nuevo por WhatsApp, el sistema crea el agendado
+            automáticamente. Si viene de un anuncio de Meta Ads se detecta solo; para el resto
+            (Instagram, boca a boca, etc.) usa la palabra que el paciente escribió para asignar
+            la campaña. Una línea por regla: <code>PALABRA = Nombre de campaña</code>.
+          </p>
+          <textarea id="agWhatsappTexto" rows="8" style="width:100%;padding:10px;border:1px solid var(--borde);border-radius:9px;font-family:monospace;font-size:13px;" placeholder="TOXINA = Promo Toxina Botulínica&#10;VERANO = Campaña Verano 2026"></textarea>
+          <div class="mensaje err oculto" id="msgAgWhatsapp"></div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn verde" id="btnAgWhatsappGuardar">Guardar palabras clave</button>
+          </div>
         </div>
       </section>
 
@@ -1026,31 +1062,6 @@
         </div>
       </section>
 
-      <!-- ============ HOY (actividades) ============ -->
-      <section id="pag-hoy" class="oculto">
-        <div class="kpis">
-          <div class="kpi"><div class="eti">Citas de hoy</div><div class="num" id="hoyCitas">-</div></div>
-          <div class="kpi azul"><div class="eti">Confirmadas</div><div class="num" id="hoyConfirmadas">-</div></div>
-          <div class="kpi verde"><div class="eti">Asistieron</div><div class="num" id="hoyAsistieron">-</div></div>
-          <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="hoyVentas">-</div></div>
-        </div>
-        <div class="dos">
-          <div class="tarjeta caja-hoy">
-            <h3>Citas de hoy <span class="nota" id="hoyFecha"></span></h3>
-            <div id="hoyListaCitas"></div>
-          </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Confirmados · ¿asistió?</h3>
-            <div class="nota" style="margin:0 0 8px;">Pacientes que confirmaron su cita. Al marcar <b>Asistió</b> se abre su historia clínica.</div>
-            <div id="hoyListaConfirmados"></div>
-          </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Ventas de hoy</h3>
-            <div id="hoyListaVentas"></div>
-          </div>
-        </div>
-      </section>
-
       <!-- ============ CALENDARIO ============ -->
       <section id="pag-calendario" class="oculto">
         <div class="kpis">
@@ -1072,37 +1083,6 @@
           </div>
           <div class="cal-cab"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
           <div class="cal-grid" id="calGrid"></div>
-        </div>
-        <div class="tarjeta" id="calDetalleBloque" style="margin-top:18px;">
-          <h3 id="calDetalleTitulo">Selecciona un día para ver sus citas</h3>
-          <div id="calDetalleLista"></div>
-        </div>
-      </section>
-
-      <!-- ============ PIPELINE (kanban) ============ -->
-      <section id="pag-pipeline" class="oculto">
-        <div class="tarjeta">
-          <div class="toolbar">
-            <div class="buscar"><input type="search" id="piBuscar" placeholder="Buscar por nombre, teléfono, campaña, CRM&hellip;"></div>
-            <button class="btn gris" id="btnPiRecargar">Actualizar</button>
-            <button class="btn borde" id="btnPiWhatsapp">WhatsApp: palabras clave</button>
-            <button class="btn verde" id="btnPiNueva">+ Nueva tarjeta</button>
-          </div>
-          <div class="kanban" id="kanban"></div>
-        </div>
-        <div class="tarjeta oculto" id="piWhatsappBloque">
-          <h3>Detección de campaña por WhatsApp</h3>
-          <p style="font-size:13px;color:var(--gris);margin:0 0 12px;">
-            Cuando llega un mensaje nuevo por WhatsApp, el sistema crea la tarjeta en Pipeline
-            automáticamente. Si viene de un anuncio de Meta Ads se detecta solo; para el resto
-            (Instagram, boca a boca, etc.) usa la palabra que el paciente escribió para asignar
-            la campaña. Una línea por regla: <code>PALABRA = Nombre de campaña</code>.
-          </p>
-          <textarea id="piWhatsappTexto" rows="8" style="width:100%;padding:10px;border:1px solid var(--borde);border-radius:9px;font-family:monospace;font-size:13px;" placeholder="TOXINA = Promo Toxina Botulínica&#10;VERANO = Campaña Verano 2026"></textarea>
-          <div class="mensaje err oculto" id="msgPiWhatsapp"></div>
-          <div class="toolbar" style="margin-top:10px;">
-            <button class="btn verde" id="btnPiWhatsappGuardar">Guardar palabras clave</button>
-          </div>
         </div>
       </section>
 
@@ -1163,24 +1143,6 @@
         </div>
       </section>
 
-      <!-- ============ DASHBOARD ============ -->
-      <section id="pag-dashboard" class="oculto">
-        <div class="kpis">
-          <div class="kpi"><div class="eti">Leads en proceso</div><div class="num" id="dbLeads">-</div></div>
-          <div class="kpi verde"><div class="eti">Ganados</div><div class="num" id="dbGanados">-</div></div>
-          <div class="kpi rojo"><div class="eti">Perdidos</div><div class="num" id="dbPerdidos">-</div></div>
-          <div class="kpi naranja"><div class="eti">Conversión</div><div class="num" id="dbConversion">-</div></div>
-          <div class="kpi"><div class="eti">Ventas registradas</div><div class="num" id="dbVentasN">-</div></div>
-          <div class="kpi verde"><div class="eti">Monto total</div><div class="num" id="dbMonto">-</div></div>
-        </div>
-        <div class="dos">
-          <div class="tarjeta"><h3>Pipeline por etapa</h3><div id="dbFunnel"></div></div>
-          <div class="tarjeta"><h3>Ventas por doctor</h3><div id="dbDoctor"></div></div>
-          <div class="tarjeta"><h3>Ventas por mes</h3><div id="dbMes"></div></div>
-          <div class="tarjeta"><h3>Agendados por CRM</h3><div id="dbCrm"></div></div>
-          <div class="tarjeta" style="grid-column:1 / -1;"><h3>Agendados por campaña</h3><div id="dbCampana"></div></div>
-        </div>
-      </section>
 
       <section id="pag-analitica" class="oculto">
         <div class="filtros-analitica">
@@ -1383,33 +1345,6 @@
   </div>
 </div>
 
-<!-- ============ MODAL TARJETA (PIPELINE) ============ -->
-<div class="modal-fondo" id="modalTarjeta">
-  <div class="modal">
-    <div class="cab"><h3 id="tarTitulo">Nueva tarjeta</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
-    <form id="formTarjeta">
-      <div class="form-grid">
-        <div class="campo ancho"><label>Nombre del paciente</label><input type="text" id="tarNombre"></div>
-        <div class="campo"><label>Teléfono</label><input type="text" id="tarTelefono"></div>
-        <div class="campo"><label>Etapa</label><select id="tarEtapa"></select></div>
-        <div class="campo"><label>CRM</label><select id="tarCrm"></select></div>
-        <div class="campo"><label>Campaña</label><select id="tarCampana"></select></div>
-        <div class="campo"><label>Valor (S/)</label><input type="number" id="tarValor" step="0.01" min="0"></div>
-        <div class="campo"><label>Prioridad</label><select id="tarPrioridad"></select></div>
-        <div class="campo"><label>Día cita</label><input type="number" id="tarCitaDia" min="1" max="31"></div>
-        <div class="campo"><label>Mes cita</label><select id="tarCitaMes"></select></div>
-        <div class="campo"><label>Hora cita</label><input type="text" id="tarCitaHora"></div>
-        <div class="campo ancho"><label>Nota</label><input type="text" id="tarNota" placeholder="Nota rápida de la tarjeta"></div>
-      </div>
-      <div class="mensaje err oculto" id="msgTarForm"></div>
-      <div class="pies">
-        <button type="button" class="btn rojo" id="btnTarBorrar" style="margin-right:auto;">Borrar</button>
-        <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
-        <button type="submit" class="btn verde" id="btnTarGuardar">Guardar tarjeta</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 <!-- ============ MODAL HISTORIA CLINICA ============ -->
 <div class="modal-fondo" id="modalHistoria">
@@ -1768,17 +1703,16 @@ function aplicarTema(t) {
 $('btnTemaToggle').addEventListener('click', () => aplicarTema(temaActual() === 'dark' ? 'light' : 'dark'));
 pintarTemaToggle();
 
-const ETAPAS = ['NUEVO', 'AGENDADO', 'CONFIRMADO', 'ATENDIDO', 'GANADO', 'PERDIDO'];
 const TIPO_TAREA = ['LLAMADA', 'SEGUIMIENTO', 'RECORDATORIO', 'OTRO'];
 const PRIORIDADES = ['ALTA', 'MEDIA', 'BAJA'];
 const NOTA_TIPOS = ['LLAMADA', 'WHATSAPP', 'INBOX', 'OTRO'];
-let TARJETAS = null, PACIENTES = null, DASH = null, HOY_DATA = null;
+let PACIENTES = null, HOY_DATA = null;
 let INVENTARIO_PRODUCTOS = null, INV_MOVIMIENTOS = null, productoEditando = null, movStockCodigo = null;
 let PLANILLA_TRABAJADORES = null, PLANILLA_PAGOS = null, PLANILLA_ESTIMADOS = [],
     trabajadorEditando = null, pagoEditando = null;
 let hoyFilaActiva = null;
 let HOY_ACCIONES = {};
-let tarjetaEditando = null, tareaEditando = null, pacienteActual = null;
+let tareaEditando = null, pacienteActual = null;
 let paLimite = 200;
 
 function toast(msg, tipo = '') {
@@ -1794,9 +1728,6 @@ function esc(s) {
 function hoyISO() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-function valoresUnicos(arr, key) {
-  return [...new Set(arr.map(x => String(x[key] || '').trim()).filter(Boolean))].sort();
 }
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -1872,11 +1803,8 @@ const TITULOS = {
   caja: ['Caja', 'Apertura y cierre de caja del día'],
   inventario: ['Inventario', 'Catálogo de productos y kardex de stock'],
   planilla: ['Planillas', 'Sueldos y pagos quincenales de los trabajadores'],
-  hoy: ['Hoy', 'Actividades y citas del día'],
   calendario: ['Calendario', 'Vista general de citas agendadas'],
-  pipeline: ['Pipeline', 'Tablero de ventas estilo kanban'],
   pacientes: ['Pacientes', 'Directorio de pacientes e historial'],
-  dashboard: ['Dashboard', 'Métricas del negocio'],
   analitica: ['Analítica', 'KPIs y métricas del maestro'],
   metaads: ['Meta Ads', 'Presupuestos y rendimiento de publicidad (import manual)'],
   usuarios: ['Usuarios', 'Accesos al sistema y permisos por rol'],
@@ -1888,20 +1816,17 @@ function pagina(nombre) {
   $('pag-' + nombre).classList.remove('oculto');
   $('tituloPagina').textContent = TITULOS[nombre][0];
   $('subtituloPagina').textContent = TITULOS[nombre][1];
-  if (nombre === 'agendados') cargarAgendados();
+  if (nombre === 'agendados') { cargarAgendados(); if (puedeVer('hoy')) cargarHoy(); }
   if (nombre === 'venta') cargarVenta();
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
   if (nombre === 'planilla') cargarPlanilla();
   if (nombre === 'usuarios') cargarUsuarios();
   // La meta se alimenta de Meta Ads y Analítica: quien no los ve, no la carga.
-  if (nombre === 'panel') { cargarEstado(); if (puedeVerMeta()) cargarMetaMensual(); cargarResumenPanel(); }
+  if (nombre === 'panel') { cargarEstado(); if (puedeVerMeta()) cargarMetaMensual(); cargarResumenPanel(); if (puedeVer('hoy')) cargarHoy(); }
   if (nombre === 'reportes') cargarEstado();
-  if (nombre === 'hoy') cargarHoy();
   if (nombre === 'calendario') cargarCalendario();
-  if (nombre === 'pipeline') cargarPipeline();
   if (nombre === 'pacientes') cargarPacientes();
-  if (nombre === 'dashboard') cargarDashboard();
   if (nombre === 'analitica') cargarAnalitica();
   if (nombre === 'metaads') cargarMeta();
 }
@@ -2112,17 +2037,17 @@ function pintarAlertasPanel(hoyR, agR, inactR) {
     const noContesto = h.citas.filter(c => estadoHoy(c) === 'NO_CONTESTO').length;
     if (noContesto > 0) {
       items.push({ n: noContesto, txt: noContesto === 1 ? 'cita de hoy sin contestar' : 'citas de hoy sin contestar',
-                   cls: 'warn', pag: 'hoy' });
+                   cls: 'warn', pag: 'agendados' });
     }
     const pendientes = h.citas.filter(c => estadoHoy(c) === 'PENDIENTE').length;
     if (pendientes > 0) {
       items.push({ n: pendientes, txt: pendientes === 1 ? 'cita de hoy sin confirmar' : 'citas de hoy sin confirmar',
-                   cls: 'info', pag: 'hoy' });
+                   cls: 'info', pag: 'agendados' });
     }
     const vencidas = (h.tareas_vencidas || []).length;
     if (vencidas > 0) {
       items.push({ n: vencidas, txt: vencidas === 1 ? 'tarea vencida' : 'tareas vencidas',
-                   cls: 'bad', pag: 'pipeline' });
+                   cls: 'bad', pag: 'pacientes' });
     }
   }
 
@@ -2163,17 +2088,13 @@ async function cargarResumenPanel() {
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
-  const [hoyR, cajaR, invR, dashR, plR, agR, veR, pacR, inactR] = await Promise.allSettled([
+  const [hoyR, cajaR, invR, plR, agR, veR, pacR, inactR] = await Promise.allSettled([
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
-    // Resumen del panel = mes en curso; el Dashboard completo (con
-    // desglose por mes) sigue mostrando el histórico completo.
-    si('dashboard', () => api(`/api/crm/dashboard?anio=${HOY_A}&mes=${HOY_M}`)),
     si('planilla', () => api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`)),
     quiereAg ? api('/api/crm/agendados') : nada,
-    // Con dashboard ya vienen los totales de venta: no se baja el libro entero.
-    (puedeVer('venta') && !puedeVer('dashboard')) ? api('/api/crm/venta') : nada,
+    si('venta', () => api('/api/crm/venta')),
     si('pacientes', () => api('/api/crm/pacientes')),
     si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
   ]);
@@ -2182,7 +2103,7 @@ async function cargarResumenPanel() {
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
-    tarjetas.push(`<div class="resumen-card" onclick="pagina('hoy')">
+    tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
       <h4>Hoy</h4>
       <div class="fila"><span class="lab">Citas de hoy</span><span class="num">${h.citas.length}</span></div>
       <div class="fila"><span class="lab">Ventas de hoy</span><span class="num">${h.ventas.length}</span></div>
@@ -2209,29 +2130,6 @@ async function cargarResumenPanel() {
     </div>`);
   }
 
-  if (dashR.status === 'fulfilled') {
-    const d = dashR.value;
-    const leads = Object.entries(d.funnel)
-      .filter(([k]) => !['GANADO', 'PERDIDO'].includes(k))
-      .reduce((s, [, v]) => s + v, 0);
-    const totalAg = Object.values(d.ag_por_crm).reduce((s, v) => s + v, 0);
-    tarjetas.push(`<div class="resumen-card" onclick="pagina('dashboard')">
-      <h4>Pipeline CRM</h4>
-      <div class="fila"><span class="lab">Leads en proceso</span><span class="num">${leads}</span></div>
-      <div class="fila"><span class="lab">Conversión</span><span class="num">${d.conversion}%</span></div>
-    </div>`);
-    tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
-      <h4>Agendados · este mes</h4>
-      <div class="fila"><span class="lab">Agendados del mes</span><span class="num">${totalAg}</span></div>
-      <div class="fila"><span class="lab">Fuentes CRM</span><span class="num">${Object.keys(d.ag_por_crm).length}</span></div>
-    </div>`);
-    tarjetas.push(`<div class="resumen-card" onclick="pagina('venta')">
-      <h4>Venta diaria · este mes</h4>
-      <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${d.ventas_registradas}</span></div>
-      <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(d.total_ventas)}</span></div>
-    </div>`);
-  }
-
   if (agR.status === 'fulfilled') {
     const filas = agR.value.filas || [];
     const hoy = hoyISO();
@@ -2246,11 +2144,13 @@ async function cargarResumenPanel() {
         <div class="fila"><span class="lab">Agendadas por venir</span><span class="num">${futuras.length}</span></div>
       </div>`);
     }
-    if (puedeVer('agendados') && !puedeVer('dashboard')) {
+    if (puedeVer('agendados')) {
+      // Agendados por su fecha de agendado (columna D/E), no la de la cita.
+      const esteMes = filas.filter(f => String(f.D || '').trim() === HOY_M && Number(f.E || 0) === HOY_A);
       const sinIr = filas.filter(f => f._fecha_cita && f._fecha_cita < hoy && !f._asistio).length;
       tarjetas.push(`<div class="resumen-card" onclick="pagina('agendados')">
-        <h4>Agendados</h4>
-        <div class="fila"><span class="lab">Total agendados</span><span class="num">${filas.length}</span></div>
+        <h4>Agendados · este mes</h4>
+        <div class="fila"><span class="lab">Agendados del mes</span><span class="num">${esteMes.length}</span></div>
         <div class="fila"><span class="lab">Agendaron y no fueron</span><span class="num"${sinIr ? ' style="color:var(--naranja);"' : ''}>${sinIr}</span></div>
       </div>`);
     }
@@ -2258,14 +2158,16 @@ async function cargarResumenPanel() {
 
   if (veR.status === 'fulfilled') {
     const hojas = veR.value.hojas || {};
-    let n = 0, monto = 0;
+    let nMes = 0, montoMes = 0;
     Object.values(hojas).forEach(h => (h.filas || []).forEach(f => {
-      n += 1; monto += Number(f.O) || 0;
+      if (esVentaRegistrada(f.N) && String(f.C || '').trim() === HOY_M && Number(f.D || 0) === HOY_A) {
+        nMes += 1; montoMes += Number(f.O) || 0;
+      }
     }));
     tarjetas.push(`<div class="resumen-card" onclick="pagina('venta')">
-      <h4>Venta diaria</h4>
-      <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${n}</span></div>
-      <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(monto)}</span></div>
+      <h4>Venta diaria · este mes</h4>
+      <div class="fila"><span class="lab">Ventas registradas</span><span class="num">${nMes}</span></div>
+      <div class="fila"><span class="lab">Monto total</span><span class="num">${fmtMon(montoMes)}</span></div>
     </div>`);
   }
 
@@ -2505,6 +2407,9 @@ function pintarAgendados() {
     vis.map(f => {
       const esHoy = f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy;
       const style = esHoy ? ' class="fila-hoy"' : '';
+      const citaHoy = esHoy && HOY_DATA && Number.isInteger(f._fila)
+        ? HOY_DATA.citas.find(x => x.fila === f._fila) : null;
+      const accionesHoyTxt = citaHoy ? accionesCitaAgendado(citaHoy) : '';
       return `<tr${style}>` + orden.map(c => {
         const v = f[c];
         if (v === undefined || v === null || v === '') return '<td></td>';
@@ -2512,7 +2417,7 @@ function pintarAgendados() {
         if (c === 'I') return `<td class="num">${esc(v)}</td>`;
         return `<td>${esc(v)}</td>`;
       }).join('') + (Number.isInteger(f._fila)
-        ? `<td><button class="btn borde pequeno" onclick="editarAgendado(${f._fila})">Editar</button> <button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></td>`
+        ? `<td><div class="acciones-hoy" style="margin-bottom:${accionesHoyTxt ? '6px' : '0'};"><button class="btn borde pequeno" onclick="editarAgendado(${f._fila})">Editar</button> <button class="btn rojo pequeno" onclick="borrarAgendado(${f._fila})">Borrar</button></div>${accionesHoyTxt ? `<div class="acciones-hoy">${accionesHoyTxt}</div>` : ''}</td>`
         : '<td></td>') + '</tr>';
     }).join('') + '</tbody>';
   $('agMas').innerHTML = filt.length > agLimite
@@ -3719,13 +3624,10 @@ async function cargarHoy() {
   catch (e) { cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
   const h = HOY_DATA;
   $('hoyFecha').textContent = '· ' + h.fecha;
-  $('hoyCitas').textContent = h.citas.length;
-  $('hoyVentas').textContent = h.ventas.length;
-  $('hoyConfirmadas').textContent = h.citas.filter(c => estadoHoy(c) === 'CONFIRMADO').length;
-  $('hoyAsistieron').textContent = h.citas.filter(c => estadoHoy(c) === 'ASISTIO').length;
   renderCitasHoy();
   renderConfirmadosHoy();
   renderVentasHoy();
+  if (AG) pintarAgendados();
 }
 
 /* Estado del flujo del día. Se apoya en lo guardado en AGENDADOS, así el
@@ -3793,41 +3695,47 @@ function accionesHoyCita(c) {
           <button class="btn naranja mini" onclick="noContestoCita(${c.fila})">☎ NO CONTESTÓ</button>
           ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
 }
+/* Botones de flujo del día para una cita, según su etapa actual. Usados
+   sólo en Agendados (fila del día); el bloque de Hoy en el Panel es
+   meramente informativo y no los muestra. */
+function accionesConfirmadoCita(c) {
+  const e = estadoHoy(c);
+  const yaDecidioCompra = HOY_ACCIONES[c.fila]?.compra;
+  if (e === 'CONFIRMADO') {
+    return `<button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
+      <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
+      ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}`;
+  }
+  if (e === 'ASISTIO' && !yaDecidioCompra) {
+    return `<button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
+      <button class="btn verde mini" onclick="abrirCompro(${c.fila})">🛒 SÍ COMPRÓ</button>
+      <button class="btn rojo mini" onclick="noCompro(${c.fila})">✕ NO COMPRÓ</button>`;
+  }
+  if (e === 'ASISTIO' || e === 'SIN_COMPRA') {
+    return `<button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>`;
+  }
+  return '';
+}
+function accionesCitaAgendado(c) {
+  const e = estadoHoy(c);
+  if (e === 'PENDIENTE') return accionesHoyCita(c);
+  return accionesConfirmadoCita(c);
+}
 function renderCitasHoy() {
   const h = HOY_DATA;
   $('hoyListaCitas').innerHTML = h.citas.length ? h.citas.map(c => `
     <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
-      <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
-        ${estadoHoy(c) !== 'PENDIENTE' ? '' : `
-        <div class="acciones-hoy">${accionesHoyCita(c)}</div>`}
-      </div>
+      <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small></div>
       ${chipHoyCita(c)}
     </div>`).join('') : '<div class="vacio">Sin citas para hoy.</div>';
 }
 function renderConfirmadosHoy() {
   const lista = HOY_DATA.citas.filter(c => ['CONFIRMADO', 'ASISTIO', 'SIN_COMPRA', 'NO_ASISTIO'].includes(estadoHoy(c)));
-  $('hoyListaConfirmados').innerHTML = lista.length ? lista.map(c => {
-    const e = estadoHoy(c);
-    const yaDecidioCompra = HOY_ACCIONES[c.fila]?.compra;
-    const acciones = e === 'CONFIRMADO' ? `
-        <div class="acciones-hoy">
-          <button class="btn verde mini" onclick="asistioCita(${c.fila})">✓ ASISTIÓ</button>
-          <button class="btn rojo mini" onclick="noAsistioCita(${c.fila})">✕ NO ASISTIÓ</button>
-          ${btnWhatsApp(c.nombre, c.telefono, HOY_DATA.fecha, c.hora)}
-        </div>` : (e === 'ASISTIO' && !yaDecidioCompra ? `
-        <div class="acciones-hoy">
-          <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
-          <button class="btn verde mini" onclick="abrirCompro(${c.fila})">🛒 SÍ COMPRÓ</button>
-          <button class="btn rojo mini" onclick="noCompro(${c.fila})">✕ NO COMPRÓ</button>
-        </div>` : ((e === 'ASISTIO' || e === 'SIN_COMPRA') ? `
-        <div class="acciones-hoy">
-          <button class="btn borde mini" onclick="abrirHistoriaCita(${c.fila})">🩺 HISTORIA CLÍNICA</button>
-        </div>` : ''));
-    return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
-      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small>${acciones}</div>
+  $('hoyListaConfirmados').innerHTML = lista.length ? lista.map(c => `
+    <div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
+      <div class="info"><b>${esc(c.nombre || '—')}</b><small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small></div>
       ${chipHoyCita(c)}
-    </div>`;
-  }).join('') : '<div class="vacio">Nadie ha confirmado cita todavía.</div>';
+    </div>`).join('') : '<div class="vacio">Nadie ha confirmado cita todavía.</div>';
 }
 
 function renderVentasHoy() {
@@ -3847,10 +3755,11 @@ async function marcarCita(fila, ruta, estado, aviso) {
     HOY_ACCIONES[fila] = { estado, cls: CHIP_HOY[estado][0], txt: CHIP_HOY[estado][1] };
     const c = HOY_DATA.citas.find(x => x.fila === fila);
     if (c) c.estado = estado === 'NO_ASISTIO' ? 'NO ASISTIO' : estado.replace('_', ' ');
+    const fAg = AG && AG.filas.find(x => x._fila === fila);
+    if (fAg) fAg.Q = c ? c.estado : fAg.Q;
     renderCitasHoy();
     renderConfirmadosHoy();
-    $('hoyConfirmadas').textContent = HOY_DATA.citas.filter(x => estadoHoy(x) === 'CONFIRMADO').length;
-    $('hoyAsistieron').textContent = HOY_DATA.citas.filter(x => estadoHoy(x) === 'ASISTIO').length;
+    if (AG) pintarAgendados();
     toast(aviso, 'okm');
     return true;
   } catch (e) { toast(e.message, 'err'); return false; }
@@ -3891,6 +3800,7 @@ async function guardarReprogramar() {
     cerrarModales();
     HOY_ACCIONES[fila] = { cls: 'info', txt: `↻ Reprogramada: ${dia}/${mes}/${anio}` };
     renderCitasHoy();
+    if (AG) pintarAgendados();
     toast('Cita reprogramada', 'okm');
   } catch (e) { $('msgRpForm').textContent = e.message; $('msgRpForm').classList.remove('oculto'); }
   finally { b.disabled = false; }
@@ -3966,13 +3876,13 @@ async function guardarCompro() {
     HOY_ACCIONES[fila] = { estado: 'ASISTIO', compra: true, cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
     renderCitasHoy();
     renderConfirmadosHoy();
+    if (AG) pintarAgendados();
     const recibo = res.venta && res.venta.hoja && res.venta.fila
       ? { hoja: res.venta.hoja, fila: res.venta.fila, n: res.venta.n || lineas.length }
       : null;
     HOY_DATA.ventas = [...lineas.map(l => ({
       nombre, doctor, status: 'SE REALIZO', monto: l.venta, recibo,
     })), ...HOY_DATA.ventas].sort((a, b) => (b.monto || 0) - (a.monto || 0));
-    $('hoyVentas').textContent = HOY_DATA.ventas.length;
     renderVentasHoy();
     toast(`Compra registrada en VENTA (${fmtMon(total)})`, 'okm');
     if (res.avisos_inventario && res.avisos_inventario.length) {
@@ -4028,52 +3938,13 @@ function calHuellasDia(dia) {
   });
   return out;
 }
-function pintarCalendario() {
-  if (!CAL_AG) return;
-  $('calTitulo').textContent = `${MESES[calMes]} ${calAnio}`;
-  const primerDiaSemana = (new Date(calAnio, calMes, 1).getDay() + 6) % 7; // 0 = lunes
-  const diasEnMes = new Date(calAnio, calMes + 1, 0).getDate();
-  let total = 0, conf = 0, pend = 0, noconf = 0;
-  let html = '';
-  for (let i = 0; i < primerDiaSemana; i++) html += '<div class="cal-dia cal-vacio"></div>';
-  for (let dia = 1; dia <= diasEnMes; dia++) {
-    const citas = calCitasDia(dia);
-    let c = 0, p = 0, n = 0;
-    citas.forEach(f => {
-      const e = estadoCita(f.Q);
-      if (e === 'CONFIRMADO') c++; else if (e === 'NO_CONFIRMADO') n++; else p++;
-    });
-    total += citas.length; conf += c; pend += p; noconf += n;
-    const huellas = calHuellasDia(dia);
-    const esHoy = dia === HOY_D && calMes === HOY.getMonth() && calAnio === HOY_A;
-    const esSel = calDiaSel === dia;
-    const tituloHuellas = huellas.map(h => `${h.cita.G || '—'} → movida a ${h.aDonde}`).join('\n');
-    const puntos = (citas.length || huellas.length)
-      ? `<div class="cal-puntos">${c ? `<span class="cal-punto ok" title="${c} confirmada(s)"></span>` : ''}${p ? `<span class="cal-punto ambar" title="${p} pendiente(s)"></span>` : ''}${n ? `<span class="cal-punto bad" title="${n} no confirmada(s)"></span>` : ''}${huellas.length ? `<span class="cal-punto huella" title="${esc(tituloHuellas)}"></span>` : ''}</div>`
-      : '';
-    html += `<div class="cal-dia${esHoy ? ' cal-hoy' : ''}${esSel ? ' cal-sel' : ''}" onclick="calSeleccionarDia(${dia})">
-      <div class="cal-num">${dia}</div>
-      ${citas.length ? `<div class="cal-resumen">${citas.length} cita${citas.length === 1 ? '' : 's'}</div>` : ''}
-      ${huellas.length ? `<div class="cal-huella-txt" title="${esc(tituloHuellas)}">↻ ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'}</div>` : ''}
-      ${puntos}
-    </div>`;
-  }
-  $('calGrid').innerHTML = html;
-  $('calTotal').textContent = total;
-  $('calConfirmadas').textContent = conf;
-  $('calPendientes').textContent = pend;
-  $('calNoConfirmadas').textContent = noconf;
-  if (calDiaSel) pintarCalDetalle();
-}
-function calSeleccionarDia(dia) {
-  calDiaSel = dia;
-  pintarCalendario();
-  pintarCalDetalle();
-}
-function pintarCalDetalle() {
+/* El detalle de un día se expande dentro de la propia grilla (fila
+   completa, justo debajo de la semana en la que cae ese día), en vez de
+   vivir en una tarjeta aparte más abajo. */
+function calExpandidoHtml() {
   const citas = calCitasDia(calDiaSel).slice().sort((a, b) => String(a.P || '').localeCompare(String(b.P || '')));
   const huellas = calHuellasDia(calDiaSel);
-  $('calDetalleTitulo').textContent = `${calDiaSel} de ${MESES[calMes]} ${calAnio} · ${citas.length} cita${citas.length === 1 ? '' : 's'}${huellas.length ? ` · ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'} desde este día` : ''}`;
+  const titulo = `${calDiaSel} de ${MESES[calMes]} ${calAnio} · ${citas.length} cita${citas.length === 1 ? '' : 's'}${huellas.length ? ` · ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'} desde este día` : ''}`;
   const filasCitas = citas.map(f => {
     const e = estadoCita(f.Q);
     const hist = parsearHistorialReagenda(f.T);
@@ -4092,174 +3963,89 @@ function pintarCalDetalle() {
       <div class="info"><b>${esc(h.cita.G || '—')}</b><small>Estaba agendado este día, se movió a ${esc(h.aDonde)}</small></div>
       <span class="chip info">↻ Reagendada</span>
     </div>`);
-  const html = filasCitas.concat(filasHuellas).join('');
-  $('calDetalleLista').innerHTML = html || '<div class="vacio">Sin citas ese día.</div>';
+  const lista = filasCitas.concat(filasHuellas).join('') || '<div class="vacio">Sin citas ese día.</div>';
+  return `<div class="cal-expandido">
+    <div class="cab-exp"><b>${esc(titulo)}</b><button type="button" class="cerrar-exp" onclick="calSeleccionarDia(null)" aria-label="Cerrar">&times;</button></div>
+    ${lista}
+  </div>`;
+}
+function pintarCalendario() {
+  if (!CAL_AG) return;
+  $('calTitulo').textContent = `${MESES[calMes]} ${calAnio}`;
+  const primerDiaSemana = (new Date(calAnio, calMes, 1).getDay() + 6) % 7; // 0 = lunes
+  const diasEnMes = new Date(calAnio, calMes + 1, 0).getDate();
+  let total = 0, conf = 0, pend = 0, noconf = 0;
+  const celdas = [];
+  for (let i = 0; i < primerDiaSemana; i++) celdas.push('<div class="cal-dia cal-vacio"></div>');
+  for (let dia = 1; dia <= diasEnMes; dia++) {
+    const citas = calCitasDia(dia);
+    let c = 0, p = 0, n = 0;
+    citas.forEach(f => {
+      const e = estadoCita(f.Q);
+      if (e === 'CONFIRMADO') c++; else if (e === 'NO_CONFIRMADO') n++; else p++;
+    });
+    total += citas.length; conf += c; pend += p; noconf += n;
+    const huellas = calHuellasDia(dia);
+    const esHoy = dia === HOY_D && calMes === HOY.getMonth() && calAnio === HOY_A;
+    const esSel = calDiaSel === dia;
+    const tituloHuellas = huellas.map(h => `${h.cita.G || '—'} → movida a ${h.aDonde}`).join('\n');
+    const conteos = (c || p || n)
+      ? `<div class="cal-conteos">${c ? `<span class="cal-mini ok" title="${c} confirmada(s)">${c}</span>` : ''}${p ? `<span class="cal-mini ambar" title="${p} pendiente(s)">${p}</span>` : ''}${n ? `<span class="cal-mini bad" title="${n} no confirmada(s)">${n}</span>` : ''}</div>`
+      : '';
+    celdas.push(`<div class="cal-dia${esHoy ? ' cal-hoy' : ''}${esSel ? ' cal-sel' : ''}${citas.length ? ' cal-con-citas' : ''}" onclick="calSeleccionarDia(${dia})">
+      <div class="cal-num">${dia}</div>
+      ${citas.length ? `<div class="cal-resumen">${citas.length} cita${citas.length === 1 ? '' : 's'}</div>` : ''}
+      ${huellas.length ? `<div class="cal-huella-txt" title="${esc(tituloHuellas)}">↻ ${huellas.length} reagendada${huellas.length === 1 ? '' : 's'}</div>` : ''}
+      ${conteos}
+    </div>`);
+  }
+  const filaSel = calDiaSel ? Math.floor((primerDiaSemana + calDiaSel - 1) / 7) : -1;
+  let html = '';
+  celdas.forEach((celda, i) => {
+    html += celda;
+    if (filaSel >= 0 && Math.floor(i / 7) === filaSel && (i + 1) % 7 === 0 || (filaSel >= 0 && Math.floor(i / 7) === filaSel && i === celdas.length - 1)) {
+      html += calExpandidoHtml();
+    }
+  });
+  $('calGrid').innerHTML = html;
+  $('calTotal').textContent = total;
+  $('calConfirmadas').textContent = conf;
+  $('calPendientes').textContent = pend;
+  $('calNoConfirmadas').textContent = noconf;
+}
+function calSeleccionarDia(dia) {
+  calDiaSel = calDiaSel === dia ? null : dia;
+  pintarCalendario();
 }
 function calCambiarMes(delta) {
   calMes += delta;
   if (calMes < 0) { calMes = 11; calAnio--; }
   if (calMes > 11) { calMes = 0; calAnio++; }
   calDiaSel = null;
-  $('calDetalleTitulo').textContent = 'Selecciona un día para ver sus citas';
-  $('calDetalleLista').innerHTML = '';
   pintarCalendario();
 }
 $('btnCalAnterior').addEventListener('click', () => calCambiarMes(-1));
 $('btnCalSiguiente').addEventListener('click', () => calCambiarMes(1));
-$('btnCalHoy').addEventListener('click', () => { calMes = HOY.getMonth(); calAnio = HOY_A; calDiaSel = HOY_D; pintarCalendario(); pintarCalDetalle(); });
+$('btnCalHoy').addEventListener('click', () => { calMes = HOY.getMonth(); calAnio = HOY_A; calDiaSel = HOY_D; pintarCalendario(); });
 $('btnCalRecargar').addEventListener('click', cargarCalendario);
 
-/* ---------------- CRM PLUS: PIPELINE ---------------- */
-async function cargarPipeline() {
-  $('kanban').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando pipeline&hellip;</div>';
-  try { TARJETAS = await api('/api/crm/pipeline'); }
-  catch (e) { $('kanban').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
-  pintarPipeline();
-}
-function piFiltradas() {
-  const q = $('piBuscar').value.trim().toLowerCase();
-  if (!q) return TARJETAS.tarjetas;
-  return TARJETAS.tarjetas.filter(t => ['nombre', 'telefono', 'crm', 'campana', 'nota']
-    .some(k => String(t[k] ?? '').toLowerCase().includes(q)));
-}
-function cardHtml(t) {
-  return `<div class="kcard etapa-${t.etapa}" draggable="true" data-id="${t.id}">
-    <div class="kn">${esc(t.nombre || 'Sin nombre')}</div>
-    <div class="kd">
-      ${t.telefono ? `<span>${esc(t.telefono)}</span>` : ''}
-      ${t.crm ? `<span class="chip info">${esc(t.crm)}</span>` : ''}
-      ${t.campana ? `<span class="chip gris">${esc(t.campana)}</span>` : ''}
-      ${t.valor ? `<span class="valor">${fmtMon(t.valor)}</span>` : ''}
-    </div>
-    ${t.nota ? `<div class="kd" style="color:#5b6472;">${esc(t.nota)}</div>` : ''}
-  </div>`;
-}
-function pintarPipeline() {
-  if (!TARJETAS) return;
-  const filt = piFiltradas();
-  $('kanban').innerHTML = TARJETAS.etapas.map(et => {
-    const cards = filt.filter(t => t.etapa === et);
-    return `<div class="kcol etapa-${et}">
-      <h4><span class="t"><span class="dt"></span>${et}</span><span class="cuen">${cards.length}</span></h4>
-      <div class="kcards" data-etapa="${et}">${cards.map(cardHtml).join('')}</div>
-      <button class="kadd" onclick="abrirModalTarjeta(null, '${et}')">+ Agregar</button>
-    </div>`;
-  }).join('');
-  iniciarDrag();
-}
-let arrastrandoId = null;
-function iniciarDrag() {
-  document.querySelectorAll('.kcard').forEach(c => {
-    c.addEventListener('dragstart', e => {
-      arrastrandoId = c.dataset.id;
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => c.classList.add('drag'), 0);
-    });
-    c.addEventListener('dragend', () => {
-      c.classList.remove('drag');
-      document.querySelectorAll('.kcol').forEach(k => k.classList.remove('dragsobre'));
-    });
-    c.addEventListener('click', () => { if (arrastrandoId) return; abrirModalTarjeta(+c.dataset.id); });
-  });
-  document.querySelectorAll('.kcards').forEach(z => {
-    z.addEventListener('dragover', e => { e.preventDefault(); z.closest('.kcol').classList.add('dragsobre'); });
-    z.addEventListener('dragleave', () => z.closest('.kcol').classList.remove('dragsobre'));
-    z.addEventListener('drop', async e => {
-      e.preventDefault();
-      const kcol = z.closest('.kcol');
-      kcol.classList.remove('dragsobre');
-      if (!arrastrandoId) return;
-      const etapa = z.dataset.etapa;
-      const t = TARJETAS.tarjetas.find(x => x.id === +arrastrandoId);
-      arrastrandoId = null;
-      if (!t || t.etapa === etapa) return;
-      try {
-        await api('/api/crm/pipeline/' + t.id, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etapa }),
-        });
-        t.etapa = etapa;
-        pintarPipeline();
-        toast('Tarjeta movida a ' + etapa, 'okm');
-      } catch (err) { toast(err.message, 'err'); }
-    });
-  });
-}
-function abrirModalTarjeta(id, etapaInicial) {
-  const t = id ? TARJETAS.tarjetas.find(x => x.id === id) : null;
-  tarjetaEditando = t ? t.id : null;
-  $('tarTitulo').textContent = t ? 'Editar tarjeta' : 'Nueva tarjeta';
-  $('tarNombre').value = t?.nombre || '';
-  $('tarTelefono').value = t?.telefono || '';
-  llenarSelect($('tarEtapa'), ETAPAS, null);
-  $('tarEtapa').value = t?.etapa || etapaInicial || 'NUEVO';
-  const crms = valoresUnicos(TARJETAS.tarjetas, 'crm');
-  const camps = valoresUnicos(TARJETAS.tarjetas, 'campana');
-  llenarSelect($('tarCrm'), crms, null);
-  $('tarCrm').value = t?.crm || '';
-  llenarSelect($('tarCampana'), camps, null);
-  $('tarCampana').value = t?.campana || '';
-  $('tarValor').value = t?.valor ?? '';
-  $('tarPrioridad').value = t?.prioridad || 'MEDIA';
-  $('tarCitaDia').value = t?.cita_dia ?? '';
-  $('tarCitaMes').value = t?.cita_mes || '';
-  $('tarCitaHora').value = t?.cita_hora || '';
-  $('tarNota').value = t?.nota || '';
-  $('btnTarBorrar').style.display = t ? '' : 'none';
-  $('msgTarForm').classList.add('oculto');
-  $('modalTarjeta').classList.add('abierto');
-}
-$('formTarjeta').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const b = $('btnTarGuardar'); b.disabled = true; b.textContent = 'Guardando…';
-  $('msgTarForm').classList.add('oculto');
-  const payload = {
-    nombre: $('tarNombre').value.trim(), telefono: $('tarTelefono').value.trim(),
-    etapa: $('tarEtapa').value, crm: $('tarCrm').value, campana: $('tarCampana').value,
-    valor: $('tarValor').value ? +$('tarValor').value : null,
-    prioridad: $('tarPrioridad').value,
-    cita_dia: $('tarCitaDia').value ? +$('tarCitaDia').value : null,
-    cita_mes: $('tarCitaMes').value, cita_hora: $('tarCitaHora').value.trim(),
-    nota: $('tarNota').value.trim(),
-  };
-  try {
-    const opts = { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) };
-    if (tarjetaEditando) await api('/api/crm/pipeline/' + tarjetaEditando, opts);
-    else await api('/api/crm/pipeline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    cerrarModales();
-    toast('Tarjeta guardada', 'okm');
-    cargarPipeline();
-  } catch (err) {
-    $('msgTarForm').textContent = err.message; $('msgTarForm').classList.remove('oculto');
-  } finally { b.disabled = false; b.textContent = 'Guardar tarjeta'; }
-});
-$('btnTarBorrar').addEventListener('click', async () => {
-  if (!tarjetaEditando || !confirm('¿Borrar esta tarjeta?')) return;
-  try {
-    await api('/api/crm/pipeline/' + tarjetaEditando, { method: 'DELETE' });
-    cerrarModales(); toast('Tarjeta borrada', 'okm'); cargarPipeline();
-  } catch (err) { toast(err.message, 'err'); }
-});
-$('piBuscar').addEventListener('input', pintarPipeline);
-$('btnPiRecargar').addEventListener('click', cargarPipeline);
-$('btnPiNueva').addEventListener('click', () => abrirModalTarjeta(null, 'NUEVO'));
-
-/* ---------------- Pipeline: palabras clave de WhatsApp ---------------- */
+/* ---------------- Agendados: palabras clave de WhatsApp ---------------- */
 async function cargarWhatsappCampanas() {
-  $('piWhatsappTexto').value = 'Cargando…';
+  $('agWhatsappTexto').value = 'Cargando…';
   try {
     const r = await api('/api/whatsapp/campanas');
-    $('piWhatsappTexto').value = Object.entries(r.campanas)
+    $('agWhatsappTexto').value = Object.entries(r.campanas)
       .map(([palabra, campana]) => `${palabra} = ${campana}`).join('\n');
-  } catch (e) { $('piWhatsappTexto').value = ''; }
+  } catch (e) { $('agWhatsappTexto').value = ''; }
 }
-$('btnPiWhatsapp').addEventListener('click', () => {
-  $('piWhatsappBloque').classList.toggle('oculto');
-  if (!$('piWhatsappBloque').classList.contains('oculto')) cargarWhatsappCampanas();
+$('btnAgWhatsapp').addEventListener('click', () => {
+  $('agWhatsappBloque').classList.toggle('oculto');
+  if (!$('agWhatsappBloque').classList.contains('oculto')) cargarWhatsappCampanas();
 });
-$('btnPiWhatsappGuardar').addEventListener('click', async () => {
-  $('msgPiWhatsapp').classList.add('oculto');
+$('btnAgWhatsappGuardar').addEventListener('click', async () => {
+  $('msgAgWhatsapp').classList.add('oculto');
   const campanas = {};
-  $('piWhatsappTexto').value.split('\n').forEach(linea => {
+  $('agWhatsappTexto').value.split('\n').forEach(linea => {
     const i = linea.indexOf('=');
     if (i === -1) return;
     const palabra = linea.slice(0, i).trim();
@@ -4272,7 +4058,7 @@ $('btnPiWhatsappGuardar').addEventListener('click', async () => {
     });
     toast('Palabras clave guardadas', 'okm');
   } catch (e) {
-    $('msgPiWhatsapp').textContent = e.message; $('msgPiWhatsapp').classList.remove('oculto');
+    $('msgAgWhatsapp').textContent = e.message; $('msgAgWhatsapp').classList.remove('oculto');
   }
 });
 
@@ -4923,46 +4709,6 @@ $('btnHisBorrar').addEventListener('click', async () => {
   } catch (err) { toast(err.message, 'err'); }
 });
 
-/* ---------------- CRM PLUS: DASHBOARD ---------------- */
-function tablaDatos(datos, prefijo, sufijo) {
-  const ent = Object.entries(datos);
-  if (!ent.length) return '<div class="vacio">Sin datos.</div>';
-  const total = ent.reduce((s, [, v]) => s + (Number(v) || 0), 0);
-  const max = Math.max(...ent.map(([, v]) => Number(v) || 0));
-  const filas = ent.map(([k, v]) => {
-    const n = Number(v) || 0;
-    const color = k === 'GANADO' ? '#2e9e5b' : k === 'PERDIDO' ? '#d64545' : '';
-    const pct = total ? Math.round(100 * n / total) : 0;
-    const ancho = max ? Math.round(100 * n / max) : 0;
-    return `<tr>
-      <td>${color ? `<span class="dot" style="background:${color}"></span>` : ''}${esc(k)}</td>
-      <td class="der valor">${prefijo}${n.toLocaleString('es-PE')} ${sufijo}${ancho ? `<span class="mini" style="width:${Math.max(ancho * 0.28, 4)}px"></span>` : ''}</td>
-      <td class="der pct">${pct}%</td></tr>`;
-  }).join('');
-  const pie = `<tfoot><tr><td>Total</td><td class="der valor">${prefijo}${total.toLocaleString('es-PE')} ${sufijo}</td><td class="der pct">100%</td></tr></tfoot>`;
-  return `<table class="dtab"><thead><tr><th>Concepto</th><th class="der">Valor</th><th class="der">%</th></tr></thead><tbody>${filas}</tbody>${ent.length > 1 ? pie : ''}</table>`;
-}
-async function cargarDashboard() {
-  $('dbFunnel').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando métricas&hellip;</div>';
-  try { DASH = await api('/api/crm/dashboard'); }
-  catch (e) { $('dbFunnel').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
-  const d = DASH;
-  const leads = Object.entries(d.funnel)
-    .filter(([k]) => !['GANADO', 'PERDIDO'].includes(k))
-    .reduce((s, [, v]) => s + v, 0);
-  $('dbLeads').textContent = leads;
-  $('dbGanados').textContent = d.ganados;
-  $('dbPerdidos').textContent = d.perdidos;
-  $('dbConversion').textContent = d.conversion + '%';
-  $('dbVentasN').textContent = d.ventas_registradas;
-  $('dbMonto').textContent = fmtMon(d.total_ventas);
-  $('dbFunnel').innerHTML = tablaDatos(d.funnel, '', 'tarjetas');
-  $('dbDoctor').innerHTML = tablaDatos(d.ventas_doctor, 'S/ ', '');
-  $('dbMes').innerHTML = tablaDatos(d.ventas_mes, 'S/ ', '');
-  $('dbCrm').innerHTML = tablaDatos(d.ag_por_crm, '', 'agendados');
-  $('dbCampana').innerHTML = tablaDatos(d.ag_por_campana, '', 'agendados');
-}
-
 /* ---------------- Analítica ---------------- */
 let ANA_GRAFICOS = {};
 function destroyChart(id) {
@@ -5392,8 +5138,6 @@ async function borrarMeta() {
 llenarSelect($('tareaTipo'), TIPO_TAREA, null);
 llenarSelect($('tareaPrioridad'), PRIORIDADES, null);
 llenarSelect($('notaTipo'), NOTA_TIPOS, null);
-llenarSelect($('tarPrioridad'), PRIORIDADES, null);
-llenarSelect($('tarCitaMes'), MESES, null);
 llenarSelect($('agMes'), MESES, null);
 llenarSelect($('agCitaMes'), MESES, null);
 llenarSelect($('veMes'), MESES, null);

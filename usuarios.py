@@ -48,8 +48,8 @@ _intentos = {}
 # ============================================================
 # Secciones de la interfaz (coinciden con data-pagina en index.html).
 SECCIONES = ['panel', 'reportes', 'agendados', 'venta', 'caja', 'inventario',
-             'planilla', 'hoy', 'calendario', 'pipeline', 'pacientes',
-             'dashboard', 'analitica', 'metaads', 'usuarios']
+             'planilla', 'hoy', 'calendario', 'pacientes',
+             'analitica', 'metaads', 'usuarios']
 
 # Qué recurso de la API cubre cada prefijo de ruta. El permiso se decide por
 # recurso, no por sección: varias pantallas comparten los mismos endpoints
