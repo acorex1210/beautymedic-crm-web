@@ -66,7 +66,7 @@ RECURSOS = {
     'pipeline': ['/api/crm/pipeline'],
     # Las notas se ven dentro de la ficha del paciente, no sólo en el pipeline.
     'notas': ['/api/crm/notas'],
-    'pacientes': ['/api/crm/pacientes'],
+    'pacientes': ['/api/crm/pacientes', '/api/pacientes'],
     'historias': ['/api/crm/historias'],
     'dashboard': ['/api/crm/dashboard'],
     'analitica': ['/api/analitica'],
@@ -116,6 +116,19 @@ ROLES = {
         'escritura': ['comun', 'agendados', 'hoy', 'historias'],
         # "Compró" crea filas en VENTA DIARIA aunque cuelgue de /agendados:
         # se niega aparte o sería una puerta trasera para registrar ventas.
+        'denegar': [('POST', '/api/crm/agendados/*/compro')],
+    },
+    'CRM1': {
+        'nombre': 'CRM (con Pacientes)',
+        'descripcion': ('Panel, Agendados, Venta diaria (sólo lectura), Citas de '
+                        'hoy, Calendario y Pacientes (sólo lectura, sin historias '
+                        'clínicas ni ficha de detalle).'),
+        'secciones': ['panel', 'agendados', 'venta', 'hoy', 'calendario', 'pacientes'],
+        # Sin 'historias' ni 'notas': no debe ver ni editar la ficha clínica del
+        # paciente, sólo el listado. Sin 'analitica': así el bloque de "Buscar
+        # historial"/"reactivar" (que cuelga de esa sección) queda oculto.
+        'lectura': ['comun', 'agendados', 'venta', 'hoy', 'pacientes'],
+        'escritura': ['comun', 'agendados', 'hoy'],
         'denegar': [('POST', '/api/crm/agendados/*/compro')],
     },
 }
@@ -181,6 +194,7 @@ def perfil_publico(u):
         'rol': u['rol'],
         'rol_nombre': cfg['nombre'],
         'secciones': cfg['secciones'],
+        'lectura': cfg['lectura'],
         'escritura': cfg['escritura'],
         'activo': u.get('activo', True),
         'creado': u.get('creado'),

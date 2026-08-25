@@ -1854,6 +1854,7 @@ const puedeVer = (sec) => !!YO && YO.secciones.includes(sec);
 /* El servidor manda la lista de recursos donde el rol puede escribir; aquí sólo
    se usa para no mostrar botones que igual serían rechazados con 403. */
 const puedeEditar = (rec) => !!YO && (YO.escritura === '*' || YO.escritura.includes(rec));
+const puedeLeer = (rec) => !!YO && (YO.lectura === '*' || YO.lectura.includes(rec));
 /* La meta del mes cruza Meta Ads con Analítica; sin ambas la tarjeta sobra. */
 const puedeVerMeta = () => puedeVer('metaads') && puedeVer('analitica');
 
@@ -4322,8 +4323,9 @@ function pintarPacientes() {
   $('paCompras').textContent = conCompras.length;
   $('paMonto').textContent = fmtMon(conCompras.reduce((s, p) => s + (p.total || 0), 0));
   const vis = filt.slice(0, paLimite);
+  const verDetalle = puedeLeer('historias');
   $('tablaPacientes').innerHTML = '<thead><tr><th>Paciente</th><th>Teléfono</th><th>CRM</th><th>Campaña</th><th>Etapa</th><th>Atenciones</th><th>Compras</th><th>Total</th><th>Historia</th><th>Última atención</th></tr></thead><tbody>' +
-    vis.map(p => `<tr style="cursor:pointer;" onclick="abrirModalPaciente(${PACIENTES.pacientes.indexOf(p)})">
+    vis.map(p => `<tr ${verDetalle ? `style="cursor:pointer;" onclick="abrirModalPaciente(${PACIENTES.pacientes.indexOf(p)})"` : ''}>
       <td><b>${esc(p.nombre || '—')}</b></td>
       <td class="num">${esc(p.telefono || '')}</td>
       <td>${esc(p.crm || '')}</td><td>${esc(p.campana || '')}</td>
@@ -4338,6 +4340,7 @@ function pintarPacientes() {
     : (filt.length === 0 ? '<div class="vacio">Sin resultados.</div>' : '');
 }
 async function abrirModalPaciente(pidx) {
+  if (!puedeLeer('historias')) return;
   const p = PACIENTES.pacientes[pidx];
   if (!p) return;
   pacienteActual = p;
