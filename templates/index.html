@@ -1193,9 +1193,9 @@
             <button class="btn gris" id="btnCalSiguiente" aria-label="Mes siguiente">&rarr;</button>
             <button class="btn borde pequeno" id="btnCalHoy">Ir a hoy</button>
             <button class="btn gris" id="btnCalRecargar" style="margin-left:auto;">Actualizar</button>
-            <span class="chip ok">Confirmado</span>
-            <span class="chip ambar">Pendiente por confirmar</span>
-            <span class="chip bad">No confirmado</span>
+            <span class="chip ok">Confirmado / asistió</span>
+            <span class="chip ambar">No contestó</span>
+            <span class="chip bad">Canceló / no asistió</span>
           </div>
           <div class="cal-cab"><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div></div>
           <div class="cal-grid" id="calGrid"></div>
@@ -4112,14 +4112,19 @@ async function guardarCompro() {
 /* ---------------- CRM PLUS: CALENDARIO ---------------- */
 let CAL_AG = null;
 let calMes = HOY.getMonth(), calAnio = HOY_A, calDiaSel = null;
-const CAL_CLASE = { CONFIRMADO: 'ok', PENDIENTE: 'ambar', NO_CONFIRMADO: 'bad' };
-const CAL_ETIQUETA = { CONFIRMADO: 'Confirmado', PENDIENTE: 'Pendiente por confirmar', NO_CONFIRMADO: 'No confirmado' };
+// Verde = confirmado/asistió, rojo = canceló/no asistió, amarillo = no
+// contestó (agrupa también el "no confirmó" explícito, mismo criterio que
+// el KPI "No confirmado / no contesta" de Agendados). Pendiente (sin
+// status todavía) se queda neutral, no es ninguno de los 3 colores pedidos.
+const CAL_CLASE = { CONFIRMADO: 'ok', PENDIENTE: 'gris', NO_CONTESTO: 'ambar', NO_ASISTIO: 'bad' };
+const CAL_ETIQUETA = { CONFIRMADO: 'Confirmado / asistió', PENDIENTE: 'Pendiente por confirmar', NO_CONTESTO: 'No contestó', NO_ASISTIO: 'Canceló / no asistió' };
 
 function estadoCita(q) {
   const s = String(q || '').trim().toUpperCase();
   if (!s) return 'PENDIENTE';
-  if (s.includes('NO ASISTIO') || s.includes('CANCEL') || s.includes('NO CONFIRM')) return 'NO_CONFIRMADO';
-  if (s.includes('CONFIRMADO') || s.includes('RECONFIRM')) return 'CONFIRMADO';
+  if (s.includes('NO ASISTIO') || s.includes('CANCEL')) return 'NO_ASISTIO';
+  if (s.includes('NO CONTEST') || s.includes('NO CONFIRM')) return 'NO_CONTESTO';
+  if (s.includes('CONFIRMADO') || s.includes('RECONFIRM') || s.includes('ASISTIO') || s.includes('SE REALIZO')) return 'CONFIRMADO';
   return 'PENDIENTE';
 }
 async function cargarCalendario() {
@@ -4195,18 +4200,23 @@ function pintarCalendario() {
   for (let i = 0; i < primerDiaSemana; i++) celdas.push('<div class="cal-dia cal-vacio"></div>');
   for (let dia = 1; dia <= diasEnMes; dia++) {
     const citas = calCitasDia(dia);
-    let c = 0, p = 0, n = 0;
+    let c = 0, p = 0, nc = 0, na = 0;
     citas.forEach(f => {
       const e = estadoCita(f.Q);
-      if (e === 'CONFIRMADO') c++; else if (e === 'NO_CONFIRMADO') n++; else p++;
+      if (e === 'CONFIRMADO') c++;
+      else if (e === 'NO_CONTESTO') nc++;
+      else if (e === 'NO_ASISTIO') na++;
+      else p++;
     });
-    total += citas.length; conf += c; pend += p; noconf += n;
+    total += citas.length; conf += c; pend += p; noconf += nc + na;
     const huellas = calHuellasDia(dia);
     const esHoy = dia === HOY_D && calMes === HOY.getMonth() && calAnio === HOY_A;
     const esSel = calDiaSel === dia;
     const tituloHuellas = huellas.map(h => `${h.cita.G || '—'} → movida a ${h.aDonde}`).join('\n');
-    const conteos = (c || p || n)
-      ? `<div class="cal-conteos">${c ? `<span class="cal-mini ok" title="${c} confirmada(s)">${c}</span>` : ''}${p ? `<span class="cal-mini ambar" title="${p} pendiente(s)">${p}</span>` : ''}${n ? `<span class="cal-mini bad" title="${n} no confirmada(s)">${n}</span>` : ''}</div>`
+    // Verde = confirmado/asistió, amarillo = no contestó, rojo = canceló/no
+    // asistió. Los pendientes (sin status) no llevan punto de color.
+    const conteos = (c || nc || na)
+      ? `<div class="cal-conteos">${c ? `<span class="cal-mini ok" title="${c} confirmada(s)/asistida(s)">${c}</span>` : ''}${nc ? `<span class="cal-mini ambar" title="${nc} no contestó">${nc}</span>` : ''}${na ? `<span class="cal-mini bad" title="${na} canceló/no asistió">${na}</span>` : ''}</div>`
       : '';
     celdas.push(`<div class="cal-dia${esHoy ? ' cal-hoy' : ''}${esSel ? ' cal-sel' : ''}${citas.length ? ' cal-con-citas' : ''}" onclick="calSeleccionarDia(${dia})">
       <div class="cal-num">${dia}</div>
