@@ -930,7 +930,8 @@
         <div class="kpis">
           <div class="kpi"><div class="eti">Total agendados</div><div class="num" id="kpiAgTotal">-</div></div>
           <div class="kpi verde"><div class="eti">Citas de hoy</div><div class="num" id="kpiAgHoy">-</div></div>
-          <div class="kpi naranja"><div class="eti">Este mes</div><div class="num" id="kpiAgMes">-</div></div>
+          <div class="kpi verde"><div class="eti">Asistidos / confirmados</div><div class="num" id="kpiAgAsistConf">-</div></div>
+          <div class="kpi rojo"><div class="eti">No confirmado / no contesta</div><div class="num" id="kpiAgNoConf">-</div></div>
         </div>
 
         <div class="tarjeta">
@@ -2445,6 +2446,20 @@ async function borrarReporte(archivo) {
 
 
 /* ---------------- AGENDADOS ---------------- */
+/* Categoría a partir del status crudo de la columna Q. Mismo criterio que
+   estadoHoy() (Citas de hoy), pero standalone: acá se aplica a TODOS los
+   agendados (no sólo los de hoy) y sin la capa de HOY_ACCIONES. */
+function categoriaAgendado(q) {
+  const s = String(q || '').trim().toUpperCase();
+  if (!s) return 'PENDIENTE';
+  if (s.includes('NO ASISTIO')) return 'NO_ASISTIO';
+  if (s.includes('NO CONTEST')) return 'NO_CONTESTO';
+  if (s.includes('NO CONFIRM')) return 'NO_CONFIRMADO';
+  if (s.includes('CANCEL')) return 'CANCELADA';
+  if (s.includes('ASISTIO') || s.includes('SE REALIZO')) return 'ASISTIO';
+  if (s.includes('CONFIRM')) return 'CONFIRMADO';
+  return 'PENDIENTE';
+}
 function chipAgendado(v) {
   const s = String(v || '').trim().toUpperCase();
   if (!s) return '';
@@ -2544,10 +2559,8 @@ function pintarAgendados() {
   // de KPIs de esta tarjeta.
   $('kpiAgTotal').textContent = filt.length;
   $('kpiAgHoy').textContent = filt.filter(f => f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy).length;
-  $('kpiAgMes').textContent = filt.filter(f => String(f.M || '') === HOY_M && Number(f.N || 0) === HOY_A).length;
-  // Se quitó el KPI "Confirmados": es un estado de tránsito (pasa a
-  // asistió/no asistió/no contestó en Citas de hoy), nadie se queda ahí,
-  // así que el número no representaba nada estable de mirar en Agendados.
+  $('kpiAgAsistConf').textContent = filt.filter(f => ['ASISTIO', 'CONFIRMADO'].includes(categoriaAgendado(f.Q))).length;
+  $('kpiAgNoConf').textContent = filt.filter(f => ['NO_CONFIRMADO', 'NO_CONTESTO', 'CANCELADA'].includes(categoriaAgendado(f.Q))).length;
 
   const vis = filt.slice(0, agLimite);
   $('tablaAgendados').innerHTML = '<thead><tr>' + orden.map(c => `<th${col[c] === 'TELEFONO' ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
