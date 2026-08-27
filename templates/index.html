@@ -1019,6 +1019,7 @@
           <div class="toolbar">
             <div class="tab-horas" id="veTabs"></div>
             <div class="buscar"><input type="search" id="veBuscar" placeholder="Buscar por nombre, teléfono, tratamiento&hellip;"></div>
+            <select id="veFiltroCampana"><option value="">Campaña: todas</option></select>
             <select id="veFiltroMes"><option value="">Mes: todos</option></select>
             <span style="display:flex;align-items:center;gap:6px;color:var(--gris);font-size:13px;">Día
               <input type="number" id="veDiaDesde" min="1" max="31" placeholder="1" style="width:60px;padding:9px 8px;border:1px solid var(--borde);border-radius:9px;">
@@ -2719,6 +2720,7 @@ async function cargarVenta() {
   }
   if (!VE.hojas[veAnioActivo]) veAnioActivo = Object.keys(VE.hojas)[0] || veAnioActivo;
   const v = VE.valores;
+  llenarSelect($('veFiltroCampana'), v.campana, 'Campaña: todas');
   llenarSelect($('veFiltroMes'), MESES, 'Mes: todos');
   llenarSelect($('veFiltroDoctor'), v.doctor, 'Doctor: todos');
   llenarSelect($('veFiltroStatus'), limpiarStatus(v.status), 'Status: todos');
@@ -2736,11 +2738,13 @@ function veFilasActivas() {
   const h = VE.hojas[veAnioActivo];
   if (!h) return [];
   const q = $('veBuscar').value.trim().toLowerCase();
+  const camp = $('veFiltroCampana').value;
   const doc = $('veFiltroDoctor').value, st = $('veFiltroStatus').value;
   const mes = $('veFiltroMes').value;
   const diaDesde = $('veDiaDesde').value ? +$('veDiaDesde').value : null;
   const diaHasta = $('veDiaHasta').value ? +$('veDiaHasta').value : null;
   return h.filas.filter(f => {
+    if (camp && String(f.S || '').trim() !== camp) return false;
     if (doc && String(f.M || '').trim() !== doc) return false;
     if (st && String(f.N || '').trim() !== st) return false;
     if (mes && String(f.C || '').trim() !== mes) return false;
@@ -2795,6 +2799,7 @@ function pintarVenta() {
 function cambiarAnioVenta(h) { veAnioActivo = h; pintarVenta(); }
 
 $('veBuscar').addEventListener('input', pintarVenta);
+$('veFiltroCampana').addEventListener('change', pintarVenta);
 $('veFiltroDoctor').addEventListener('change', pintarVenta);
 $('veFiltroStatus').addEventListener('change', pintarVenta);
 $('veFiltroMes').addEventListener('change', pintarVenta);

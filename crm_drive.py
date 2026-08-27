@@ -209,7 +209,7 @@ def _adaptador_venta(ruta, hoja, valores):
 AGENDADOS_SELECTS = {'crm': 'B', 'red_social': 'H', 'agendado_por': 'K',
                      'campana': 'O', 'confirmado': 'Q', 'reconfirmado': 'S'}
 VENTA_SELECTS = {'nuevo': 'H', 'distrito': 'I', 'sexo': 'K', 'tratamiento': 'L',
-                 'doctor': 'M', 'status': 'N', 'pago': 'P'}
+                 'doctor': 'M', 'status': 'N', 'pago': 'P', 'campana': 'S'}
 
 # Estilo por defecto por hoja (sólo se usa si la última fila no define el estilo)
 DEFAULT_STYLE = {'AGENDADOS': '115', 'VENTA 2026': '137', 'VENTA 2025': '99'}
