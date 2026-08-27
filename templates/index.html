@@ -931,7 +931,6 @@
           <div class="kpi"><div class="eti">Total agendados</div><div class="num" id="kpiAgTotal">-</div></div>
           <div class="kpi verde"><div class="eti">Citas de hoy</div><div class="num" id="kpiAgHoy">-</div></div>
           <div class="kpi naranja"><div class="eti">Este mes</div><div class="num" id="kpiAgMes">-</div></div>
-          <div class="kpi"><div class="eti">Confirmados</div><div class="num" id="kpiAgConf">-</div></div>
         </div>
 
         <div class="tarjeta">
@@ -1009,11 +1008,10 @@
       <!-- ============ VENTA DIARIA ============ -->
       <section id="pag-venta" class="oculto">
         <div class="kpis">
-          <div class="kpi"><div class="eti">Ventas registradas</div><div class="num" id="kpiVeTotal">-</div></div>
-          <div class="kpi dorado"><div class="eti">Monto total</div><div class="num" id="kpiVeMonto">-</div></div>
-          <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="kpiVeHoy">-</div></div>
-          <div class="kpi"><div class="eti">Se realizaron</div><div class="num" id="kpiVeOk">-</div></div>
-          <div class="kpi"><div class="eti">Dejaron pagado</div><div class="num" id="kpiVePagado">-</div></div>
+          <div class="kpi"><div class="eti">Asistidos</div><div class="num" id="kpiVeTotal">-</div></div>
+          <div class="kpi verde"><div class="eti">Realizados</div><div class="num" id="kpiVeOk">-</div></div>
+          <div class="kpi dorado"><div class="eti">Facturado</div><div class="num" id="kpiVeMonto">-</div></div>
+          <div class="kpi naranja"><div class="eti">Ticket promedio</div><div class="num" id="kpiVeTicket">-</div></div>
         </div>
 
         <div class="tarjeta">
@@ -2541,10 +2539,15 @@ function pintarAgendados() {
   const filt = agFiltradas();
   const hoy = `${HOY_D}/${HOY_M}/${HOY_A}`;
 
-  $('kpiAgTotal').textContent = AG.total;
+  // Total agendados: cuenta lo ya filtrado (no AG.total, que es fijo) para
+  // que el número se mueva junto con los filtros de arriba, como el resto
+  // de KPIs de esta tarjeta.
+  $('kpiAgTotal').textContent = filt.length;
   $('kpiAgHoy').textContent = filt.filter(f => f.L && f.M && f.N && `${f.L}/${f.M}/${f.N}` === hoy).length;
   $('kpiAgMes').textContent = filt.filter(f => String(f.M || '') === HOY_M && Number(f.N || 0) === HOY_A).length;
-  $('kpiAgConf').textContent = filt.filter(f => /CONFIRMADO/.test(String(f.Q || ''))).length;
+  // Se quitó el KPI "Confirmados": es un estado de tránsito (pasa a
+  // asistió/no asistió/no contestó en Citas de hoy), nadie se queda ahí,
+  // así que el número no representaba nada estable de mirar en Agendados.
 
   const vis = filt.slice(0, agLimite);
   $('tablaAgendados').innerHTML = '<thead><tr>' + orden.map(c => `<th${col[c] === 'TELEFONO' ? ' class="num"' : ''}>${col[c]}</th>`).join('') + '<th>ACCIONES</th></tr></thead><tbody>' +
@@ -2670,6 +2673,10 @@ function esRealizado(v) {
   return !esNoRealizado(s) && (s.includes('REALIZO') || s.includes('COMPRO') || s.includes('COMPLETA') || s.includes('SESION'));
 }
 function esVentaRegistrada(v) { return esRealizado(v) || esDejoPagado(v); }
+// "Asistidos": todo el que sí llegó a la cita, haya comprado o no. Sólo se
+// excluye el "NO ASISTIO" explícito (esNoRealizado agrupa ese caso junto con
+// "NO SE REALIZO", que sí asistió pero no compró).
+function esAsistio(v) { return !statusNormalizado(v).includes('NO ASISTIO'); }
 
 function chipStatus(v) {
   const s = statusNormalizado(v);
@@ -2743,13 +2750,13 @@ function pintarVenta() {
     return `<button class="${h === veAnioActivo ? 'activo' : ''}" onclick="cambiarAnioVenta('${h}')">Venta ${anio}</button>`;
   }).join('');
   const filt = veFilasActivas();
-  const ventasRegistradas = filt.filter(f => esVentaRegistrada(f.N));
-  const ventasHoy = ventasRegistradas.filter(f => f.B && f.C && f.D && `${f.B}/${f.C}/${f.D}` === `${HOY_D}/${HOY_M}/${HOY_A}`);
-  $('kpiVeTotal').textContent = ventasRegistradas.length;
-  $('kpiVeMonto').textContent = fmtMon(ventasRegistradas.reduce((s, f) => s + (Number(f.O) || 0), 0));
-  $('kpiVeHoy').textContent = ventasHoy.length;
-  $('kpiVeOk').textContent = ventasRegistradas.filter(f => esRealizado(f.N)).length;
-  $('kpiVePagado').textContent = ventasRegistradas.filter(f => esDejoPagado(f.N)).length;
+  const asistidos = filt.filter(f => esAsistio(f.N));
+  const realizados = filt.filter(f => esRealizado(f.N));
+  const facturado = realizados.reduce((s, f) => s + (Number(f.O) || 0), 0);
+  $('kpiVeTotal').textContent = asistidos.length;
+  $('kpiVeOk').textContent = realizados.length;
+  $('kpiVeMonto').textContent = fmtMon(facturado);
+  $('kpiVeTicket').textContent = realizados.length ? fmtMon(facturado / realizados.length) : fmtMon(0);
   $('veNota').textContent = `VENTA DIARIA (Drive) · último refresco ${VE.descargado || '—'}`;
   $('linkVeExportarExcel').href = '/api/reportes/exportar?tipo=venta_diaria&hoja=' + encodeURIComponent(veAnioActivo);
 
