@@ -1387,6 +1387,41 @@ def ajustar_stock(codigo, stock_nuevo, nota=''):
     return registrar_movimiento_stock(codigo, 'AJUSTE', stock_nuevo, 'Ajuste manual', nota)
 
 
+def _prefijo_venta(hoja, fila):
+    return f'VENTA:{hoja}:{fila}:'
+
+
+def reversar_stock_de_venta(hoja, fila):
+    """Si al crear la venta se descontó stock de un producto (venta con
+    producto de inventario), al borrar esa venta hay que devolver el stock:
+    si no, el inventario queda perdido para siempre aunque la venta ya no
+    exista. Busca el movimiento por la referencia estructurada que deja
+    crm_venta_nuevo ("VENTA:hoja:fila: nombre") y agrega una ENTRADA que lo
+    compensa — no se borra el movimiento original, para no perder el
+    historial del kardex.
+
+    Cuenta candidatos vs reversas ya hechas (en vez de sólo "existe una
+    reversa") para seguir funcionando bien si Drive reutiliza el mismo
+    número de fila para una venta distinta más adelante.
+    """
+    prefijo = _prefijo_venta(hoja, fila)
+    prefijo_reversa = f'Reversa venta borrada {prefijo}'
+    movs = _leer_hoja('MOVIMIENTOS_STOCK')
+    candidatos = [m for m in movs if str(m.get('H') or '').startswith(prefijo)]
+    ya_revertidos = sum(1 for m in movs if str(m.get('H') or '').startswith(prefijo_reversa))
+    if len(candidatos) <= ya_revertidos:
+        return None
+    mov = candidatos[-1]
+    codigo = mov.get('C')
+    cantidad = am.num(mov.get('F')) or 0
+    if not codigo or cantidad <= 0:
+        return None
+    registrar_movimiento_stock(codigo, 'ENTRADA', cantidad,
+                               referencia=f'{prefijo_reversa}{mov.get("D") or ""}',
+                               nota='Automático al borrar la venta')
+    return f'Se devolvieron {cantidad} unidad(es) de "{mov.get("D") or codigo}" al stock.'
+
+
 # ============================================================
 # CRM Plus: Planilla (trabajadores + pagos quincenales)
 # ============================================================

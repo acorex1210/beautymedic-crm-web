@@ -1814,8 +1814,12 @@ async def crm_venta_nuevo(data: VentaReq):
         codigo = str(d.get('producto_codigo') or '').strip()
         if codigo:
             try:
-                cp.registrar_salida_stock(codigo, d.get('cantidad') or 1,
-                                          referencia=f"Venta: {d.get('nombre')}")
+                # La referencia lleva hoja+fila de la venta (no sólo el
+                # nombre) para poder devolver el stock si esta venta se
+                # borra más adelante (ver reversar_stock_de_venta).
+                cp.registrar_salida_stock(
+                    codigo, d.get('cantidad') or 1,
+                    referencia=f"VENTA:{res['hoja']}:{res['fila']}: {d.get('nombre')}")
             except Exception as e:  # noqa: BLE001
                 aviso_inventario = f'{codigo}: {e}'
     if aviso_inventario:
@@ -1827,11 +1831,21 @@ async def crm_venta_nuevo(data: VentaReq):
 async def crm_venta_borrar(fila: int, hoja: str):
     with _bloqueo:
         try:
-            return crm.borrar_venta(hoja, fila)
+            res = crm.borrar_venta(hoja, fila)
         except ValueError as e:
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo borrar la venta en Drive: {e}')
+        # Si esta venta había descontado stock de un producto, se devuelve:
+        # si no, el inventario queda perdido para siempre aunque la venta
+        # ya no exista.
+        try:
+            aviso = cp.reversar_stock_de_venta(hoja, fila)
+            if aviso:
+                res['aviso_inventario'] = aviso
+        except Exception as e:  # noqa: BLE001
+            res['aviso_inventario'] = f'No se pudo devolver el stock automáticamente: {e}'
+    return res
 
 
 @app.put('/api/crm/venta/{fila}')

@@ -2914,8 +2914,8 @@ $('btnVeNuevo').addEventListener('click', abrirModalVenta);
 async function borrarVenta(fila, hoja) {
   if (!confirm('¿Borrar esta venta? Esta acción no se puede deshacer.')) return;
   try {
-    await api('/api/crm/venta/' + fila + '?hoja=' + encodeURIComponent(hoja), { method: 'DELETE' });
-    toast('Venta borrada.', 'okm');
+    const r = await api('/api/crm/venta/' + fila + '?hoja=' + encodeURIComponent(hoja), { method: 'DELETE' });
+    toast(r.aviso_inventario ? `Venta borrada. ${r.aviso_inventario}` : 'Venta borrada.', 'okm');
     veLimite = 400; cargarVenta();
   } catch (e) { toast(e.message, 'err'); }
 }
