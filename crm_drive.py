@@ -28,7 +28,7 @@ import threading
 import time
 import unicodedata
 import zipfile
-from datetime import datetime
+from datetime import date, datetime
 
 import openpyxl
 from google.oauth2 import service_account
@@ -409,6 +409,15 @@ def _celda_xml(col, fila, valor, estilo):
     s = f' s="{estilo}"' if estilo else ''
     if isinstance(valor, bool):
         return ''
+    # date/datetime debe ir como número de serie de Excel (celda numérica),
+    # nunca como texto: si no, se pierde el tipo fecha y queda un texto tipo
+    # "2026-08-20 00:00:00" en vez de mostrarse como 20/08/2026. Pasa cada
+    # vez que se reescribe una fila que ya tenía una FECHA (p. ej. al
+    # registrar una llamada en Re llamadas) porque el adaptador relee y
+    # reinserta todas las columnas existentes, FECHA incluida.
+    if isinstance(valor, (datetime, date)):
+        serie = openpyxl.utils.datetime.to_excel(valor)
+        return f'<c r="{ref}"{s}><v>{serie}</v></c>'
     if isinstance(valor, (int, float)):
         v = int(valor) if float(valor) == int(valor) else valor
         return f'<c r="{ref}"{s}><v>{v}</v></c>'
