@@ -2589,6 +2589,20 @@ async function cargarAgendados() {
     if (!habiaCache) tbody.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
     return;
   }
+  agActualizarSelectsYFiltros();
+}
+// Recarga AGENDADOS en segundo plano, sin spinner ni bloquear a quien está
+// en "Citas de hoy" (que ya actualizó su parte visible al instante) — sirve
+// para reconciliar campos derivados en el servidor (_asistio/_compro/
+// _fecha_cita, el historial de reprogramaciones) que no se pueden replicar
+// fielmente con una actualización local. Si ya hay una en curso, no se apila.
+let agRefrescoEnCurso = false;
+function agRefrescoSilencioso() {
+  if (!AG || agRefrescoEnCurso) return;
+  agRefrescoEnCurso = true;
+  cargarAgendados().finally(() => { agRefrescoEnCurso = false; });
+}
+function agActualizarSelectsYFiltros() {
   const col = AG.columnas, orden = Object.keys(col);
   const v = AG.valores;
   llenarSelect($('agFiltroCampana'), v.campana, 'Campaña: todas');
@@ -4066,18 +4080,35 @@ function renderResultadoHoyOperativo() {
 
 /* Marca una cita y repinta ambos cuadros; el estado queda guardado en
    AGENDADOS, así que el bloqueo persiste aunque se recargue la página. */
+// Texto exacto que cada ruta deja en la columna Q de AGENDADOS (ver los
+// endpoints /api/crm/agendados/{fila}/*, en app.py): antes se fabricaba acá
+// con estado.replace('_',' '), que no calzaba para SIN_COMPRA (guardaba
+// "ASISTIO SIN COMPRA" en Drive pero mostraba "SIN COMPRA" localmente) ni
+// para CANCELADA (Drive guarda "CANCELA"). Con el texto mal fabricado,
+// categoriaAgendado()/agFiltradas() clasificaban distinto a lo real hasta
+// el próximo refresco completo de Agendados.
+const Q_REAL_POR_ESTADO = {
+  CONFIRMADO: 'CONFIRMADO', CANCELADA: 'CANCELA', NO_ASISTIO: 'NO ASISTIO',
+  NO_CONTESTO: 'NO CONTESTO', ASISTIO: 'ASISTIO', SIN_COMPRA: 'ASISTIO SIN COMPRA',
+};
 async function marcarCita(fila, ruta, estado, aviso) {
   try {
     await api(`/api/crm/agendados/${fila}/${ruta}`, { method: 'POST' });
     HOY_ACCIONES[fila] = { estado, cls: CHIP_HOY[estado][0], txt: CHIP_HOY[estado][1] };
     const c = HOY_DATA.citas.find(x => x.fila === fila);
-    if (c) c.estado = estado === 'NO_ASISTIO' ? 'NO ASISTIO' : estado.replace('_', ' ');
+    if (c) c.estado = Q_REAL_POR_ESTADO[estado] || estado;
     const fAg = AG && AG.filas.find(x => x._fila === fila);
     if (fAg) fAg.Q = c ? c.estado : fAg.Q;
     renderCitasHoy();
     renderConfirmadosHoy();
     renderTodoHoyOperativo();
     if (AG) pintarAgendados();
+    // El texto de Q ya queda bien localmente, pero _asistio/_compro/_fecha_cita
+    // (que usan los filtros "No fueron"/"Sin compra" de Agendados) salen de
+    // cruzar AGENDADOS con VENTA DIARIA en el servidor — no se pueden
+    // recalcular fielmente acá. Un refresco en segundo plano los deja
+    // correctos sin bloquear ni interrumpir a quien está en Hoy.
+    agRefrescoSilencioso();
     toast(aviso, 'okm');
     return true;
   } catch (e) { toast(e.message, 'err'); return false; }
@@ -4117,9 +4148,15 @@ async function guardarReprogramar() {
     });
     cerrarModales();
     HOY_ACCIONES[fila] = { cls: 'info', txt: `↻ Reprogramada: ${dia}/${mes}/${anio}` };
+    // Antes no se tocaba fAg.L/M/N: la fila en Agendados seguía mostrando
+    // la fecha vieja de la cita (con AG ya cacheado en memoria) hasta
+    // recargar esa pantalla a mano.
+    const fAg = AG && AG.filas.find(x => x._fila === fila);
+    if (fAg) { fAg.L = dia; fAg.M = mes; fAg.N = anio; }
     renderCitasHoy();
     renderTodoHoyOperativo();
     if (AG) pintarAgendados();
+    agRefrescoSilencioso();
     toast('Cita reprogramada', 'okm');
   } catch (e) { $('msgRpForm').textContent = e.message; $('msgRpForm').classList.remove('oculto'); }
   finally { b.disabled = false; }
@@ -4193,10 +4230,16 @@ async function guardarCompro() {
     });
     cerrarModales();
     HOY_ACCIONES[fila] = { estado: 'ASISTIO', compra: true, cls: 'ok', txt: `✓ Compró ${fmtMon(total)}` };
+    // Antes no se tocaba fAg.Q ni se refrescaba nada: la fila en Agendados
+    // seguía con el estado de antes de la compra hasta recargar esa
+    // pantalla a mano.
+    const fAg = AG && AG.filas.find(x => x._fila === fila);
+    if (fAg) fAg.Q = 'ASISTIO';
     renderCitasHoy();
     renderConfirmadosHoy();
     renderTodoHoyOperativo();
     if (AG) pintarAgendados();
+    agRefrescoSilencioso();
     const recibo = res.venta && res.venta.hoja && res.venta.fila
       ? { hoja: res.venta.hoja, fila: res.venta.fila, n: res.venta.n || lineas.length }
       : null;

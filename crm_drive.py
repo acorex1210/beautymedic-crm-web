@@ -408,7 +408,14 @@ def _celda_xml(col, fila, valor, estilo):
     ref = f'{col}{fila}'
     s = f' s="{estilo}"' if estilo else ''
     if isinstance(valor, bool):
-        return ''
+        # bool es subclase de int en Python: si esta rama no estuviera antes
+        # que la de (int, float) de abajo, un True/False terminaría ahí como
+        # 1/0 numérico en vez de una celda booleana real. Antes directamente
+        # no se escribía nada (devolvía ''), así que una celda con un
+        # checkbox TRUE/FALSE agregado a mano (fuera de las columnas que
+        # gestiona la web) quedaba en blanco la próxima vez que se
+        # reescribiera esa fila desde el CRM.
+        return f'<c r="{ref}"{s} t="b"><v>{1 if valor else 0}</v></c>'
     # date/datetime debe ir como número de serie de Excel (celda numérica),
     # nunca como texto: si no, se pierde el tipo fecha y queda un texto tipo
     # "2026-08-20 00:00:00" en vez de mostrarse como 20/08/2026. Pasa cada
@@ -693,6 +700,18 @@ def _tel(t):
     return int(d) if d else None
 
 
+def _tel_comparar(t):
+    """Últimos 9 dígitos de un teléfono, sólo para COMPARAR (no para
+    guardar): _tel() conserva el número tal cual se tipeó, así que un mismo
+    celular con o sin el "+51" delante (987654321 vs 51987654321) comparaba
+    distinto y dejaba pasar ventas duplicadas del mismo paciente sin avisar."""
+    v = _tel(t)
+    if v is None:
+        return None
+    s = str(v)
+    return int(s[-9:]) if len(s) >= 9 else v
+
+
 def _int(v):
     n = am.num(v)
     return int(n) if n is not None else None
@@ -830,7 +849,7 @@ def buscar_venta_duplicada(ruta, hoja, valores):
     Devuelve un dict con los datos de la fila encontrada, o None.
     """
     nombre = _clave_texto(valores.get('G'))
-    tel = _tel(valores.get('F'))
+    tel = _tel_comparar(valores.get('F'))
     dia, mes, anio = valores.get('B'), valores.get('C'), valores.get('D')
     if not nombre or not dia or not mes:
         return None
@@ -857,7 +876,7 @@ def buscar_venta_duplicada(ruta, hoja, valores):
         if anio and _int(celda(r, 'D')) and _int(celda(r, 'D')) != _int(anio):
             continue
         mismo_nombre = _clave_texto(celda(r, 'G')) == nombre
-        mismo_tel = bool(tel) and _tel(celda(r, 'F')) == tel
+        mismo_tel = bool(tel) and _tel_comparar(celda(r, 'F')) == tel
         if not (mismo_nombre or mismo_tel):
             continue
         encontrada = {

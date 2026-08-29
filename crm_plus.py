@@ -1238,8 +1238,12 @@ def estado_caja(fecha=None):
     """
     fecha = fecha or _fecha_hoy_str()
     filas = leer_caja(fecha)
-    apertura = next((f for f in filas if f['tipo'] == 'APERTURA'), None)
-    cierre = next((f for f in filas if f['tipo'] == 'CIERRE'), None)
+    # `filas` viene ordenado ascendente por hora: si por lo que sea hay más
+    # de una APERTURA o CIERRE el mismo día (una corrección, un reintento),
+    # se toma la MÁS RECIENTE, no la primera — si no, una corrección de
+    # arqueo queda registrada pero invisible para siempre en este cálculo.
+    apertura = next((f for f in reversed(filas) if f['tipo'] == 'APERTURA'), None)
+    cierre = next((f for f in reversed(filas) if f['tipo'] == 'CIERRE'), None)
     movimientos = [f for f in filas if f['tipo'] in ('INGRESO', 'EGRESO')]
     ingresos = round(sum(f['monto'] for f in movimientos if f['tipo'] == 'INGRESO'), 2)
     egresos = round(sum(f['monto'] for f in movimientos if f['tipo'] == 'EGRESO'), 2)
@@ -1425,6 +1429,17 @@ def registrar_movimiento_stock(codigo, tipo, cantidad, referencia='', nota=''):
             nuevo_stock = stock_actual + cantidad
         elif tipo == 'SALIDA':
             nuevo_stock = stock_actual - cantidad
+            # No se puede "vender" stock que no existe: antes esto quedaba
+            # en negativo sin ningún aviso (una venta con cantidad mal
+            # tipeada, o dos ventas casi simultáneas del último producto,
+            # dejaban el kardex corrupto en silencio). Los llamadores
+            # (venta directa, "Compró" desde Agendados, salida manual) ya
+            # atrapan esta excepción y la muestran como aviso sin bloquear
+            # la venta en sí.
+            if nuevo_stock < 0:
+                raise ValueError(
+                    f'Stock insuficiente de "{prod_f.get("C") or codigo}": '
+                    f'quedan {stock_actual}, se pidieron {cantidad}')
         else:
             nuevo_stock = cantidad
         prod_f['E'] = nuevo_stock
@@ -2006,7 +2021,14 @@ def _fila_historia(datos, base=None):
     for letra, campo in HISTORIA_TEXTOS.items():
         poner(letra, campo, str(datos.get(campo) or '').strip())
     poner('R', 'direccion', str(datos.get('direccion') or '').strip())
-    # Los bloques van como JSON en una celda: se guardan enteros o no se tocan.
+    # Los bloques van como JSON en una celda: se guardan enteros o no se
+    # tocan si el campo ni siquiera viene en el PATCH. patologico/piel/
+    # anatomia son diccionarios {clave: valor} — si SÍ vienen pero con sólo
+    # algunas claves (p. ej. {"fuma": "SI"} de un catálogo con 10 ítems), se
+    # mezclan sobre lo que ya había, en vez de reemplazar el bloque entero y
+    # perder las demás respuestas ya guardadas. "citas" es una tabla (lista
+    # de filas), no un diccionario: ahí sí se reemplaza completa, que es el
+    # comportamiento correcto para una lista que el formulario reenvía entera.
     limpiadores = {
         'patologico': lambda v: _limpiar_sino(v, HISTORIA_PATOLOGICO),
         'piel': lambda v: _limpiar_sino(v, HISTORIA_PIEL),
@@ -2015,7 +2037,12 @@ def _fila_historia(datos, base=None):
     }
     for campo, letra in HISTORIA_BLOQUES.items():
         if not parcial or campo in datos:
-            valor = limpiadores[campo](datos.get(campo))
+            entrante = datos.get(campo)
+            if parcial and campo != 'citas' and isinstance(entrante, dict):
+                previo = _leer_json(f.get(letra), {})
+                if isinstance(previo, dict):
+                    entrante = {**previo, **entrante}
+            valor = limpiadores[campo](entrante)
             f[letra] = json.dumps(valor, ensure_ascii=False) if valor else ''
     if am.num(datos.get('agendado_fila')):
         f['Q'] = am.num(datos['agendado_fila'])
