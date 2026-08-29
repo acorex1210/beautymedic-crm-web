@@ -59,6 +59,10 @@ AGENDADOS_COLS = {
     'P': 'HORA', 'Q': 'CONFIRMADO', 'R': 'OBSERVACION', 'S': 'RECONFIRMADO',
     'T': 'OBSERVACION2',
 }
+REMARKETING_COLS = {
+    'A': 'FECHA', 'B': 'CELULAR', 'C': 'CAMPAÑA', 'D': 'CONTESTA',
+    'E': 'AGENDA', 'F': 'CRM', 'G': 'COMENTARIO',
+}
 VENTA_COLS = {
     'B': 'DIA', 'C': 'MES', 'D': 'AÑO', 'E': 'DNI', 'F': 'CEL. PACIENTE',
     'G': 'NOMBRE Y APELLIDO', 'H': 'NUEVO/RECURRENTE', 'I': 'DISTRITO',
@@ -76,6 +80,12 @@ AGENDADOS_CANON = {
     'campana': 'O', 'hora': 'P', 'confirmado': 'Q', 'observacion': 'R',
     'reconfirmado': 'S', 'observacion2': 'T',
 }
+# Campo lógico -> letra canónica para REMARKETING (layout fijo de la cola de
+# re-llamadas)
+REMARKETING_CANON = {
+    'fecha': 'A', 'celular': 'B', 'campana': 'C', 'contesta': 'D',
+    'agenda': 'E', 'crm': 'F', 'comentario': 'G',
+}
 # Campo lógico -> letra canónica para VENTA (layout fijo de VENTA DIARIA)
 VENTA_CANON = {
     'dia': 'B', 'mes': 'C', 'anio': 'D', 'dni': 'E', 'cel': 'F',
@@ -91,6 +101,11 @@ _HEADERS_AGENDADOS = {
     'CONFIRMADO': 'confirmado', 'OBSERVACION': 'observacion',
     'RECONFIRMADO': 'reconfirmado', 'OBSERVACION2': 'observacion2',
     'DNI': 'dni', 'ASISTENCIA': 'asistencia',
+}
+_HEADERS_REMARKETING = {
+    'FECHA': 'fecha', 'CELULAR': 'celular', 'CAMPANA': 'campana',
+    'CONTESTA': 'contesta', 'AGENDA': 'agenda', 'CRM': 'crm',
+    'COMENTARIO': 'comentario',
 }
 _HEADERS_VENTA = {
     'DNI': 'dni', 'CEL': 'cel', 'CEL. PACIENTE': 'cel',
@@ -210,9 +225,14 @@ AGENDADOS_SELECTS = {'crm': 'B', 'red_social': 'H', 'agendado_por': 'K',
                      'campana': 'O', 'confirmado': 'Q', 'reconfirmado': 'S'}
 VENTA_SELECTS = {'nuevo': 'H', 'distrito': 'I', 'sexo': 'K', 'tratamiento': 'L',
                  'doctor': 'M', 'status': 'N', 'pago': 'P', 'campana': 'S'}
+REMARKETING_SELECTS = {'campana': 'C', 'crm': 'F'}
 
 # Estilo por defecto por hoja (sólo se usa si la última fila no define el estilo)
-DEFAULT_STYLE = {'AGENDADOS': '115', 'VENTA 2026': '137', 'VENTA 2025': '99'}
+# El número es un índice real de xl/styles.xml (cellXfs) de cada archivo,
+# no algo arbitrario: usar uno que no exista revienta la fila (visto en vivo
+# con REMARKETING, ver commit que corrigió '900' -> '23').
+DEFAULT_STYLE = {'AGENDADOS': '115', 'VENTA 2026': '137', 'VENTA 2025': '99',
+                  'REMARKETING': '23'}
 
 # ============================================================
 # DRIVE
@@ -985,6 +1005,28 @@ def _adaptador_edicion_agendados(ruta, fila_num, valores):
     return actual
 
 
+def _adaptador_edicion_remarketing(ruta, fila_num, valores):
+    """Igual que _adaptador_edicion_agendados pero para REMARKETING: parte
+    de la fila actual (conserva FECHA/CELULAR/CAMPAÑA/CRM que el registro
+    de la llamada no toca) y sobreescribe sólo lo editado (CONTESTA, AGENDA,
+    COMENTARIO)."""
+    _, campos, _ = _detectar_columnas(ruta, 'REMARKETING', _HEADERS_REMARKETING)
+    inverso = _mapa_inverso(campos, REMARKETING_CANON)
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    ws = wb['REMARKETING']
+    actual = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=fila_num, column=c).value
+        if v is not None and v != '':
+            actual[openpyxl.utils.get_column_letter(c)] = v
+    wb.close()
+    for cl, v in valores.items():
+        real = inverso.get(cl)
+        if real:
+            actual[real] = v
+    return actual
+
+
 def _adaptador_edicion_venta(ruta, hoja, fila_num, valores):
     """Construye {letra_real: valor} para reescribir una fila editada de VENTA
     DIARIA. Parte de los valores actuales de la fila (así se conservan
@@ -1329,6 +1371,94 @@ def leer_agendados():
             filas.append(fila)
     return {'filas': filas, 'total': len(filas),
             'descargado': fecha_descarga('AGENDADOS'), 'columnas': columnas}
+
+
+def leer_remarketing():
+    """Devuelve {'filas': [{letra_canónica: valor}...], 'total': n,
+    'columnas': {letra_canónica: encabezado}} de la cola de re-llamadas.
+
+    Cada fila mezcla pendientes (CONTESTA vacío, todavía sin llamar) con ya
+    atendidas: es el mismo criterio que tenía el Drive original, donde se
+    distinguía por si esa columna tenía valor o no."""
+    ruta = descargar('REMARKETING', am.REMARKETING_FID)
+    n_fila, campos, textos = _detectar_columnas(ruta, 'REMARKETING',
+                                                _HEADERS_REMARKETING)
+    inverso = _mapa_inverso(campos, REMARKETING_CANON)
+    if not inverso:
+        n_fila = 5
+        inverso = {c: c for c in REMARKETING_COLS}
+        textos = REMARKETING_COLS
+    columnas = {}
+    for cl, real in sorted(inverso.items(),
+                           key=lambda kv: openpyxl.utils.column_index_from_string(kv[1])):
+        columnas[cl] = textos[real]
+    inverso_idx = {cl: openpyxl.utils.column_index_from_string(real)
+                   for cl, real in inverso.items()}
+    wb = _cargar_wb(ruta)
+    ws = wb['REMARKETING']
+    filas = []
+    for r in range(n_fila + 1, ws.max_row + 1):
+        fila = {}
+        for cl, idx in inverso_idx.items():
+            v = ws.cell(row=r, column=idx).value
+            if v is None:
+                continue
+            if isinstance(v, float) and v == int(v):
+                v = int(v)
+            if hasattr(v, 'strftime'):
+                v = v.strftime('%d/%m/%Y')
+            fila[cl] = v
+        if any(v is not None and v != '' for v in fila.values()):
+            fila['_fila'] = r
+            filas.append(fila)
+    return {'filas': filas, 'total': len(filas),
+            'descargado': fecha_descarga('REMARKETING'), 'columnas': columnas}
+
+
+def actualizar_campos_remarketing(fila_num, campos):
+    """Actualiza sólo los campos canónicos indicados de una fila de
+    REMARKETING (p. ej. {'D': 'CONTESTA', 'E': 'SI', 'G': 'AGENDÓ'}), igual
+    que actualizar_campos_agendado. Conserva el resto de la fila."""
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    campos = {cl: v for cl, v in (campos or {}).items()
+              if v is not None and v != ''}
+    if not campos:
+        raise ValueError('No hay campos para actualizar')
+    with _lock:
+        fid = am.REMARKETING_FID
+        if _es_sheets(fid):
+            ruta = descargar('REMARKETING', fid)
+            _, campos_hdr, _ = _detectar_columnas(ruta, 'REMARKETING',
+                                                  _HEADERS_REMARKETING)
+            inverso = _mapa_inverso(campos_hdr, REMARKETING_CANON)
+            actual = _fila_actual_sheets(fid, 'REMARKETING', fila_num)
+            for cl, v in campos.items():
+                real = inverso.get(cl)
+                if real:
+                    actual[real] = v
+            letras = sorted(actual, key=openpyxl.utils.column_index_from_string)
+            ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
+            fila_row = [actual.get(openpyxl.utils.get_column_letter(c))
+                        for c in range(1, ncols + 1)]
+            fila_row = ['' if v is None else v for v in fila_row]
+            _sheets().spreadsheets().values().update(
+                spreadsheetId=fid,
+                range=f"'REMARKETING'!A{fila_num}",
+                valueInputOption='RAW',
+                body={'values': [fila_row]}).execute()
+            invalidar('REMARKETING')
+            return {'ok': True, 'fila': fila_num, 'hoja': 'REMARKETING',
+                    'campos': campos}
+        conflicto = _editar_xlsx_seguro(
+            'REMARKETING', fid, 'REMARKETING', fila_num, campos,
+            adaptador=lambda ruta, v: _adaptador_edicion_remarketing(ruta, fila_num, v))
+    return {'ok': True, 'fila': fila_num, 'hoja': 'REMARKETING',
+            'campos': campos, 'conflicto': conflicto}
+
+
+def valores_unicos_remarketing(filas):
+    return {k: _unicos(filas, col) for k, col in REMARKETING_SELECTS.items()}
 
 
 def leer_venta():

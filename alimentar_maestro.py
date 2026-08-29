@@ -53,6 +53,9 @@ CREDENCIALES = os.environ.get('CREDENCIALES',
 GDRIVE_CREDENTIALS_JSON = os.environ.get('GDRIVE_CREDENTIALS_JSON', '')
 AGENDADOS_FID = os.environ.get('AGENDADOS_FID', '1So_1Fh744c3K9kss2oA1twjBLJpgrSxZCu2lqhWpqJM')
 VENTA_FID = os.environ.get('VENTA_FID', '1TDM7ZFV6Jdsqc6i4CadNkwPQNdrIBhu7')
+# "REMARKETING DERMA ESSENZA.xlsx": cola de re-llamadas (leads que no
+# agendaron/compraron), antes trabajada a mano en Drive.
+REMARKETING_FID = os.environ.get('REMARKETING_FID', '1TCj2K9uvN0VF6tRivlYPYGL9Ej8Pk_D3')
 MAESTRO = os.environ.get('MAESTRO_PATH',
                          os.path.expanduser('~/Downloads/BD DATA.xlsx'))
 MAESTRO_FID = os.environ.get('MAESTRO_FID', '').strip()

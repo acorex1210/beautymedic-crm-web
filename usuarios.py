@@ -48,7 +48,7 @@ _intentos = {}
 # ============================================================
 # Secciones de la interfaz (coinciden con data-pagina en index.html).
 SECCIONES = ['panel', 'reportes', 'agendados', 'venta', 'caja', 'inventario',
-             'planilla', 'hoy', 'calendario', 'pacientes',
+             'planilla', 'hoy', 'calendario', 'pacientes', 'remarketing',
              'analitica', 'metaads', 'usuarios']
 
 # Qué recurso de la API cubre cada prefijo de ruta. El permiso se decide por
@@ -67,6 +67,7 @@ RECURSOS = {
     # Las notas se ven dentro de la ficha del paciente, no sólo en el pipeline.
     'notas': ['/api/crm/notas'],
     'pacientes': ['/api/crm/pacientes', '/api/pacientes'],
+    'remarketing': ['/api/crm/remarketing'],
     'historias': ['/api/crm/historias'],
     'dashboard': ['/api/crm/dashboard'],
     'analitica': ['/api/analitica'],
@@ -106,14 +107,15 @@ ROLES = {
     },
     'CRM': {
         'nombre': 'CRM',
-        'descripcion': ('Panel, Agendados, Venta diaria (sólo lectura), Hoy y '
-                        'Calendario. No puede registrar ni editar ventas.'),
-        'secciones': ['panel', 'agendados', 'venta', 'hoy', 'calendario'],
+        'descripcion': ('Panel, Agendados, Venta diaria (sólo lectura), Hoy, '
+                        'Calendario y Re llamadas. No puede registrar ni editar '
+                        'ventas.'),
+        'secciones': ['panel', 'agendados', 'venta', 'hoy', 'calendario', 'remarketing'],
         # Historias entra porque el flujo de "asistió" en Hoy abre la historia
         # clínica; sin esto ese botón se rompería.
-        'lectura': ['comun', 'agendados', 'venta', 'hoy', 'historias'],
+        'lectura': ['comun', 'agendados', 'venta', 'hoy', 'historias', 'remarketing'],
         # 'comun' incluye /api/yo/clave: todos pueden cambiar su contraseña.
-        'escritura': ['comun', 'agendados', 'hoy', 'historias'],
+        'escritura': ['comun', 'agendados', 'hoy', 'historias', 'remarketing'],
         # "Compró" crea filas en VENTA DIARIA aunque cuelgue de /agendados:
         # se niega aparte o sería una puerta trasera para registrar ventas.
         'denegar': [('POST', '/api/crm/agendados/*/compro')],

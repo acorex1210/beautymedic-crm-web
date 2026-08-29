@@ -783,6 +783,10 @@
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="lab">Pacientes</span>
       </a>
+      <a data-pagina="remarketing">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <span class="lab">Re llamadas</span>
+      </a>
       <div class="sub">Analítica</div>
       <a data-pagina="analitica">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
@@ -1259,6 +1263,32 @@
         </div>
       </section>
 
+      <section id="pag-remarketing" class="oculto">
+        <div class="kpis">
+          <div class="kpi"><div class="eti">Por llamar</div><div class="num" id="rmKpiPendientes">-</div></div>
+          <div class="kpi verde"><div class="eti">Agendaron</div><div class="num" id="rmKpiAgendo">-</div></div>
+          <div class="kpi naranja"><div class="eti">Contestaron, no agendaron</div><div class="num" id="rmKpiContesto">-</div></div>
+          <div class="kpi rojo"><div class="eti">No contestaron</div><div class="num" id="rmKpiNoContesto">-</div></div>
+        </div>
+
+        <div class="tarjeta">
+          <div class="toolbar">
+            <div class="buscar"><input type="search" id="rmBuscar" placeholder="Buscar por teléfono&hellip;"></div>
+            <select id="rmFiltroCampana"><option value="">Campaña: todas</option></select>
+            <button class="btn gris" id="btnRmRecargar">Actualizar</button>
+          </div>
+          <div class="nota" id="rmNota" style="margin:0 0 10px;"></div>
+          <h3>Por llamar</h3>
+          <div id="rmListaPendientes"></div>
+          <div class="mas" id="rmMas"></div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Historial de llamadas</h3>
+          <div class="tabla-wrap"><table class="drive" id="tablaRemarketing"></table></div>
+          <div class="mas" id="rmMasHist"></div>
+        </div>
+      </section>
 
       <section id="pag-analitica" class="oculto">
         <div class="filtros-analitica">
@@ -1804,6 +1834,40 @@
   </div>
 </div>
 
+<!-- ============ MODAL RE LLAMADAS ============ -->
+<div class="modal-fondo" id="modalRemarketing">
+  <div class="modal" style="max-width:480px;">
+    <div class="cab"><h3>Registrar llamada</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
+    <div class="nota" id="rmModalContacto" style="margin:0 0 12px;"></div>
+    <div class="form-grid">
+      <div class="campo">
+        <label>¿Contestó?</label>
+        <select id="rmContesta">
+          <option value="CONTESTA">Sí, contestó</option>
+          <option value="NO CONTESTA">No contestó</option>
+        </select>
+      </div>
+      <div class="campo" id="rmCampoAgenda">
+        <label>¿Agendó?</label>
+        <select id="rmAgenda">
+          <option value="NO">No</option>
+          <option value="SI">Sí</option>
+        </select>
+      </div>
+      <div class="campo ancho">
+        <label>Comentario</label>
+        <div class="toolbar" id="rmChips" style="gap:6px;margin-bottom:8px;"></div>
+        <textarea id="rmComentario" rows="2" placeholder="Ej. Casilla de voz, corta llamada&hellip;"></textarea>
+      </div>
+    </div>
+    <div class="mensaje err oculto" id="msgRmForm"></div>
+    <div class="pies">
+      <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
+      <button type="button" class="btn verde" id="btnRmGuardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -1942,6 +2006,7 @@ const TITULOS = {
   planilla: ['Planillas', 'Sueldos y pagos quincenales de los trabajadores'],
   calendario: ['Calendario', 'Vista general de citas agendadas'],
   pacientes: ['Pacientes', 'Directorio de pacientes e historial'],
+  remarketing: ['Re llamadas', 'Cola de re-llamadas a leads que no agendaron ni compraron'],
   analitica: ['Analítica', 'KPIs y métricas del maestro'],
   metaads: ['Meta Ads', 'Presupuestos y rendimiento de publicidad (import manual)'],
   usuarios: ['Usuarios', 'Accesos al sistema y permisos por rol'],
@@ -1965,6 +2030,7 @@ function pagina(nombre) {
   if (nombre === 'reportes') cargarEstado();
   if (nombre === 'calendario') cargarCalendario();
   if (nombre === 'pacientes') cargarPacientes();
+  if (nombre === 'remarketing') cargarRemarketing();
   if (nombre === 'analitica') cargarAnalitica();
   if (nombre === 'metaads') cargarMeta();
 }
@@ -4719,6 +4785,124 @@ $('paTodos').addEventListener('change', cargarPacientes);
 $('btnPaLimpiarFechas').addEventListener('click', () => {
   $('paDesde').value = ''; $('paHasta').value = ''; cargarPacientes();
 });
+
+/* ---------------- CRM PLUS: RE LLAMADAS (remarketing) ----------------
+   Reemplaza la hoja "REMARKETING DERMA ESSENZA" que se llevaba a mano en
+   Drive: misma cola (fecha/celular/campaña asignados, CONTESTA/AGENDA/
+   COMENTARIO por llenar), pero con botones en vez de escribir texto. Un
+   lead está "por llamar" mientras la columna CONTESTA siga vacía. */
+let REMK = null, rmLimite = 200, rmFilaEditando = null;
+const RM_CHIPS = ['CASILLA DE VOZ', 'CORTA LLAMADA', 'DESVIO DE LLAMADA',
+  'NO DESEA', 'VIVE LEJOS', 'SE ENCUENTRA TRABAJANDO', 'DEVOLVER LA LLAMADA',
+  'LÍNEA FUERA DE SERVICIO'];
+
+async function cargarRemarketing() {
+  const cont = $('rmListaPendientes');
+  const habiaCache = !!REMK;
+  if (habiaCache) pintarRemarketing();
+  else cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando cola de re-llamadas&hellip;</div>';
+  try {
+    REMK = await api('/api/crm/remarketing');
+  } catch (e) {
+    if (!habiaCache) cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`;
+    return;
+  }
+  llenarSelect($('rmFiltroCampana'), REMK.valores.campana, 'Campaña: todas');
+  $('rmNota').textContent = `${REMK.total} registros en la cola · último refresco ${REMK.descargado || '—'}`;
+  pintarRemarketing();
+}
+
+function esContesta(v) { return String(v || '').trim().toUpperCase() === 'CONTESTA'; }
+function esNoContesta(v) { return String(v || '').trim().toUpperCase() === 'NO CONTESTA'; }
+function esAgendoRemk(v) { return String(v || '').trim().toUpperCase() === 'SI'; }
+
+function rmFiltradas() {
+  const q = $('rmBuscar').value.trim().toLowerCase();
+  const camp = $('rmFiltroCampana').value;
+  return REMK.filas.filter(f => {
+    if (camp && String(f.C || '').trim() !== camp) return false;
+    if (q && !String(f.B || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function pintarRemarketing() {
+  if (!REMK) return;
+  const filt = rmFiltradas();
+  // "Por llamar": tiene celular (si no, es una fila de plantilla vacía) y
+  // todavía no se marcó CONTESTA/NO CONTESTA.
+  const pendientes = filt.filter(f => f.B && !f.D);
+  const agendaron = filt.filter(f => esAgendoRemk(f.E));
+  const contestaron = filt.filter(f => esContesta(f.D) && !esAgendoRemk(f.E));
+  const noContestaron = filt.filter(f => esNoContesta(f.D));
+
+  $('rmKpiPendientes').textContent = pendientes.length;
+  $('rmKpiAgendo').textContent = agendaron.length;
+  $('rmKpiContesto').textContent = contestaron.length;
+  $('rmKpiNoContesto').textContent = noContestaron.length;
+
+  const vis = pendientes.slice(0, rmLimite);
+  $('rmListaPendientes').innerHTML = vis.length ? vis.map(f => `
+    <div class="item-hoy">
+      <span class="hora">${esc(f.A || '—')}</span>
+      <div class="info"><b>${esc(f.B || '—')}</b><small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}</small></div>
+      <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila})">📞 Registrar llamada</button>
+    </div>`).join('') : '<div class="vacio">No hay nadie pendiente por llamar con estos filtros.</div>';
+  $('rmMas').innerHTML = pendientes.length > rmLimite
+    ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${pendientes.length - rmLimite} restantes)</button>` : '';
+
+  const historial = filt.filter(f => f.D).slice().reverse().slice(0, rmLimite);
+  $('tablaRemarketing').innerHTML = '<thead><tr><th>Fecha</th><th class="num">Celular</th><th>Campaña</th><th>Contestó</th><th>Agendó</th><th>CRM</th><th>Comentario</th></tr></thead><tbody>' +
+    historial.map(f => `<tr>
+      <td>${esc(f.A || '')}</td><td class="num">${esc(f.B || '')}</td><td>${esc(f.C || '')}</td>
+      <td>${esContesta(f.D) ? '<span class="chip ok">CONTESTA</span>' : '<span class="chip bad">NO CONTESTA</span>'}</td>
+      <td>${esAgendoRemk(f.E) ? '<span class="chip ok">SÍ</span>' : '<span class="chip gris">NO</span>'}</td>
+      <td>${esc(f.F || '')}</td><td>${esc(f.G || '')}</td>
+    </tr>`).join('') + '</tbody>';
+  $('rmMasHist').innerHTML = filt.filter(f => f.D).length > rmLimite
+    ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más</button>` : '';
+}
+
+function abrirModalRemarketing(fila) {
+  const f = REMK.filas.find(x => x._fila === fila);
+  if (!f) return;
+  rmFilaEditando = fila;
+  $('rmModalContacto').innerHTML = `<b>${esc(f.B || '—')}</b> · ${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}`;
+  $('rmContesta').value = 'CONTESTA';
+  $('rmAgenda').value = 'NO';
+  $('rmComentario').value = '';
+  $('msgRmForm').classList.add('oculto');
+  $('rmChips').innerHTML = RM_CHIPS.map(c => `<button type="button" class="btn borde pequeno" onclick="$('rmComentario').value='${esc(c)}'">${esc(c)}</button>`).join('');
+  actualizarCampoAgendaRemk();
+  $('modalRemarketing').classList.add('abierto');
+}
+function actualizarCampoAgendaRemk() {
+  $('rmCampoAgenda').classList.toggle('oculto', $('rmContesta').value !== 'CONTESTA');
+}
+$('rmContesta').addEventListener('change', actualizarCampoAgendaRemk);
+$('btnRmGuardar').addEventListener('click', async () => {
+  const b = $('btnRmGuardar');
+  const contesta = $('rmContesta').value;
+  const payload = {
+    contesta,
+    agenda: contesta === 'CONTESTA' ? $('rmAgenda').value : 'NO',
+    comentario: $('rmComentario').value.trim(),
+  };
+  b.disabled = true; b.textContent = 'Guardando…';
+  try {
+    await api(`/api/crm/remarketing/${rmFilaEditando}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    cerrarModales();
+    toast('Llamada registrada.', 'okm');
+    cargarRemarketing();
+  } catch (e) {
+    $('msgRmForm').textContent = e.message; $('msgRmForm').classList.remove('oculto');
+  } finally { b.disabled = false; b.textContent = 'Guardar'; }
+});
+$('rmBuscar').addEventListener('input', pintarRemarketing);
+$('rmFiltroCampana').addEventListener('change', pintarRemarketing);
+$('btnRmRecargar').addEventListener('click', () => { rmLimite = 200; cargarRemarketing(); });
 
 /* ---------------- CRM PLUS: TAREAS (contextuales, desde Hoy) ---------------- */
 function abrirModalTarea(t) {

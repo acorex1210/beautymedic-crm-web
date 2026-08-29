@@ -342,6 +342,13 @@ class MotivoReq(BaseModel):
     motivo: str = ''
 
 
+class RemarketingReq(BaseModel):
+    """Registrar el resultado de una llamada de re-llamadas (remarketing)."""
+    contesta: str = ''            # 'CONTESTA' | 'NO CONTESTA'
+    agenda: Optional[str] = None  # 'SI' | 'NO'
+    comentario: str = ''
+
+
 class TarjetaReq(BaseModel):
     nombre: str = ''
     telefono: str = ''
@@ -1676,6 +1683,42 @@ async def crm_agendados_nocontesto(fila: int):
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo registrar el no contestó en Drive: {e}')
+
+
+@app.get('/api/crm/remarketing')
+async def crm_remarketing():
+    try:
+        data = crm.leer_remarketing()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer la cola de re-llamadas de Drive: {e}')
+    valores = crm.valores_unicos_remarketing(data['filas'])
+    return {
+        'ok': True,
+        'filas': data['filas'],
+        'total': data['total'],
+        'descargado': data['descargado'],
+        'columnas': data['columnas'],
+        'valores': valores,
+    }
+
+
+@app.post('/api/crm/remarketing/{fila}')
+async def crm_remarketing_registrar(fila: int, data: RemarketingReq):
+    contesta = data.contesta.strip().upper()
+    if contesta not in ('CONTESTA', 'NO CONTESTA'):
+        raise HTTPException(400, "Indica si 'CONTESTA' o 'NO CONTESTA'")
+    campos = {'D': contesta}
+    if data.agenda:
+        campos['E'] = data.agenda.strip().upper()
+    if data.comentario.strip():
+        campos['G'] = data.comentario.strip()
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_remarketing(fila, campos)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo registrar la llamada en Drive: {e}')
 
 
 @app.get('/api/crm/venta')
