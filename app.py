@@ -343,10 +343,22 @@ class MotivoReq(BaseModel):
 
 
 class RemarketingReq(BaseModel):
-    """Registrar el resultado de una llamada de re-llamadas (remarketing)."""
+    """Registrar el resultado de una llamada de re-llamadas (remarketing).
+
+    'hoja' distingue de qué pestaña viene la fila: BASE FESTIVAL no tiene
+    CONTESTA propio (ya se les escribió por WhatsApp a todos), sólo AGENDA."""
+    hoja: str = 'REMARKETING'
     contesta: str = ''            # 'CONTESTA' | 'NO CONTESTA'
     agenda: Optional[str] = None  # 'SI' | 'NO'
     comentario: str = ''
+
+
+class NuevoRemarketingReq(BaseModel):
+    """Agregar un lead nuevo a la cola de re-llamadas (siempre a
+    REMARKETING): el administrador copia un número interesado por
+    WhatsApp y lo agrega con su campaña."""
+    celular: str = ''
+    campana: str = ''
 
 
 class TarjetaReq(BaseModel):
@@ -1704,21 +1716,41 @@ async def crm_remarketing():
 
 @app.post('/api/crm/remarketing/{fila}')
 async def crm_remarketing_registrar(fila: int, data: RemarketingReq):
-    contesta = data.contesta.strip().upper()
-    if contesta not in ('CONTESTA', 'NO CONTESTA'):
-        raise HTTPException(400, "Indica si 'CONTESTA' o 'NO CONTESTA'")
-    campos = {'D': contesta}
-    if data.agenda:
+    hoja = data.hoja if data.hoja == 'BASE FESTIVAL' else 'REMARKETING'
+    campos = {}
+    if hoja == 'BASE FESTIVAL':
+        # No hay CONTESTA propio ahí: ya se les escribió por WhatsApp a
+        # todos, sólo falta saber si agendaron.
+        if not data.agenda:
+            raise HTTPException(400, "Indica si agendó ('SI' o 'NO')")
         campos['E'] = data.agenda.strip().upper()
+    else:
+        contesta = data.contesta.strip().upper()
+        if contesta not in ('CONTESTA', 'NO CONTESTA'):
+            raise HTTPException(400, "Indica si 'CONTESTA' o 'NO CONTESTA'")
+        campos['D'] = contesta
+        if data.agenda:
+            campos['E'] = data.agenda.strip().upper()
     if data.comentario.strip():
         campos['G'] = data.comentario.strip()
     with _bloqueo:
         try:
-            return crm.actualizar_campos_remarketing(fila, campos)
+            return crm.actualizar_campos_remarketing(hoja, fila, campos)
         except ValueError as e:
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo registrar la llamada en Drive: {e}')
+
+
+@app.post('/api/crm/remarketing')
+async def crm_remarketing_nuevo(data: NuevoRemarketingReq):
+    with _bloqueo:
+        try:
+            return crm.agregar_remarketing(data.celular, data.campana)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo agregar el número en Drive: {e}')
 
 
 @app.get('/api/crm/venta')

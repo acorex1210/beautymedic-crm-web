@@ -1278,6 +1278,14 @@
             <button class="btn gris" id="btnRmRecargar">Actualizar</button>
           </div>
           <div class="nota" id="rmNota" style="margin:0 0 10px;"></div>
+          <!-- Alta rápida: ve un número interesado en WhatsApp, lo copia y lo
+               agrega acá con su campaña, sin abrir el modal de llamada. -->
+          <div class="toolbar" style="margin-bottom:4px;">
+            <input type="text" id="rmNuevoTel" placeholder="Teléfono copiado de WhatsApp&hellip;" style="max-width:220px;">
+            <select id="rmNuevoCampana"><option value="">Campaña&hellip;</option></select>
+            <button class="btn verde" id="btnRmAgregar">+ Agregar número</button>
+          </div>
+          <div class="mensaje err oculto" id="msgRmNuevo" style="margin-bottom:10px;"></div>
           <h3>Por llamar</h3>
           <div id="rmListaPendientes"></div>
           <div class="mas" id="rmMas"></div>
@@ -1840,7 +1848,7 @@
     <div class="cab"><h3>Registrar llamada</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
     <div class="nota" id="rmModalContacto" style="margin:0 0 12px;"></div>
     <div class="form-grid">
-      <div class="campo">
+      <div class="campo" id="rmCampoContesta">
         <label>¿Contestó?</label>
         <select id="rmContesta">
           <option value="CONTESTA">Sí, contestó</option>
@@ -4791,7 +4799,7 @@ $('btnPaLimpiarFechas').addEventListener('click', () => {
    Drive: misma cola (fecha/celular/campaña asignados, CONTESTA/AGENDA/
    COMENTARIO por llenar), pero con botones en vez de escribir texto. Un
    lead está "por llamar" mientras la columna CONTESTA siga vacía. */
-let REMK = null, rmLimite = 200, rmFilaEditando = null;
+let REMK = null, rmLimite = 200, rmFilaEditando = null, rmHojaEditando = null;
 const RM_CHIPS = ['CASILLA DE VOZ', 'CORTA LLAMADA', 'DESVIO DE LLAMADA',
   'NO DESEA', 'VIVE LEJOS', 'SE ENCUENTRA TRABAJANDO', 'DEVOLVER LA LLAMADA',
   'LÍNEA FUERA DE SERVICIO'];
@@ -4808,6 +4816,7 @@ async function cargarRemarketing() {
     return;
   }
   llenarSelect($('rmFiltroCampana'), REMK.valores.campana, 'Campaña: todas');
+  llenarSelect($('rmNuevoCampana'), REMK.valores.campana.filter(c => c !== 'FESTIVAL'), 'Campaña…');
   $('rmNota').textContent = `${REMK.total} registros en la cola · último refresco ${REMK.descargado || '—'}`;
   pintarRemarketing();
 }
@@ -4815,6 +4824,13 @@ async function cargarRemarketing() {
 function esContesta(v) { return String(v || '').trim().toUpperCase() === 'CONTESTA'; }
 function esNoContesta(v) { return String(v || '').trim().toUpperCase() === 'NO CONTESTA'; }
 function esAgendoRemk(v) { return String(v || '').trim().toUpperCase() === 'SI'; }
+// BASE FESTIVAL es la segunda pestaña del mismo Drive (leads de festivales
+// a los que ya se les escribió por WhatsApp): no tiene CONTESTA propio, lo
+// pendiente ahí es que falte AGENDO. La clave fila+hoja identifica la fila
+// sin ambigüedad porque los números de fila se repiten entre pestañas.
+function rmEsFestival(f) { return f._hoja === 'BASE FESTIVAL'; }
+function rmEsPendiente(f) { return rmEsFestival(f) ? (f.B && !f.E) : (f.B && !f.D); }
+function rmClave(f) { return `${f._hoja}#${f._fila}`; }
 
 function rmFiltradas() {
   const q = $('rmBuscar').value.trim().toLowerCase();
@@ -4829,12 +4845,10 @@ function rmFiltradas() {
 function pintarRemarketing() {
   if (!REMK) return;
   const filt = rmFiltradas();
-  // "Por llamar": tiene celular (si no, es una fila de plantilla vacía) y
-  // todavía no se marcó CONTESTA/NO CONTESTA.
-  const pendientes = filt.filter(f => f.B && !f.D);
+  const pendientes = filt.filter(rmEsPendiente);
   const agendaron = filt.filter(f => esAgendoRemk(f.E));
-  const contestaron = filt.filter(f => esContesta(f.D) && !esAgendoRemk(f.E));
-  const noContestaron = filt.filter(f => esNoContesta(f.D));
+  const contestaron = filt.filter(f => !rmEsFestival(f) && esContesta(f.D) && !esAgendoRemk(f.E));
+  const noContestaron = filt.filter(f => !rmEsFestival(f) && esNoContesta(f.D));
 
   $('rmKpiPendientes').textContent = pendientes.length;
   $('rmKpiAgendo').textContent = agendaron.length;
@@ -4844,30 +4858,34 @@ function pintarRemarketing() {
   const vis = pendientes.slice(0, rmLimite);
   $('rmListaPendientes').innerHTML = vis.length ? vis.map(f => `
     <div class="item-hoy">
-      <span class="hora">${esc(f.A || '—')}</span>
+      <span class="hora">${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : '—'))}</span>
       <div class="info"><b>${esc(f.B || '—')}</b><small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}</small></div>
-      <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila})">📞 Registrar llamada</button>
+      <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila}, '${f._hoja}')">📞 Registrar llamada</button>
     </div>`).join('') : '<div class="vacio">No hay nadie pendiente por llamar con estos filtros.</div>';
   $('rmMas').innerHTML = pendientes.length > rmLimite
     ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${pendientes.length - rmLimite} restantes)</button>` : '';
 
-  const historial = filt.filter(f => f.D).slice().reverse().slice(0, rmLimite);
+  const historial = filt.filter(f => !rmEsPendiente(f)).slice().reverse().slice(0, rmLimite);
   $('tablaRemarketing').innerHTML = '<thead><tr><th>Fecha</th><th class="num">Celular</th><th>Campaña</th><th>Contestó</th><th>Agendó</th><th>CRM</th><th>Comentario</th></tr></thead><tbody>' +
     historial.map(f => `<tr>
-      <td>${esc(f.A || '')}</td><td class="num">${esc(f.B || '')}</td><td>${esc(f.C || '')}</td>
-      <td>${esContesta(f.D) ? '<span class="chip ok">CONTESTA</span>' : '<span class="chip bad">NO CONTESTA</span>'}</td>
+      <td>${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : ''))}</td><td class="num">${esc(f.B || '')}</td><td>${esc(f.C || '')}</td>
+      <td>${rmEsFestival(f) ? '<span class="chip gris">—</span>' : (esContesta(f.D) ? '<span class="chip ok">CONTESTA</span>' : '<span class="chip bad">NO CONTESTA</span>')}</td>
       <td>${esAgendoRemk(f.E) ? '<span class="chip ok">SÍ</span>' : '<span class="chip gris">NO</span>'}</td>
       <td>${esc(f.F || '')}</td><td>${esc(f.G || '')}</td>
     </tr>`).join('') + '</tbody>';
-  $('rmMasHist').innerHTML = filt.filter(f => f.D).length > rmLimite
+  $('rmMasHist').innerHTML = filt.filter(f => !rmEsPendiente(f)).length > rmLimite
     ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más</button>` : '';
 }
 
-function abrirModalRemarketing(fila) {
-  const f = REMK.filas.find(x => x._fila === fila);
+function abrirModalRemarketing(fila, hoja) {
+  const f = REMK.filas.find(x => x._fila === fila && x._hoja === hoja);
   if (!f) return;
   rmFilaEditando = fila;
+  rmHojaEditando = hoja;
   $('rmModalContacto').innerHTML = `<b>${esc(f.B || '—')}</b> · ${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}`;
+  // BASE FESTIVAL ya tiene el "contestó" resuelto (info por WhatsApp
+  // enviada a todos): sólo se pregunta si agendó.
+  $('rmCampoContesta').classList.toggle('oculto', rmEsFestival(f));
   $('rmContesta').value = 'CONTESTA';
   $('rmAgenda').value = 'NO';
   $('rmComentario').value = '';
@@ -4877,17 +4895,21 @@ function abrirModalRemarketing(fila) {
   $('modalRemarketing').classList.add('abierto');
 }
 function actualizarCampoAgendaRemk() {
+  if (rmHojaEditando === 'BASE FESTIVAL') { $('rmCampoAgenda').classList.remove('oculto'); return; }
   $('rmCampoAgenda').classList.toggle('oculto', $('rmContesta').value !== 'CONTESTA');
 }
 $('rmContesta').addEventListener('change', actualizarCampoAgendaRemk);
 $('btnRmGuardar').addEventListener('click', async () => {
   const b = $('btnRmGuardar');
-  const contesta = $('rmContesta').value;
-  const payload = {
-    contesta,
-    agenda: contesta === 'CONTESTA' ? $('rmAgenda').value : 'NO',
-    comentario: $('rmComentario').value.trim(),
-  };
+  const esFestival = rmHojaEditando === 'BASE FESTIVAL';
+  const payload = { hoja: rmHojaEditando, comentario: $('rmComentario').value.trim() };
+  if (esFestival) {
+    payload.agenda = $('rmAgenda').value;
+  } else {
+    const contesta = $('rmContesta').value;
+    payload.contesta = contesta;
+    payload.agenda = contesta === 'CONTESTA' ? $('rmAgenda').value : 'NO';
+  }
   b.disabled = true; b.textContent = 'Guardando…';
   try {
     await api(`/api/crm/remarketing/${rmFilaEditando}`, {
@@ -4903,6 +4925,29 @@ $('btnRmGuardar').addEventListener('click', async () => {
 $('rmBuscar').addEventListener('input', pintarRemarketing);
 $('rmFiltroCampana').addEventListener('change', pintarRemarketing);
 $('btnRmRecargar').addEventListener('click', () => { rmLimite = 200; cargarRemarketing(); });
+
+// Alta rápida de un número nuevo (siempre a la cola principal REMARKETING).
+$('btnRmAgregar').addEventListener('click', async () => {
+  const b = $('btnRmAgregar');
+  const celular = $('rmNuevoTel').value.trim();
+  const campana = $('rmNuevoCampana').value;
+  $('msgRmNuevo').classList.add('oculto');
+  if (!celular) { $('msgRmNuevo').textContent = 'Escribe el teléfono.'; $('msgRmNuevo').classList.remove('oculto'); return; }
+  if (!campana) { $('msgRmNuevo').textContent = 'Elige la campaña.'; $('msgRmNuevo').classList.remove('oculto'); return; }
+  b.disabled = true; b.textContent = 'Agregando…';
+  try {
+    await api('/api/crm/remarketing', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ celular, campana }),
+    });
+    $('rmNuevoTel').value = '';
+    toast('Número agregado a la cola.', 'okm');
+    cargarRemarketing();
+  } catch (e) {
+    $('msgRmNuevo').textContent = e.message; $('msgRmNuevo').classList.remove('oculto');
+  } finally { b.disabled = false; b.textContent = '+ Agregar número'; }
+});
+$('rmNuevoTel').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnRmAgregar').click(); });
 
 /* ---------------- CRM PLUS: TAREAS (contextuales, desde Hoy) ---------------- */
 function abrirModalTarea(t) {

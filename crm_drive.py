@@ -232,7 +232,7 @@ REMARKETING_SELECTS = {'campana': 'C', 'crm': 'F'}
 # no algo arbitrario: usar uno que no exista revienta la fila (visto en vivo
 # con REMARKETING, ver commit que corrigió '900' -> '23').
 DEFAULT_STYLE = {'AGENDADOS': '115', 'VENTA 2026': '137', 'VENTA 2025': '99',
-                  'REMARKETING': '23'}
+                  'REMARKETING': '23', 'BASE FESTIVAL': '10'}
 
 # ============================================================
 # DRIVE
@@ -1027,6 +1027,22 @@ def _adaptador_edicion_remarketing(ruta, fila_num, valores):
     return actual
 
 
+def _adaptador_edicion_festival(ruta, fila_num, valores):
+    """Igual que _adaptador_edicion_remarketing pero para BASE FESTIVAL:
+    conserva NOMBRE/CELULAR/INFO X WHATSAPP (columnas B/C/D, que la
+    llamada no toca) y sobreescribe sólo AGENDO/OBSERVACION (E/F)."""
+    wb = openpyxl.load_workbook(ruta, data_only=True)
+    ws = wb['BASE FESTIVAL']
+    actual = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=fila_num, column=c).value
+        if v is not None and v != '':
+            actual[openpyxl.utils.get_column_letter(c)] = v
+    wb.close()
+    actual.update(valores)
+    return actual
+
+
 def _adaptador_edicion_venta(ruta, hoja, fila_num, valores):
     """Construye {letra_real: valor} para reescribir una fila editada de VENTA
     DIARIA. Parte de los valores actuales de la fila (así se conservan
@@ -1373,13 +1389,49 @@ def leer_agendados():
             'descargado': fecha_descarga('AGENDADOS'), 'columnas': columnas}
 
 
+def _leer_base_festival(ruta):
+    """La otra pestaña de la cola de re-llamadas: leads de festivales
+    (Toxina/Ácido) a los que ya se les mandó información por WhatsApp y sólo
+    falta confirmar si agendaron. Layout fijo con un título en vez de
+    encabezados reconocibles, así que se lee por columna fija en vez de
+    con el detector genérico."""
+    wb = _cargar_wb(ruta)
+    if 'BASE FESTIVAL' not in wb.sheetnames:
+        return []
+    ws = wb['BASE FESTIVAL']
+    filas = []
+    for r in range(3, ws.max_row + 1):
+        nombre = ws.cell(row=r, column=2).value
+        celular = ws.cell(row=r, column=3).value
+        if not nombre and not celular:
+            continue
+        if isinstance(celular, float) and celular == int(celular):
+            celular = int(celular)
+        agenda = ws.cell(row=r, column=5).value
+        obs = ws.cell(row=r, column=6).value
+        comentario = str(nombre or '').strip()
+        if obs:
+            comentario = f'{comentario} — {str(obs).strip()}' if comentario else str(obs).strip()
+        filas.append({
+            'B': celular, 'C': 'FESTIVAL',
+            'E': str(agenda).strip().upper() if agenda else None,
+            'G': comentario or None,
+            '_fila': r, '_hoja': 'BASE FESTIVAL', '_nombre': nombre,
+        })
+    return filas
+
+
 def leer_remarketing():
     """Devuelve {'filas': [{letra_canónica: valor}...], 'total': n,
     'columnas': {letra_canónica: encabezado}} de la cola de re-llamadas.
 
-    Cada fila mezcla pendientes (CONTESTA vacío, todavía sin llamar) con ya
-    atendidas: es el mismo criterio que tenía el Drive original, donde se
-    distinguía por si esa columna tenía valor o no."""
+    Junta las dos pestañas del mismo archivo (REMARKETING y BASE FESTIVAL):
+    antes sólo se leía la primera, y los números de la segunda no aparecían
+    en el CRM aunque sí estuvieran en Drive. Cada fila de REMARKETING mezcla
+    pendientes (CONTESTA vacío, todavía sin llamar) con ya atendidas: es el
+    mismo criterio que tenía el Drive original. BASE FESTIVAL no tiene ese
+    campo (ya se les escribió por WhatsApp a todos); ahí lo pendiente es que
+    falte AGENDO."""
     ruta = descargar('REMARKETING', am.REMARKETING_FID)
     n_fila, campos, textos = _detectar_columnas(ruta, 'REMARKETING',
                                                 _HEADERS_REMARKETING)
@@ -1410,17 +1462,39 @@ def leer_remarketing():
             fila[cl] = v
         if any(v is not None and v != '' for v in fila.values()):
             fila['_fila'] = r
+            fila['_hoja'] = 'REMARKETING'
             filas.append(fila)
+    filas += _leer_base_festival(ruta)
     return {'filas': filas, 'total': len(filas),
             'descargado': fecha_descarga('REMARKETING'), 'columnas': columnas}
 
 
-def actualizar_campos_remarketing(fila_num, campos):
-    """Actualiza sólo los campos canónicos indicados de una fila de
-    REMARKETING (p. ej. {'D': 'CONTESTA', 'E': 'SI', 'G': 'AGENDÓ'}), igual
-    que actualizar_campos_agendado. Conserva el resto de la fila."""
+def actualizar_campos_remarketing(hoja, fila_num, campos):
+    """Actualiza sólo los campos canónicos indicados de una fila de la cola
+    de re-llamadas (p. ej. {'D': 'CONTESTA', 'E': 'SI', 'G': 'AGENDÓ'}),
+    igual que actualizar_campos_agendado. Conserva el resto de la fila.
+
+    ``hoja`` distingue de qué pestaña viene la fila: BASE FESTIVAL sólo
+    tiene AGENDO (E, real) y OBSERVACION (F, real recibe el canónico 'G');
+    no tiene CONTESTA/CAMPAÑA/CRM propios, así que esos campos se ignoran
+    ahí en vez de intentar escribirlos donde no existen."""
     if not isinstance(fila_num, int) or fila_num < 1:
         raise ValueError('Fila inválida')
+    if hoja == 'BASE FESTIVAL':
+        valores = {}
+        if campos.get('E'):
+            valores['E'] = str(campos['E']).strip().upper()
+        if campos.get('G'):
+            valores['F'] = str(campos['G']).strip()
+        if not valores:
+            raise ValueError('No hay campos para actualizar')
+        with _lock:
+            fid = am.REMARKETING_FID
+            conflicto = _editar_xlsx_seguro(
+                'REMARKETING', fid, 'BASE FESTIVAL', fila_num, valores,
+                adaptador=lambda ruta, v: _adaptador_edicion_festival(ruta, fila_num, v))
+        return {'ok': True, 'fila': fila_num, 'hoja': 'BASE FESTIVAL',
+                'campos': valores, 'conflicto': conflicto}
     campos = {cl: v for cl, v in (campos or {}).items()
               if v is not None and v != ''}
     if not campos:
@@ -1455,6 +1529,26 @@ def actualizar_campos_remarketing(fila_num, campos):
             adaptador=lambda ruta, v: _adaptador_edicion_remarketing(ruta, fila_num, v))
     return {'ok': True, 'fila': fila_num, 'hoja': 'REMARKETING',
             'campos': campos, 'conflicto': conflicto}
+
+
+def agregar_remarketing(celular, campana):
+    """Agrega un lead nuevo a la cola (siempre a la pestaña REMARKETING):
+    el administrador ve un número interesado por WhatsApp, lo copia y lo
+    agrega acá con su campaña; entra directo a "por llamar" con la fecha
+    de hoy."""
+    tel = _tel(celular)
+    if not tel:
+        raise ValueError('Indica un teléfono válido')
+    campana = str(campana or '').strip()
+    if not campana:
+        raise ValueError('Indica la campaña')
+    valores = {'A': datetime.now().strftime('%d/%m/%Y'), 'B': tel, 'C': campana}
+    with _lock:
+        fid = am.REMARKETING_FID
+        fila, conflicto = _agregar_xlsx_seguro('REMARKETING', fid, 'REMARKETING',
+                                               DEFAULT_STYLE['REMARKETING'],
+                                               valores, adaptador=None)
+    return {'ok': True, 'fila': fila, 'hoja': 'REMARKETING', 'conflicto': conflicto}
 
 
 def valores_unicos_remarketing(filas):
