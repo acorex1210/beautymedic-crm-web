@@ -613,6 +613,51 @@ def reescribir_fila_xlsx(origen, destino, hoja, fila_num, valores, estilo_defaul
     shutil.rmtree(build_dir)
 
 
+def ocultar_fila_xlsx(origen, destino, hoja, fila_num, oculto):
+    """Agrega o quita hidden="1" del tag <row>, sin tocar ninguna celda.
+
+    Mismo mecanismo que usa Excel/Sheets al ocultar una fila a mano (no
+    borra nada, sólo deja de mostrarla) — así una fila ocultada desde el
+    CRM se ve igual de oculta si alguien abre el archivo directo en Drive,
+    y viceversa."""
+    build_dir = os.path.join(am.TMP_DIR, 'build_crm_ocultar')
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    os.makedirs(build_dir)
+    with zipfile.ZipFile(origen) as z:
+        z.extractall(build_dir)
+
+    hoja_file = _mapa_hojas(origen).get(hoja)
+    if not hoja_file:
+        raise ValueError(f'Hoja "{hoja}" no encontrada en el archivo')
+    sheet_path = os.path.join(build_dir, hoja_file)
+    with open(sheet_path, encoding='utf-8') as f:
+        x = f.read()
+
+    def _reemplazar(m):
+        attrs = re.sub(r'\s*hidden="[01]"', '', m.group(1))
+        if oculto:
+            attrs += ' hidden="1"'
+        return f'<row r="{fila_num}"{attrs}{m.group(2)}>'
+
+    patron = r'<row r="%d"([^>]*?)(/?)>' % fila_num
+    x, cambios = re.subn(patron, _reemplazar, x, count=1)
+    if not cambios:
+        raise ValueError(f'Fila {fila_num} no encontrada en "{hoja}"')
+
+    with open(sheet_path, 'w', encoding='utf-8') as f:
+        f.write(x)
+
+    if os.path.exists(destino):
+        os.remove(destino)
+    with zipfile.ZipFile(destino, 'w', zipfile.ZIP_DEFLATED) as z:
+        for root, _, files in os.walk(build_dir):
+            for fn in files:
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, build_dir))
+    shutil.rmtree(build_dir)
+
+
 def _siguiente_fila(ruta, hoja):
     hoja_file = _mapa_hojas(ruta).get(hoja)
     if not hoja_file:
@@ -1412,11 +1457,13 @@ def _leer_base_festival(ruta):
         comentario = str(nombre or '').strip()
         if obs:
             comentario = f'{comentario} — {str(obs).strip()}' if comentario else str(obs).strip()
+        rd = ws.row_dimensions.get(r)
         filas.append({
             'B': celular, 'C': 'FESTIVAL',
             'E': str(agenda).strip().upper() if agenda else None,
             'G': comentario or None,
             '_fila': r, '_hoja': 'BASE FESTIVAL', '_nombre': nombre,
+            '_oculto': bool(rd and rd.hidden),
         })
     return filas
 
@@ -1463,6 +1510,8 @@ def leer_remarketing():
         if any(v is not None and v != '' for v in fila.values()):
             fila['_fila'] = r
             fila['_hoja'] = 'REMARKETING'
+            rd = ws.row_dimensions.get(r)
+            fila['_oculto'] = bool(rd and rd.hidden)
             filas.append(fila)
     filas += _leer_base_festival(ruta)
     return {'filas': filas, 'total': len(filas),
@@ -1549,6 +1598,36 @@ def agregar_remarketing(celular, campana):
                                                DEFAULT_STYLE['REMARKETING'],
                                                valores, adaptador=None)
     return {'ok': True, 'fila': fila, 'hoja': 'REMARKETING', 'conflicto': conflicto}
+
+
+def ocultar_remarketing(hoja, fila_num, oculto=True):
+    """Oculta o vuelve a mostrar una fila de la cola (REMARKETING o BASE
+    FESTIVAL), igual que ocultar una fila a mano en Sheets/Excel: no borra
+    nada, sólo la saca de la vista mientras esté oculta. Sirve para
+    achicar la lista sin perder el historial."""
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    if hoja not in ('REMARKETING', 'BASE FESTIVAL'):
+        raise ValueError(f'Hoja "{hoja}" no válida')
+    destino = os.path.join(am.TMP_DIR, 'REMARKETING_oculto.xlsx')
+    conflicto = False
+    with _lock:
+        fid = am.REMARKETING_FID
+        for intento in range(MAX_REINTENTOS):
+            rev_antes = _revision_actual(fid)
+            ruta = descargar('REMARKETING', fid, forzar=True)
+            ocultar_fila_xlsx(ruta, destino, hoja, fila_num, oculto)
+            if _revision_actual(fid) != rev_antes:
+                if intento < MAX_REINTENTOS - 1:
+                    continue
+                raise RuntimeError(
+                    'El archivo de Drive cambió durante la edición; reintenta la operación')
+            subir_drive(fid, destino)
+            conflicto = _conflicto_post_subida(fid, rev_antes)
+            break
+        invalidar('REMARKETING')
+    return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'oculto': oculto,
+            'conflicto': conflicto}
 
 
 def valores_unicos_remarketing(filas):

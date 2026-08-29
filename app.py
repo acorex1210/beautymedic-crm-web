@@ -361,6 +361,11 @@ class NuevoRemarketingReq(BaseModel):
     campana: str = ''
 
 
+class OcultarRemarketingReq(BaseModel):
+    hoja: str = 'REMARKETING'
+    oculto: bool = True
+
+
 class TarjetaReq(BaseModel):
     nombre: str = ''
     telefono: str = ''
@@ -1751,6 +1756,18 @@ async def crm_remarketing_nuevo(data: NuevoRemarketingReq):
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo agregar el número en Drive: {e}')
+
+
+@app.post('/api/crm/remarketing/{fila}/ocultar')
+async def crm_remarketing_ocultar(fila: int, data: OcultarRemarketingReq):
+    hoja = data.hoja if data.hoja == 'BASE FESTIVAL' else 'REMARKETING'
+    with _bloqueo:
+        try:
+            return crm.ocultar_remarketing(hoja, fila, data.oculto)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo ocultar el número en Drive: {e}')
 
 
 @app.get('/api/crm/venta')

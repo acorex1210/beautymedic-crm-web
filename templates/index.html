@@ -357,6 +357,7 @@
   .caja-hoy h3 { margin: 0 0 10px; font-size: 14px; color: var(--azul); display: flex; align-items: center; gap: 8px; }
   .item-hoy { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 9px; margin-bottom: 7px; background: var(--superficie); }
   .item-hoy.sel { border-color: var(--azul2); background: var(--dorado-fondo); }
+  .item-hoy.rm-oculto, tr.rm-oculto { opacity: .55; }
   .item-hoy .hora { font-weight: 800; color: var(--azul2); font-size: 12px; flex: 0 0 52px; }
   .item-hoy .info { flex: 1; min-width: 0; }
   .item-hoy .info b { display: block; font-size: 13px; }
@@ -1275,6 +1276,14 @@
           <div class="toolbar">
             <div class="buscar"><input type="search" id="rmBuscar" placeholder="Buscar por teléfono&hellip;"></div>
             <select id="rmFiltroCampana"><option value="">Campaña: todas</option></select>
+            <span style="display:flex;align-items:center;gap:6px;color:var(--gris);font-size:13px;">Desde
+              <input type="date" id="rmDesde">
+              hasta
+              <input type="date" id="rmHasta">
+            </span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gris);">
+              <input type="checkbox" id="rmMostrarOcultos" style="width:auto;margin:0;"> Mostrar ocultos
+            </label>
             <button class="btn gris" id="btnRmRecargar">Actualizar</button>
           </div>
           <div class="nota" id="rmNota" style="margin:0 0 10px;"></div>
@@ -4830,14 +4839,31 @@ function esAgendoRemk(v) { return String(v || '').trim().toUpperCase() === 'SI';
 // sin ambigüedad porque los números de fila se repiten entre pestañas.
 function rmEsFestival(f) { return f._hoja === 'BASE FESTIVAL'; }
 function rmEsPendiente(f) { return rmEsFestival(f) ? (f.B && !f.E) : (f.B && !f.D); }
-function rmClave(f) { return `${f._hoja}#${f._fila}`; }
 
+// Fecha de la columna A viene como "DD/MM/AAAA"; se compara contra los
+// <input type="date"> (AAAA-MM-DD). BASE FESTIVAL no tiene fecha propia:
+// una fila sin fecha no se descarta por el filtro, sólo no se puede acotar.
+function rmFechaISO(f) {
+  const m = String(f.A || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
 function rmFiltradas() {
   const q = $('rmBuscar').value.trim().toLowerCase();
   const camp = $('rmFiltroCampana').value;
+  const desde = $('rmDesde').value, hasta = $('rmHasta').value;
+  const mostrarOcultos = $('rmMostrarOcultos').checked;
   return REMK.filas.filter(f => {
+    if (!mostrarOcultos && f._oculto) return false;
     if (camp && String(f.C || '').trim() !== camp) return false;
     if (q && !String(f.B || '').toLowerCase().includes(q)) return false;
+    if (desde || hasta) {
+      const iso = rmFechaISO(f);
+      if (iso) {
+        if (desde && iso < desde) return false;
+        if (hasta && iso > hasta) return false;
+      }
+    }
     return true;
   });
 }
@@ -4857,21 +4883,23 @@ function pintarRemarketing() {
 
   const vis = pendientes.slice(0, rmLimite);
   $('rmListaPendientes').innerHTML = vis.length ? vis.map(f => `
-    <div class="item-hoy">
+    <div class="item-hoy${f._oculto ? ' rm-oculto' : ''}">
       <span class="hora">${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : '—'))}</span>
-      <div class="info"><b>${esc(f.B || '—')}</b><small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}</small></div>
+      <div class="info"><b>${esc(f.B || '—')}</b><small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}${f._oculto ? ' · <i>oculto</i>' : ''}</small></div>
+      <button class="btn borde mini" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button>
       <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila}, '${f._hoja}')">📞 Registrar llamada</button>
     </div>`).join('') : '<div class="vacio">No hay nadie pendiente por llamar con estos filtros.</div>';
   $('rmMas').innerHTML = pendientes.length > rmLimite
     ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${pendientes.length - rmLimite} restantes)</button>` : '';
 
   const historial = filt.filter(f => !rmEsPendiente(f)).slice().reverse().slice(0, rmLimite);
-  $('tablaRemarketing').innerHTML = '<thead><tr><th>Fecha</th><th class="num">Celular</th><th>Campaña</th><th>Contestó</th><th>Agendó</th><th>CRM</th><th>Comentario</th></tr></thead><tbody>' +
-    historial.map(f => `<tr>
+  $('tablaRemarketing').innerHTML = '<thead><tr><th>Fecha</th><th class="num">Celular</th><th>Campaña</th><th>Contestó</th><th>Agendó</th><th>CRM</th><th>Comentario</th><th>Acciones</th></tr></thead><tbody>' +
+    historial.map(f => `<tr${f._oculto ? ' class="rm-oculto"' : ''}>
       <td>${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : ''))}</td><td class="num">${esc(f.B || '')}</td><td>${esc(f.C || '')}</td>
       <td>${rmEsFestival(f) ? '<span class="chip gris">—</span>' : (esContesta(f.D) ? '<span class="chip ok">CONTESTA</span>' : '<span class="chip bad">NO CONTESTA</span>')}</td>
       <td>${esAgendoRemk(f.E) ? '<span class="chip ok">SÍ</span>' : '<span class="chip gris">NO</span>'}</td>
       <td>${esc(f.F || '')}</td><td>${esc(f.G || '')}</td>
+      <td><button class="btn borde pequeno" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button></td>
     </tr>`).join('') + '</tbody>';
   $('rmMasHist').innerHTML = filt.filter(f => !rmEsPendiente(f)).length > rmLimite
     ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más</button>` : '';
@@ -4922,8 +4950,24 @@ $('btnRmGuardar').addEventListener('click', async () => {
     $('msgRmForm').textContent = e.message; $('msgRmForm').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = 'Guardar'; }
 });
+// Ocultar/mostrar una fila (igual que ocultar una fila a mano en
+// Sheets/Excel): no borra nada, sólo la saca de la vista mientras esté
+// oculta. Sirve para achicar la lista sin perder el historial.
+async function rmAlternarOculto(fila, hoja, ocultar) {
+  try {
+    await api(`/api/crm/remarketing/${fila}/ocultar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hoja, oculto: ocultar }),
+    });
+    toast(ocultar ? 'Número ocultado.' : 'Número visible de nuevo.', 'okm');
+    cargarRemarketing();
+  } catch (e) { toast(e.message, 'err'); }
+}
 $('rmBuscar').addEventListener('input', pintarRemarketing);
 $('rmFiltroCampana').addEventListener('change', pintarRemarketing);
+$('rmDesde').addEventListener('change', pintarRemarketing);
+$('rmHasta').addEventListener('change', pintarRemarketing);
+$('rmMostrarOcultos').addEventListener('change', pintarRemarketing);
 $('btnRmRecargar').addEventListener('click', () => { rmLimite = 200; cargarRemarketing(); });
 
 // Alta rápida de un número nuevo (siempre a la cola principal REMARKETING).
