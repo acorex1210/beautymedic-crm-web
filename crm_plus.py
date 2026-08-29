@@ -236,6 +236,31 @@ def _leer_hoja(nombre):
 def _guardar(filas_por_hoja):
     with _lock:
         wb = _crear_wb()
+        # _crear_wb() sólo arma las hojas conocidas (HOJAS): si el archivo
+        # real en Drive tiene alguna hoja extra (agregada a mano, o de un
+        # esquema anterior), _guardar() la borraba en silencio en la
+        # siguiente escritura de CUALQUIER función (crear una tarea, una
+        # tarjeta, etc.), porque el workbook nuevo simplemente no la incluye.
+        # Se copian los valores (no fórmulas/estilos, igual que el resto de
+        # este archivo) antes de sobrescribir, para no perder nada.
+        try:
+            ruta_actual = _bajar()
+            wb_actual = openpyxl.load_workbook(ruta_actual, data_only=True)
+            for nombre in wb_actual.sheetnames:
+                if nombre in HOJAS:
+                    continue
+                origen = wb_actual[nombre]
+                destino = wb.create_sheet(nombre)
+                for row in origen.iter_rows():
+                    for celda in row:
+                        if celda.value is not None:
+                            destino.cell(row=celda.row, column=celda.column, value=celda.value)
+            wb_actual.close()
+        except Exception:  # noqa: BLE001
+            # Si no se pudo leer el archivo actual (primera vez, archivo
+            # corrupto, etc.) se sigue con las hojas conocidas nada más;
+            # no vale la pena bloquear el guardado por esto.
+            pass
         for nombre, filas in filas_por_hoja.items():
             ws = wb[nombre]
             for i, f in enumerate(filas, 2):
@@ -916,13 +941,52 @@ def _aplicar_cuota(f, d):
                          ('nota', 'K')):
         if campo in d and d[campo] not in (None, ''):
             f[letra] = str(d[campo]).strip()
-    for campo, letra in (('monto_total', 'E'), ('n_cuotas', 'F'),
-                         ('pagadas', 'G'), ('monto_cuota', 'H')):
-        if campo in d and d[campo] not in (None, ''):
-            try:
-                f[letra] = float(d[campo])
-            except (TypeError, ValueError):
-                pass
+    # monto_total debe ser positivo y n_cuotas al menos 1: si no, el saldo
+    # (monto_total - monto_cuota*pagadas) puede dar cifras absurdas, o con
+    # n_cuotas=0 la cuota queda "PAGADO" de entrada sin haberse cobrado nada
+    # (en _estado_cuota, "pagadas >= n_cuotas" es cierto con n_cuotas=0). El
+    # endpoint PATCH ya valida esto también, pero se repite aquí porque
+    # crear_cuota pasa por esta misma función.
+    if 'monto_total' in d and d['monto_total'] not in (None, ''):
+        try:
+            v = float(d['monto_total'])
+            if v > 0:
+                f['E'] = v
+        except (TypeError, ValueError):
+            pass
+    if 'n_cuotas' in d and d['n_cuotas'] not in (None, ''):
+        try:
+            v = float(d['n_cuotas'])
+            if v >= 1:
+                f['F'] = v
+        except (TypeError, ValueError):
+            pass
+    if 'pagadas' in d and d['pagadas'] not in (None, ''):
+        try:
+            v = float(d['pagadas'])
+            if v >= 0:
+                # No se permite dejar más cuotas "pagadas" que n_cuotas: si
+                # no, el saldo (monto_total - monto_cuota*pagadas) se va
+                # negativo, como si se le debiera dinero al paciente.
+                n_actual = am.num(f.get('F')) or 0
+                f['G'] = min(v, n_actual) if n_actual else v
+        except (TypeError, ValueError):
+            pass
+    if 'monto_cuota' in d and d['monto_cuota'] not in (None, ''):
+        try:
+            v = float(d['monto_cuota'])
+            if v > 0:
+                f['H'] = v
+        except (TypeError, ValueError):
+            pass
+    elif 'monto_total' in d or 'n_cuotas' in d:
+        # Si se cambia el total o el número de cuotas sin dar un monto por
+        # cuota explícito, se recalcula: si no, el saldo queda calculado
+        # con un monto_cuota que ya no corresponde a los valores nuevos
+        # (mismo recálculo que ya hacía crear_cuota, ahora también al editar).
+        total, n = am.num(f.get('E')), am.num(f.get('F'))
+        if total and n:
+            f['H'] = total / n
     if 'estado' in d:
         e = str(d.get('estado') or '').upper().strip()
         if e in ('PENDIENTE', 'PAGADO', 'ATRASADO'):

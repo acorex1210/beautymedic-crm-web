@@ -68,7 +68,13 @@ RECURSOS = {
     'notas': ['/api/crm/notas'],
     'pacientes': ['/api/crm/pacientes', '/api/pacientes'],
     'remarketing': ['/api/crm/remarketing'],
-    'historias': ['/api/crm/historias'],
+    # '/api/crm/pacientes/historias' (subir/listar/descargar/borrar el PDF de
+    # la ficha clínica) vive bajo el prefijo de 'pacientes', pero es el
+    # recurso 'historias': se declara aparte, más específico, para que
+    # recurso_de() (que elige el prefijo más largo) no lo confunda con el
+    # directorio de pacientes — si no, un rol sin 'historias' pero con
+    # 'pacientes' (p. ej. CRM1) podía leer y descargar historias clínicas.
+    'historias': ['/api/crm/historias', '/api/crm/pacientes/historias'],
     'dashboard': ['/api/crm/dashboard'],
     'analitica': ['/api/analitica'],
     'metaads': ['/api/meta', '/api/meta-mensual'],
@@ -80,8 +86,14 @@ RECURSOS = {
 
 # Rutas que no piden sesión. El webhook de WhatsApp lo llama Meta, no el
 # navegador, y ya valida la firma HMAC por su cuenta.
+#
+# OJO: /api/debug/* NO va aquí. Son endpoints de diagnóstico que devuelven
+# volcados crudos de VENTA/AGENDADOS/maestro (nombres, teléfonos, montos) —
+# estuvieron públicos por error (cualquiera en internet podía leerlos sin
+# loguearse) hasta que se encontró en una auditoría. Al no estar en RECURSOS
+# ni en PUBLICAS, "puede()" los niega por defecto a todos salvo ADMIN.
 PUBLICAS = ['/login', '/api/login', '/api/whatsapp/webhook', '/static',
-            '/favicon.ico', '/salud', '/api/debug']
+            '/favicon.ico', '/salud']
 
 ROLES = {
     'ADMIN': {

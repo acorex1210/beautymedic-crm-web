@@ -1644,13 +1644,21 @@ async def crm_agendados_compro(fila: int, data: ComproReq):
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo registrar la compra en Drive: {e}')
-        for ln in lineas:
+        # agregar_ventas_multi escribe una fila por línea, consecutivas desde
+        # venta['fila']: la línea i cae en la fila venta['fila']+i. Igual que
+        # en crm_venta_nuevo, la referencia lleva hoja+fila de ESA fila para
+        # poder devolver el stock si esta venta se borra después (ver
+        # reversar_stock_de_venta) — antes decía sólo "Venta: {nombre}", que
+        # no calzaba con ningún prefijo y dejaba el stock perdido para
+        # siempre al borrar.
+        for i, ln in enumerate(lineas):
             codigo = str(ln.get('producto_codigo') or '').strip()
             if not codigo:
                 continue
             try:
-                cp.registrar_salida_stock(codigo, ln.get('cantidad') or 1,
-                                          referencia=f"Venta: {d.get('nombre')}")
+                cp.registrar_salida_stock(
+                    codigo, ln.get('cantidad') or 1,
+                    referencia=f"VENTA:{venta['hoja']}:{venta['fila'] + i}: {d.get('nombre')}")
             except Exception as e:  # noqa: BLE001
                 avisos_inventario.append(f'{codigo}: {e}')
     return {'ok': True, 'venta': venta, 'agendado': estado,
@@ -2034,6 +2042,20 @@ async def crm_cuotas_nueva(data: CuotaReq):
 
 @app.patch('/api/crm/cuotas/{cid}')
 async def crm_cuotas_actualizar(cid: int, data: CuotaReq):
+    # Mismas validaciones que crear_cuota (crm_cuotas_nueva): antes el PATCH
+    # no las tenía y se podía dejar, p. ej., n_cuotas=0 o pagadas por encima
+    # de n_cuotas, dando un saldo absurdo (negativo, o "PAGADO" sin cobrar
+    # nada). _aplicar_cuota también ignora estos valores por su cuenta
+    # (defensa en profundidad); aquí se avisa con un error claro en vez de
+    # simplemente ignorar el cambio en silencio.
+    if data.monto_total is not None and data.monto_total <= 0:
+        raise HTTPException(400, 'El monto total debe ser mayor a 0')
+    if data.n_cuotas is not None and data.n_cuotas < 1:
+        raise HTTPException(400, 'El número de cuotas debe ser al menos 1')
+    if data.pagadas is not None and data.pagadas < 0:
+        raise HTTPException(400, 'Las cuotas pagadas no pueden ser negativas')
+    if data.monto_cuota is not None and data.monto_cuota <= 0:
+        raise HTTPException(400, 'El monto por cuota debe ser mayor a 0')
     try:
         res = cp.actualizar_cuota(cid, data.model_dump(exclude_unset=True))
     except Exception as e:  # noqa: BLE001

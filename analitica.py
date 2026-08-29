@@ -571,6 +571,12 @@ def recurrentes(mes, anio, desde, hasta):
     por_paciente = defaultdict(lambda: {'compras': 0, 'monto': 0.0,
                                         'nombre': '', 'trats': [], 'ultima': ''})
     for f in filas:
+        # Antes no se aplicaba ningún filtro de periodo aquí (a diferencia
+        # de _compradores_frecuentes, que sí usa _asistido): con un mes/año
+        # elegido en el dashboard, esta tarjeta seguía mostrando recurrentes
+        # y LTV de TODO el histórico, sin relación con el periodo filtrado.
+        if not _asistido(f, mes, anio, desde, hasta):
+            continue
         clave = str(f['telefono'] or '').strip() or str(f['dni'] or '').strip()
         if not clave:
             continue
