@@ -286,6 +286,21 @@
   .tab-horas button.activo { background: var(--azul); color: #fff; border-color: var(--azul); }
   .tab-horas button:active { transform: scale(.96); }
 
+  /* Selector rápido de hora al agendar: un clic reemplaza tener que tipear
+     "4:00 pm" a mano, y el badge de cupo avisa antes de guardar cuál
+     horario ya está lleno (ver MAX_AGENDADOS_POR_HORA en app.py). */
+  .hora-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hora-picker button {
+    border: 1px solid var(--borde); background: var(--superficie); color: var(--gris); padding: 6px 10px;
+    border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 12.5px;
+    transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out), transform .1s var(--ease-out);
+  }
+  .hora-picker button:active { transform: scale(.96); }
+  .hora-picker button.activo { background: var(--azul); color: #fff; border-color: var(--azul); }
+  .hora-picker button .cupo { opacity: .8; font-weight: 700; }
+  .hora-picker button.lleno { background: none; color: var(--rojo); border-color: var(--rojo); cursor: not-allowed; opacity: .55; }
+  .hora-picker button.lleno:active { transform: none; }
+
   .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 14px; }
 
   /* ---------- Kanban ---------- */
@@ -1485,7 +1500,11 @@
         <div class="campo"><label>Día</label><input type="number" id="agCitaDia" min="1" max="31" required></div>
         <div class="campo"><label>Mes</label><select id="agCitaMes" required></select></div>
         <div class="campo"><label>Año</label><input type="number" id="agCitaAnio" min="2020" max="2100" required></div>
-        <div class="campo"><label>Hora</label><input type="text" id="agHora" placeholder="ej. 5:00 pm"></div>
+        <div class="campo ancho">
+          <label>Hora <span class="nota" style="font-weight:400;">(máx. 3 pacientes por horario)</span></label>
+          <div class="hora-picker" id="agHoraPicker"></div>
+          <input type="text" id="agHora" placeholder="Otra hora (ej. 5:15 pm)" style="margin-top:6px;">
+        </div>
         <div class="campo"><label>Confirmado</label><select id="agConfirmado"></select></div>
 
         <div class="grupo">Observaciones</div>
@@ -2761,6 +2780,68 @@ async function borrarAgendado(fila) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+// Selector rápido de hora al agendar: un clic reemplaza tener que tipear
+// "4:00 pm" a mano, y el badge de cupo avisa antes de guardar cuál horario
+// ya está lleno. El límite real (lo que de verdad lo impide, incluso si dos
+// personas agendan a la vez) vive en el servidor: MAX_AGENDADOS_POR_HORA en
+// app.py. Esto es sólo para no enterarse recién al guardar.
+const CUPO_MAX_POR_HORA = 3;
+const HORAS_CLINICA = (() => {
+  const out = [];
+  for (let h = 9; h <= 20; h++) {
+    for (const m of [0, 30]) {
+      if (h === 20 && m === 30) continue; // atiende hasta las 8:00 pm
+      const h12 = h > 12 ? h - 12 : h;
+      out.push(`${h12}:${m === 0 ? '00' : '30'} ${h >= 12 ? 'PM' : 'AM'}`);
+    }
+  }
+  return out;
+})();
+
+// Sólo para COMPARAR cupos: "4:00pm" y "4:00 PM" deben contar como el mismo
+// horario. Debe quedar igual que _normalizar_hora() en app.py.
+function normalizarHora(h) {
+  return String(h || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/(\d)(AM|PM)$/, '$1 $2');
+}
+
+function cuposOcupadosPorHora(dia, mes, anio, excluirFila) {
+  const mapa = {};
+  if (!AG || !dia || !mes || !anio) return mapa;
+  for (const f of AG.filas) {
+    if (excluirFila != null && f._fila === excluirFila) continue;
+    if (Number(f.L) !== Number(dia) || String(f.M || '').toUpperCase() !== String(mes).toUpperCase()
+        || Number(f.N) !== Number(anio)) continue;
+    if (categoriaAgendado(f.Q) === 'CANCELADA') continue;
+    const h = normalizarHora(f.P);
+    if (!h) continue;
+    mapa[h] = (mapa[h] || 0) + 1;
+  }
+  return mapa;
+}
+
+function elegirHora(h) {
+  $('agHora').value = h;
+  pintarHoraPicker();
+}
+
+function pintarHoraPicker() {
+  const dia = +$('agCitaDia').value, mes = $('agCitaMes').value, anio = +$('agCitaAnio').value;
+  const ocupados = cuposOcupadosPorHora(dia, mes, anio, agEditando);
+  const actual = normalizarHora($('agHora').value);
+  $('agHoraPicker').innerHTML = HORAS_CLINICA.map(h => {
+    const n = ocupados[h] || 0;
+    const esActual = h === actual;
+    const lleno = n >= CUPO_MAX_POR_HORA && !esActual;
+    return `<button type="button" class="${esActual ? 'activo' : ''}${lleno ? ' lleno' : ''}"` +
+      `${lleno ? ' disabled title="Horario lleno: ya hay 3 pacientes agendados"' : ''} onclick="elegirHora('${h}')">` +
+      `${h}${n ? ` <span class="cupo">${n}/${CUPO_MAX_POR_HORA}</span>` : ''}</button>`;
+  }).join('');
+}
+$('agCitaDia').addEventListener('input', pintarHoraPicker);
+$('agCitaMes').addEventListener('change', pintarHoraPicker);
+$('agCitaAnio').addEventListener('input', pintarHoraPicker);
+$('agHora').addEventListener('input', pintarHoraPicker);
+
 function abrirModalAgendado() {
   agEditando = null;
   $('agDia').value = HOY_D; $('agMes').value = HOY_M; $('agAnio').value = HOY_A;
@@ -2774,6 +2855,7 @@ function abrirModalAgendado() {
   $('modalAgendado').querySelector('.cab h3').textContent = 'Nuevo agendado';
   $('btnAgGuardar').textContent = 'Guardar agendado';
   $('modalAgendado').classList.add('abierto');
+  pintarHoraPicker();
   $('agNombre').focus();
 }
 
@@ -2802,11 +2884,24 @@ function editarAgendado(fila) {
   $('modalAgendado').querySelector('.cab h3').textContent = `Editar agendado (fila ${fila})`;
   $('btnAgGuardar').textContent = 'Guardar cambios';
   $('modalAgendado').classList.add('abierto');
+  pintarHoraPicker();
   $('agNombre').focus();
 }
 
 $('formAgendado').addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Aviso rápido con lo que ya se tiene en memoria; el servidor es quien de
+  // verdad lo impide (ver _validar_cupo_hora en app.py), por si alguien más
+  // agendó en ese horario justo ahora.
+  const horaElegida = normalizarHora($('agHora').value);
+  if (horaElegida) {
+    const ocupados = cuposOcupadosPorHora(+$('agCitaDia').value, $('agCitaMes').value, +$('agCitaAnio').value, agEditando);
+    if ((ocupados[horaElegida] || 0) >= CUPO_MAX_POR_HORA) {
+      $('msgAgForm').textContent = `Ese horario ya tiene ${ocupados[horaElegida]} pacientes agendados (máx. ${CUPO_MAX_POR_HORA}). Elige otra hora.`;
+      $('msgAgForm').classList.remove('oculto');
+      return;
+    }
+  }
   const b = $('btnAgGuardar'); b.disabled = true; b.textContent = 'Guardando…';
   $('msgAgForm').classList.add('oculto');
   const payload = {

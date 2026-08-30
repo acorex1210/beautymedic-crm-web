@@ -12,6 +12,7 @@ Variables de entorno (además de las de alimentar_maestro.py):
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -502,6 +503,54 @@ def _validar_fecha(dia, mes, anio, requerido_mes=False):
             raise HTTPException(400, f'Mes inválido: {mes}')
     if anio is not None and not (2020 <= anio <= 2100):
         raise HTTPException(400, f'Año inválido: {anio}')
+
+
+# La clínica sólo tiene box/personal para atender a MAX_AGENDADOS_POR_HORA
+# pacientes en la misma fecha+hora. El selector de hora del frontend ya avisa
+# cuando un horario está lleno, pero esto es lo que de verdad lo impide: sin
+# esto, dos recepcionistas trabajando a la vez (o alguien ignorando el aviso)
+# podían agendar 5 o 6 personas a las 4:00pm sin que nada lo evitara.
+MAX_AGENDADOS_POR_HORA = 3
+
+
+def _normalizar_hora(h):
+    """Normaliza texto libre de hora sólo para COMPARAR cupos ("4:00pm" y
+    "4:00 PM" deben contar como el mismo horario). No intenta interpretar
+    24h vs 12h ni corregir horas inválidas — sólo espacios/mayúsculas."""
+    s = re.sub(r'\s+', ' ', str(h or '').strip().upper())
+    s = re.sub(r'(?<=\d)(AM|PM)$', r' \1', s)
+    return s
+
+
+def _validar_cupo_hora(dia, mes, anio, hora, excluir_fila=None):
+    hora_norm = _normalizar_hora(hora)
+    mes_norm = str(mes or '').strip().upper().replace('SEP', 'SET')
+    if not (dia and mes_norm and anio and hora_norm):
+        return
+    try:
+        filas = crm.leer_agendados()['filas']
+    except Exception:  # noqa: BLE001
+        # Si Drive falla acá, que el error real salga al guardar de verdad
+        # en vez de bloquear el agendado por un problema de lectura aparte.
+        return
+    ocupados = 0
+    for f in filas:
+        if excluir_fila is not None and f.get('_fila') == excluir_fila:
+            continue
+        if (f.get('L') != dia
+                or str(f.get('M') or '').strip().upper() != mes_norm
+                or f.get('N') != anio):
+            continue
+        if _normalizar_hora(f.get('P')) != hora_norm:
+            continue
+        if 'CANCEL' in str(f.get('Q') or '').upper():
+            continue
+        ocupados += 1
+    if ocupados >= MAX_AGENDADOS_POR_HORA:
+        raise HTTPException(
+            400,
+            f'Ya hay {ocupados} pacientes agendados el {dia}/{mes}/{anio} a las '
+            f'{hora}. Cupo máximo: {MAX_AGENDADOS_POR_HORA} pacientes por horario.')
 
 
 # ============================================================
@@ -1542,6 +1591,7 @@ async def crm_agendados_nuevo(data: AgendadoReq):
                    requerido_mes=True)
     if not d.get('nombre') and not d.get('telefono'):
         raise HTTPException(400, 'Indica al menos el nombre o el teléfono del paciente')
+    _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'))
     with _bloqueo:
         try:
             res = crm.agregar_agendado(d)
@@ -1571,6 +1621,8 @@ async def crm_agendados_editar(fila: int, data: AgendadoReq):
                    requerido_mes=True)
     if not d.get('nombre') and not d.get('telefono'):
         raise HTTPException(400, 'Indica al menos el nombre o el teléfono del paciente')
+    _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'),
+                        excluir_fila=fila)
     with _bloqueo:
         try:
             res = crm.editar_agendado(fila, d)
@@ -1611,6 +1663,18 @@ async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if d.get('dia') is None and not d.get('mes') and d.get('anio') is None:
         raise HTTPException(400, 'Indica la nueva fecha de la cita')
+    # Reprogramar conserva la misma hora (P): revisa el cupo de la fecha
+    # nueva con esa hora, no sólo lo que cambió en el payload (el form manda
+    # sólo la parte de la fecha que se tocó).
+    try:
+        actual = next((f for f in crm.leer_agendados()['filas'] if f.get('_fila') == fila), None)
+    except Exception:  # noqa: BLE001
+        actual = None
+    if actual:
+        _validar_cupo_hora(d.get('dia') if d.get('dia') is not None else actual.get('L'),
+                            d.get('mes') or actual.get('M'),
+                            d.get('anio') if d.get('anio') is not None else actual.get('N'),
+                            actual.get('P'), excluir_fila=fila)
     with _bloqueo:
         try:
             return crm.reprogramar_agendado(fila, d.get('dia'), d.get('mes'), d.get('anio'))
