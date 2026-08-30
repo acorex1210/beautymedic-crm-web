@@ -288,17 +288,27 @@
 
   /* Selector rápido de hora al agendar: un clic reemplaza tener que tipear
      "4:00 pm" a mano, y el badge de cupo avisa antes de guardar cuál
-     horario ya está lleno (ver MAX_AGENDADOS_POR_HORA en app.py). */
-  .hora-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+     horario ya está lleno (ver MAX_AGENDADOS_POR_HORA en app.py). Grid de
+     ancho parejo (en vez de flex-wrap) para que las horas queden alineadas
+     en filas prolijas sin importar cuántos dígitos tenga cada una. */
+  .hora-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
   .hora-picker button {
-    border: 1px solid var(--borde); background: var(--superficie); color: var(--gris); padding: 6px 10px;
-    border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 12.5px;
-    transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out), transform .1s var(--ease-out);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border: 1px solid var(--borde); background: var(--superficie); color: var(--texto); padding: 9px 6px;
+    border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13px; box-shadow: var(--sombra-1);
+    transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out),
+                transform .1s var(--ease-out), box-shadow .15s var(--ease-out);
   }
-  .hora-picker button:active { transform: scale(.96); }
-  .hora-picker button.activo { background: var(--azul); color: #fff; border-color: var(--azul); }
-  .hora-picker button .cupo { opacity: .8; font-weight: 700; }
-  .hora-picker button.lleno { background: none; color: var(--rojo); border-color: var(--rojo); cursor: not-allowed; opacity: .55; }
+  .hora-picker button:hover:not(:disabled) { border-color: var(--azul3); box-shadow: var(--sombra-2); }
+  .hora-picker button:active:not(:disabled) { transform: scale(.96); }
+  .hora-picker button.activo { background: var(--azul); color: #fff; border-color: var(--azul); box-shadow: none; }
+  .hora-picker button .cupo { font-size: 10.5px; font-weight: 800; letter-spacing: .02em; color: var(--verde); }
+  .hora-picker button.activo .cupo { color: rgba(255, 255, 255, .85); }
+  .hora-picker button.lleno {
+    background: none; color: var(--rojo); border-color: var(--rojo); border-style: dashed;
+    cursor: not-allowed; opacity: .7; box-shadow: none;
+  }
+  .hora-picker button.lleno .cupo { color: var(--rojo); }
   .hora-picker button.lleno:active { transform: none; }
 
   .radio { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; font-size: 14px; }
@@ -2786,14 +2796,13 @@ async function borrarAgendado(fila) {
 // personas agendan a la vez) vive en el servidor: MAX_AGENDADOS_POR_HORA en
 // app.py. Esto es sólo para no enterarse recién al guardar.
 const CUPO_MAX_POR_HORA = 3;
+// Horario de atención: 10:30 am a 7:00 pm, cada 30 min.
 const HORAS_CLINICA = (() => {
   const out = [];
-  for (let h = 9; h <= 20; h++) {
-    for (const m of [0, 30]) {
-      if (h === 20 && m === 30) continue; // atiende hasta las 8:00 pm
-      const h12 = h > 12 ? h - 12 : h;
-      out.push(`${h12}:${m === 0 ? '00' : '30'} ${h >= 12 ? 'PM' : 'AM'}`);
-    }
+  for (let mins = 10 * 60 + 30; mins <= 19 * 60; mins += 30) {
+    const h24 = Math.floor(mins / 60), m = mins % 60;
+    const h12 = ((h24 + 11) % 12) + 1;
+    out.push(`${h12}:${m === 0 ? '00' : '30'} ${h24 >= 12 ? 'PM' : 'AM'}`);
   }
   return out;
 })();
@@ -2832,9 +2841,10 @@ function pintarHoraPicker() {
     const n = ocupados[h] || 0;
     const esActual = h === actual;
     const lleno = n >= CUPO_MAX_POR_HORA && !esActual;
+    const badge = lleno ? '<span class="cupo">Lleno</span>' : (n ? `<span class="cupo">${n}/${CUPO_MAX_POR_HORA}</span>` : '');
     return `<button type="button" class="${esActual ? 'activo' : ''}${lleno ? ' lleno' : ''}"` +
       `${lleno ? ' disabled title="Horario lleno: ya hay 3 pacientes agendados"' : ''} onclick="elegirHora('${h}')">` +
-      `${h}${n ? ` <span class="cupo">${n}/${CUPO_MAX_POR_HORA}</span>` : ''}</button>`;
+      `<span>${h}</span>${badge}</button>`;
   }).join('');
 }
 $('agCitaDia').addEventListener('input', pintarHoraPicker);
