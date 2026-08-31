@@ -4122,15 +4122,35 @@ function limpiarTelPeru(tel) {
   if (d.length > 9) d = d.slice(-9);
   return d.length === 9 ? '51' + d : '';
 }
-// Placeholders con nombre/fecha/hora ya reemplazados: el copy final de los 6
-// mensajes (al agendar, intermedio 3+ días, 24h antes, mañana de la cita,
-// llamada si no responde, recuperación mismo día) debe salir del guion ya
-// entregado (Guion_confirmacion_citas_Derma_Essenza.docx) — esto no
-// inventa el texto médico definitivo, sólo deja el mecanismo listo.
+// Copy revisado con Andre (30 ago): párrafos separados por línea en blanco,
+// *negrita* de WhatsApp (asteriscos simples) y emojis puntuales para que se
+// vea amigable sin quedar cargado. Si más adelante quiere ajustar el texto,
+// sólo hay que tocar estos 3 templates — el mecanismo (copiar/abrir WhatsApp)
+// no cambia.
 const PLANTILLAS_WSP = {
-  intermedio_3mas_dias: (n, f, h) => `Hola ${n || ''}! Te recordamos tu cita en {{BRAND_NOMBRE}} el ${f} a las ${h}. ¿Sigue en pie? [AJUSTAR COPY FINAL CON ANDRE]`,
-  reconfirmar_24h: (n, f, h) => `Hola ${n || ''}! Mañana ${f} a las ${h} te esperamos en {{BRAND_NOMBRE}}. ¿Confirmas tu asistencia? [AJUSTAR COPY FINAL CON ANDRE]`,
-  manana_de_la_cita: (n, h) => `Hola ${n || ''}! Hoy es tu cita en {{BRAND_NOMBRE}} a las ${h}. Te esperamos ✨ [AJUSTAR COPY FINAL CON ANDRE]`,
+  intermedio_3mas_dias: (n, f, h) => `¡Hola ${n || ''}! 👋
+
+Somos {{BRAND_NOMBRE}} 💛 Te escribimos para confirmar tu próxima cita:
+
+📅 ${f}
+🕐 ${h}
+
+¿Sigue en pie para ti? Cuéntanos y te esperamos con mucho gusto ✨`,
+
+  reconfirmar_24h: (n, f, h) => `¡Hola ${n || ''}! 👋
+
+Te recordamos que *mañana* tienes tu cita en {{BRAND_NOMBRE}}:
+
+📅 ${f}
+🕐 ${h}
+
+¿Nos confirmas tu asistencia? Te estaremos esperando 💛`,
+
+  manana_de_la_cita: (n, h) => `¡Hola ${n || ''}! 👋
+
+Hoy es tu cita en {{BRAND_NOMBRE}} 🕐 ${h}.
+
+Te esperamos con mucho gusto ✨ ¡Nos vemos pronto!`,
 };
 function fechaCitaTexto(c) { return `${c.dia}/${c.mes}/${c.anio}`; }
 function plantillaParaCita(c) {
