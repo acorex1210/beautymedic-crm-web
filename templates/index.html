@@ -1049,26 +1049,47 @@
           <div class="kpi verde"><div class="eti">Asistieron</div><div class="num" id="chKpiAsistieron">-</div></div>
           <div class="kpi naranja"><div class="eti">Ventas de hoy</div><div class="num" id="chKpiVentas">-</div></div>
         </div>
-        <div class="ch-pipeline">
-          <div class="tarjeta caja-hoy">
-            <h3>Citas de hoy <span class="nota" id="chFecha"></span></h3>
-            <div class="nota" style="margin:0 0 10px;">Por contactar, confirmar o reprogramar.</div>
-            <div id="chListaCitas"></div>
+
+        <!-- La anticipación predice la asistencia (dato real del embudo:
+             dentro de 48h asiste ~64%, de 3 días en adelante ~31%), así que
+             "Confirmar (48h)" vive al lado de "Hoy" en vez de ser una sección
+             aparte — es el mismo hábito diario, sólo mirando un poco más
+             adelante. -->
+        <div class="tab-horas" id="chTabs" style="margin-bottom:16px;">
+          <button class="activo" onclick="chCambiarVista('hoy')" id="chTabHoy">Hoy</button>
+          <button onclick="chCambiarVista('confirmar')" id="chTabConfirmar">Confirmar (48h)</button>
+        </div>
+
+        <div id="chVistaHoy">
+          <div class="ch-pipeline">
+            <div class="tarjeta caja-hoy">
+              <h3>Citas de hoy <span class="nota" id="chFecha"></span></h3>
+              <div class="nota" style="margin:0 0 10px;">Por contactar, confirmar o reprogramar.</div>
+              <div id="chListaCitas"></div>
+            </div>
+            <div class="tarjeta caja-hoy">
+              <h3>Confirmados</h3>
+              <div class="nota" style="margin:0 0 10px;">Confirmaron su cita. Al marcar <b>Asistió</b> pasan a la siguiente columna.</div>
+              <div id="chListaConfirmados"></div>
+            </div>
+            <div class="tarjeta caja-hoy">
+              <h3>Asistieron</h3>
+              <div class="nota" style="margin:0 0 10px;">Ya están en consulta. Falta registrar si compraron.</div>
+              <div id="chListaAsistieron"></div>
+            </div>
+            <div class="tarjeta caja-hoy">
+              <h3>Compró / No compró</h3>
+              <div class="nota" style="margin:0 0 10px;">Resultado final de la cita de hoy.</div>
+              <div id="chListaResultado"></div>
+            </div>
           </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Confirmados</h3>
-            <div class="nota" style="margin:0 0 10px;">Confirmaron su cita. Al marcar <b>Asistió</b> pasan a la siguiente columna.</div>
-            <div id="chListaConfirmados"></div>
-          </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Asistieron</h3>
-            <div class="nota" style="margin:0 0 10px;">Ya están en consulta. Falta registrar si compraron.</div>
-            <div id="chListaAsistieron"></div>
-          </div>
-          <div class="tarjeta caja-hoy">
-            <h3>Compró / No compró</h3>
-            <div class="nota" style="margin:0 0 10px;">Resultado final de la cita de hoy.</div>
-            <div id="chListaResultado"></div>
+        </div>
+
+        <div id="chVistaConfirmar" class="oculto">
+          <div class="tarjeta">
+            <h3>Confirmar citas (próximas 48h)</h3>
+            <div class="nota" style="margin:0 0 14px;">Quien confirma dentro de 48h asiste ~64% de las veces; de 3 días en adelante, ~31%. Ordenado por urgencia: primero las de mañana.</div>
+            <div id="chConfirmarLista"></div>
           </div>
         </div>
       </section>
@@ -2341,7 +2362,7 @@ $('btnMetaGuardar').addEventListener('click', async () => {
    igual que /api/crm/pacientes): NO CONTESTÓ de hoy, citas de hoy aún sin
    confirmar, tareas vencidas (leer_hoy() en crm_plus.py), citas de mañana
    sin confirmar y pacientes para reactivar por inactividad. */
-function pintarAlertasPanel(hoyR, agR, inactR) {
+function pintarAlertasPanel(hoyR, confirmR, inactR) {
   const caja = $('panelAlertasCaja'), cont = $('panelAlertas');
   const items = [];
 
@@ -2364,15 +2385,15 @@ function pintarAlertasPanel(hoyR, agR, inactR) {
     }
   }
 
-  if (agR.status === 'fulfilled') {
-    const manana = new Date(); manana.setDate(manana.getDate() + 1);
-    const dM = manana.getDate(), mM = MESES[manana.getMonth()], aM = manana.getFullYear();
-    const sinConfirmar = (agR.value.filas || []).filter(f =>
-      Number(f.L) === dM && String(f.M || '').trim() === mM && Number(f.N) === aM &&
-      estadoCita(f.Q) === 'PENDIENTE').length;
+  if (confirmR && confirmR.status === 'fulfilled') {
+    // Misma fuente que el panel "Confirmar (48h)" de Citas de hoy (ver
+    // /api/crm/agendados/confirmaciones) en vez del cálculo de fecha hecho a
+    // mano acá — así ambos coinciden siempre en qué cuenta como "sin confirmar".
+    const sinConfirmar = (confirmR.value.citas || []).filter(c =>
+      c.dias_para_cita === 1 && !String(c.confirmado || '').toUpperCase().includes('CONFIRMADO')).length;
     if (sinConfirmar > 0) {
       items.push({ n: sinConfirmar, txt: sinConfirmar === 1 ? 'cita de mañana sin confirmar' : 'citas de mañana sin confirmar',
-                   cls: 'info', pag: 'agendados' });
+                   cls: 'info', pag: 'hoy', accion: "pagina('hoy'); chCambiarVista('confirmar')" });
     }
   }
 
@@ -2387,7 +2408,7 @@ function pintarAlertasPanel(hoyR, agR, inactR) {
   if (!items.length) { caja.classList.add('oculto'); cont.innerHTML = ''; return; }
   caja.classList.remove('oculto');
   cont.innerHTML = `<div class="estado-line">` + items.map(it => `
-    <span class="pill" style="cursor:pointer;" onclick="pagina('${it.pag}')">
+    <span class="pill" style="cursor:pointer;" onclick="${it.accion || `pagina('${it.pag}')`}">
       <span class="chip ${it.cls}">${it.n}</span> ${esc(it.txt)}
     </span>`).join('') + `</div>`;
 }
@@ -2401,7 +2422,7 @@ async function cargarResumenPanel() {
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
-  const [hoyR, cajaR, invR, plR, agR, veR, pacR, inactR] = await Promise.allSettled([
+  const [hoyR, cajaR, invR, plR, agR, veR, pacR, inactR, confirmR] = await Promise.allSettled([
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
@@ -2410,9 +2431,10 @@ async function cargarResumenPanel() {
     si('venta', () => api('/api/crm/venta')),
     si('pacientes', () => api('/api/crm/pacientes')),
     si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
+    quiereAg ? api('/api/crm/agendados/confirmaciones') : nada,
   ]);
   const tarjetas = [];
-  pintarAlertasPanel(hoyR, agR, inactR);
+  pintarAlertasPanel(hoyR, confirmR, inactR);
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
@@ -4067,6 +4089,124 @@ async function cargarHoy() {
   renderConfirmadosHoy();
   renderVentasHoy();
   renderTodoHoyOperativo();
+  cargarConfirmaciones48h();
+}
+
+/* ---------------- Confirmar citas (próximas 48h) ----------------
+   Pestaña hermana de "Hoy": mismo hábito diario, mirando un poco más
+   adelante. La anticipación predice la asistencia (dato real del embudo de
+   Derma Essenza: dentro de 48h asiste ~64%, de 3 días en adelante ~31%). */
+let CONFIRM48 = null;
+function chCambiarVista(vista) {
+  $('chTabHoy').classList.toggle('activo', vista === 'hoy');
+  $('chTabConfirmar').classList.toggle('activo', vista === 'confirmar');
+  $('chVistaHoy').classList.toggle('oculto', vista !== 'hoy');
+  $('chVistaConfirmar').classList.toggle('oculto', vista !== 'confirmar');
+}
+
+async function cargarConfirmaciones48h() {
+  const habiaCache = !!CONFIRM48;
+  if (!habiaCache) $('chConfirmarLista').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
+  try { CONFIRM48 = await api('/api/crm/agendados/confirmaciones'); }
+  catch (e) { if (!habiaCache) $('chConfirmarLista').innerHTML = `<div class="vacio">${esc(e.message)}</div>`; return; }
+  renderConfirmaciones48h();
+}
+
+// Recuperado de un commit anterior (5669c06, 25 ago) que lo había quitado
+// por el riesgo de que Meta bloquee el número al automatizar el envío por
+// wa.me. Se reintroduce a pedido explícito, junto a "Copiar mensaje" como
+// alternativa que no abre nada — quien confirma elige caso por caso.
+function limpiarTelPeru(tel) {
+  let d = String(tel || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (d.startsWith('51') && d.length > 9) d = d.slice(2);
+  if (d.length > 9) d = d.slice(-9);
+  return d.length === 9 ? '51' + d : '';
+}
+// Placeholders con nombre/fecha/hora ya reemplazados: el copy final de los 6
+// mensajes (al agendar, intermedio 3+ días, 24h antes, mañana de la cita,
+// llamada si no responde, recuperación mismo día) debe salir del guion ya
+// entregado (Guion_confirmacion_citas_Derma_Essenza.docx) — esto no
+// inventa el texto médico definitivo, sólo deja el mecanismo listo.
+const PLANTILLAS_WSP = {
+  intermedio_3mas_dias: (n, f, h) => `Hola ${n || ''}! Te recordamos tu cita en {{BRAND_NOMBRE}} el ${f} a las ${h}. ¿Sigue en pie? [AJUSTAR COPY FINAL CON ANDRE]`,
+  reconfirmar_24h: (n, f, h) => `Hola ${n || ''}! Mañana ${f} a las ${h} te esperamos en {{BRAND_NOMBRE}}. ¿Confirmas tu asistencia? [AJUSTAR COPY FINAL CON ANDRE]`,
+  manana_de_la_cita: (n, h) => `Hola ${n || ''}! Hoy es tu cita en {{BRAND_NOMBRE}} a las ${h}. Te esperamos ✨ [AJUSTAR COPY FINAL CON ANDRE]`,
+};
+function fechaCitaTexto(c) { return `${c.dia}/${c.mes}/${c.anio}`; }
+function plantillaParaCita(c) {
+  if (c.dias_para_cita <= 0) return PLANTILLAS_WSP.manana_de_la_cita(c.nombre, c.hora);
+  if (c.dias_para_cita === 1) return PLANTILLAS_WSP.reconfirmar_24h(c.nombre, fechaCitaTexto(c), c.hora);
+  return PLANTILLAS_WSP.intermedio_3mas_dias(c.nombre, fechaCitaTexto(c), c.hora);
+}
+function abrirWhatsAppCita(fila) {
+  const c = CONFIRM48 && CONFIRM48.citas.find(x => x.fila === fila);
+  if (!c) return;
+  const tel = limpiarTelPeru(c.telefono);
+  if (!tel) { toast('Ese paciente no tiene un teléfono válido', 'err'); return; }
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(plantillaParaCita(c))}`, '_blank', 'noopener');
+}
+async function copiarMensajeCita(fila) {
+  const c = CONFIRM48 && CONFIRM48.citas.find(x => x.fila === fila);
+  if (!c) return;
+  try {
+    await navigator.clipboard.writeText(plantillaParaCita(c));
+    toast('Mensaje copiado', 'okm');
+  } catch (e) { toast('No se pudo copiar (revisa permisos del navegador)', 'err'); }
+}
+
+/* Marca confirmado/reconfirmado/no-contestó desde el panel de 48h. Propio
+   (no reusa marcarCita de "Hoy") porque reconfirmar escribe en S, no en Q, y
+   porque una cita de mañana/pasado no vive en HOY_DATA. Igual que
+   marcarCita, deja AG.filas al día localmente y refresca AGENDADOS en
+   segundo plano para reconciliar lo que sólo puede calcular el servidor. */
+async function marcar48h(fila, ruta, valor, aviso, campo) {
+  try {
+    await api(`/api/crm/agendados/${fila}/${ruta}`, { method: 'POST' });
+    const c = CONFIRM48 && CONFIRM48.citas.find(x => x.fila === fila);
+    if (c) c[campo] = valor;
+    const fAg = AG && AG.filas.find(x => x._fila === fila);
+    if (fAg) fAg[campo === 'confirmado' ? 'Q' : 'S'] = valor;
+    renderConfirmaciones48h();
+    if (AG) pintarAgendados();
+    agRefrescoSilencioso();
+    toast(aviso, 'okm');
+  } catch (e) { toast(e.message, 'err'); }
+}
+const confirmarDesde48h = (fila) => marcar48h(fila, 'confirmar', 'CONFIRMADO', 'Cita confirmada', 'confirmado');
+const reconfirmarCita = (fila) => marcar48h(fila, 'reconfirmar', 'RECONFIRMADO', 'Cita reconfirmada', 'reconfirmado');
+const noContestoDesde48h = (fila) => marcar48h(fila, 'nocontesto', 'NO CONTESTO', 'Registrado: no contestó', 'confirmado');
+
+function chipEstadoConfirmacion(c) {
+  const s = String(c.confirmado || '').toUpperCase();
+  if (s.includes('CONFIRMADO')) return '<span class="chip ok">✓ Confirmado</span>';
+  if (s.includes('NO CONTEST')) return '<span class="chip warn">☎ No contestó</span>';
+  return '<span class="chip ambar">Pendiente</span>';
+}
+function etiquetaUrgencia(c) {
+  if (c.dias_para_cita <= 0) return 'HOY';
+  if (c.dias_para_cita === 1) return 'MAÑANA';
+  return `en ${c.dias_para_cita} días`;
+}
+function renderConfirmaciones48h() {
+  if (!CONFIRM48) return;
+  const citas = CONFIRM48.citas;
+  $('chConfirmarLista').innerHTML = citas.length ? citas.map(c => `
+    <div class="item-hoy">
+      <span class="hora">${esc(etiquetaUrgencia(c))}<br>${esc(c.hora || '—')}</span>
+      <div class="info">
+        <b>${esc(c.nombre || '—')}</b> ${c.riesgo_alto ? '<span class="chip bad" title="Historial de no-show">⚠ Alto riesgo</span>' : ''}
+        ${c.reconfirmado ? '<span class="chip info">Reconfirmado</span>' : ''}
+        <small>${esc(c.telefono || '')} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+        <div class="acciones-hoy">
+          <button class="btn verde mini" onclick="abrirWhatsAppCita(${c.fila})">💬 Abrir WhatsApp</button>
+          <button class="btn borde mini" onclick="copiarMensajeCita(${c.fila})">📋 Copiar mensaje</button>
+          <button class="btn mini" onclick="confirmarDesde48h(${c.fila})">✓ Confirmar</button>
+          <button class="btn mini" onclick="reconfirmarCita(${c.fila})">✓ Reconfirmar</button>
+          <button class="btn naranja mini" onclick="noContestoDesde48h(${c.fila})">☎ No contestó</button>
+        </div>
+      </div>
+      ${chipEstadoConfirmacion(c)}
+    </div>`).join('') : '<div class="vacio">Nadie por confirmar en las próximas 48h. 🎉</div>';
 }
 function renderTodoHoyOperativo() {
   renderCitasHoyOperativo();

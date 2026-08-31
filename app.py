@@ -55,6 +55,10 @@ os.makedirs(META_DIR, exist_ok=True)
 HISTORIAS_DIR = os.path.join(DATA_DIR, 'historias')
 os.makedirs(HISTORIAS_DIR, exist_ok=True)
 MAX_BACKUPS = int(os.environ.get('MAX_BACKUPS', '12'))
+# El zip de historias clínicas sólo crece (son PDFs escaneados que nunca se
+# reemplazan), a diferencia de los .xlsx que no acumulan tamaño con el tiempo:
+# retención más corta (una semana) para no llenar el volumen de Railway.
+MAX_BACKUPS_HISTORIAS = int(os.environ.get('MAX_BACKUPS_HISTORIAS', '7'))
 os.makedirs(REPORTES_DIR, exist_ok=True)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(RECIBOS_DIR, exist_ok=True)
@@ -80,6 +84,52 @@ def _crear_backup():
             os.remove(os.path.join(BACKUP_DIR, versiones.pop(0)))
     return hecha
 
+
+def _crear_backup_agendados_venta():
+    """Respalda una copia de AGENDADOS.xlsx y VENTA_DIARIA.xlsx tal como se
+    descargan de Drive — _crear_backup() sólo cubre BD DATA.xlsx (el maestro
+    ya consolidado) y CRM.xlsx (el propio de crm_plus.py), pero nunca los
+    originales de Drive, que son la fuente primaria de todo. Se separa de
+    _crear_backup() porque ésta es puramente local/instantánea y esta otra
+    depende de que Drive esté disponible (fuerza una descarga fresca para no
+    respaldar una copia hasta 10 min vieja por el caché de am.descargar)."""
+    hecha = []
+    hoy = datetime.now().strftime('%Y%m%d_%H%M%S')
+    for fid, nombre in ((am.AGENDADOS_FID, 'AGENDADOS'),
+                       (am.VENTA_FID, 'VENTA_DIARIA')):
+        try:
+            origen = am.descargar(fid, nombre, forzar=True)
+        except Exception as e:  # noqa: BLE001
+            print(f'[backup] no se pudo respaldar {nombre}: {e}', file=sys.stderr)
+            continue
+        destino = os.path.join(BACKUP_DIR, f'{hoy}_{nombre}.xlsx')
+        shutil.copy2(origen, destino)
+        hecha.append(destino)
+    for nombre in ('AGENDADOS', 'VENTA_DIARIA'):
+        versiones = sorted(g for g in os.listdir(BACKUP_DIR)
+                           if g.endswith(f'_{nombre}.xlsx'))
+        while len(versiones) > MAX_BACKUPS:
+            os.remove(os.path.join(BACKUP_DIR, versiones.pop(0)))
+    return hecha
+
+
+def _crear_backup_historias():
+    """Respalda los PDF de historias clínicas escaneadas (historias.py) en un
+    .zip fechado. Hoy viven SÓLO en disco local (DATA_DIR/historias) — nunca
+    se suben a Drive ni los cubre ningún otro backup — así que si se pierde
+    el volumen persistente de Railway, se pierden para siempre. Retención
+    separada y más corta (MAX_BACKUPS_HISTORIAS) porque, a diferencia de los
+    .xlsx, este archivo sólo crece con el tiempo."""
+    if not os.path.isdir(HISTORIAS_DIR) or not os.listdir(HISTORIAS_DIR):
+        return None
+    hoy = datetime.now().strftime('%Y%m%d_%H%M%S')
+    base = os.path.join(BACKUP_DIR, f'{hoy}_historias')
+    destino = shutil.make_archive(base, 'zip', root_dir=HISTORIAS_DIR)
+    versiones = sorted(g for g in os.listdir(BACKUP_DIR) if g.endswith('_historias.zip'))
+    while len(versiones) > MAX_BACKUPS_HISTORIAS:
+        os.remove(os.path.join(BACKUP_DIR, versiones.pop(0)))
+    return destino
+
 _bloqueo = threading.Lock()
 
 SYNC_HORA_UTC = int(os.environ.get('SYNC_HORA_UTC', '10'))  # 10:00 UTC = 05:00 Perú
@@ -88,7 +138,10 @@ SYNC_HORA_UTC = int(os.environ.get('SYNC_HORA_UTC', '10'))  # 10:00 UTC = 05:00 
 def _sync_diario_loop():
     """Corre alimentar_maestro.ejecutar_sync(aplicar=True) una vez al día,
     para que el maestro (fuente de todo) siempre esté al día aunque nadie
-    genere un reporte."""
+    genere un reporte. Aprovecha el mismo hilo diario para el backup
+    independiente de AGENDADOS/VENTA_DIARIA originales y de los PDF de
+    historias clínicas — antes sólo se respaldaban al generar un reporte de
+    ventas, así que un día sin reportes se quedaba sin backup de nada."""
     while True:
         ahora = datetime.utcnow()
         objetivo = ahora.replace(hour=SYNC_HORA_UTC, minute=0, second=0, microsecond=0)
@@ -100,6 +153,16 @@ def _sync_diario_loop():
                 am.ejecutar_sync(aplicar=True)
         except Exception as e:  # noqa: BLE001
             print(f'[sync diario] error: {e}', file=sys.stderr)
+        # Cada backup en su propio try: que falle uno (p. ej. Drive caído
+        # para AGENDADOS) no debe impedir el de historias, ni viceversa.
+        try:
+            _crear_backup_agendados_venta()
+        except Exception as e:  # noqa: BLE001
+            print(f'[backup diario] error agendados/venta: {e}', file=sys.stderr)
+        try:
+            _crear_backup_historias()
+        except Exception as e:  # noqa: BLE001
+            print(f'[backup diario] error historias: {e}', file=sys.stderr)
 
 
 threading.Thread(target=_sync_diario_loop, daemon=True).start()
@@ -1322,18 +1385,32 @@ async def guardar_meta_mensual(data: MetaMensualReq):
 # ============================================================
 @app.post('/api/backup')
 async def hacer_backup():
+    hechas = []
+    errores = []
     try:
-        hechas = _crear_backup()
+        hechas += _crear_backup()
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f'No se pudo hacer el backup: {e}')
-    return {'ok': True, 'backups': [os.path.basename(h) for h in hechas]}
+        errores.append(f'BD DATA/CRM: {e}')
+    try:
+        hechas += _crear_backup_agendados_venta()
+    except Exception as e:  # noqa: BLE001
+        errores.append(f'AGENDADOS/VENTA_DIARIA: {e}')
+    try:
+        historias_zip = _crear_backup_historias()
+        if historias_zip:
+            hechas.append(historias_zip)
+    except Exception as e:  # noqa: BLE001
+        errores.append(f'historias: {e}')
+    if not hechas and errores:
+        raise HTTPException(502, f'No se pudo hacer ningún backup: {"; ".join(errores)}')
+    return {'ok': True, 'backups': [os.path.basename(h) for h in hechas], 'errores': errores}
 
 
 @app.get('/api/backups')
 async def listar_backups():
     out = []
     for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
-        if f.lower().endswith('.xlsx'):
+        if f.lower().endswith(('.xlsx', '.zip')):
             p = os.path.join(BACKUP_DIR, f)
             out.append({'archivo': f, 'modificado': datetime.fromtimestamp(
                 os.path.getmtime(p)).strftime('%d/%m/%Y %H:%M'),
@@ -1591,8 +1668,11 @@ async def crm_agendados_nuevo(data: AgendadoReq):
                    requerido_mes=True)
     if not d.get('nombre') and not d.get('telefono'):
         raise HTTPException(400, 'Indica al menos el nombre o el teléfono del paciente')
-    _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'))
     with _bloqueo:
+        # La validación de cupo va DENTRO del lock: si se hace antes, dos
+        # requests casi simultáneas pueden leer "2 ocupados" cada una y las
+        # dos escribir, colando un 4to paciente en el mismo horario.
+        _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'))
         try:
             res = crm.agregar_agendado(d)
         except HTTPException:
@@ -1621,9 +1701,9 @@ async def crm_agendados_editar(fila: int, data: AgendadoReq):
                    requerido_mes=True)
     if not d.get('nombre') and not d.get('telefono'):
         raise HTTPException(400, 'Indica al menos el nombre o el teléfono del paciente')
-    _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'),
-                        excluir_fila=fila)
     with _bloqueo:
+        _validar_cupo_hora(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'), d.get('hora'),
+                            excluir_fila=fila)
         try:
             res = crm.editar_agendado(fila, d)
         except HTTPException:
@@ -1663,25 +1743,87 @@ async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if d.get('dia') is None and not d.get('mes') and d.get('anio') is None:
         raise HTTPException(400, 'Indica la nueva fecha de la cita')
-    # Reprogramar conserva la misma hora (P): revisa el cupo de la fecha
-    # nueva con esa hora, no sólo lo que cambió en el payload (el form manda
-    # sólo la parte de la fecha que se tocó).
-    try:
-        actual = next((f for f in crm.leer_agendados()['filas'] if f.get('_fila') == fila), None)
-    except Exception:  # noqa: BLE001
-        actual = None
-    if actual:
-        _validar_cupo_hora(d.get('dia') if d.get('dia') is not None else actual.get('L'),
-                            d.get('mes') or actual.get('M'),
-                            d.get('anio') if d.get('anio') is not None else actual.get('N'),
-                            actual.get('P'), excluir_fila=fila)
     with _bloqueo:
+        # Reprogramar conserva la misma hora (P): revisa el cupo de la fecha
+        # nueva con esa hora, no sólo lo que cambió en el payload (el form
+        # manda sólo la parte de la fecha que se tocó). La lectura de la fila
+        # actual y la validación van DENTRO del lock, igual que en alta/editar,
+        # para que leer-decidir-escribir sea una sola operación atómica.
+        try:
+            actual = next((f for f in crm.leer_agendados()['filas'] if f.get('_fila') == fila), None)
+        except Exception:  # noqa: BLE001
+            actual = None
+        if actual:
+            _validar_cupo_hora(d.get('dia') if d.get('dia') is not None else actual.get('L'),
+                                d.get('mes') or actual.get('M'),
+                                d.get('anio') if d.get('anio') is not None else actual.get('N'),
+                                actual.get('P'), excluir_fila=fila)
         try:
             return crm.reprogramar_agendado(fila, d.get('dia'), d.get('mes'), d.get('anio'))
         except ValueError as e:
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo reprogramar la cita en Drive: {e}')
+
+
+@app.post('/api/crm/agendados/{fila}/reconfirmar')
+async def crm_agendados_reconfirmar(fila: int):
+    with _bloqueo:
+        try:
+            return crm.actualizar_campos_agendado(fila, {'S': 'RECONFIRMADO'})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo reconfirmar la cita en Drive: {e}')
+
+
+@app.get('/api/crm/agendados/confirmaciones')
+async def crm_agendados_confirmaciones(horas: int = 48):
+    """Citas sin resolver dentro de las próximas `horas` (por defecto 48,
+    es decir hoy/mañana/pasado), para priorizar a quién confirmar hoy.
+
+    La anticipación predice la asistencia (dato real del embudo de Derma
+    Essenza: dentro de 48h asiste ~64%, de 3 días en adelante ~31%) — de ahí
+    la ventana por defecto. Reusa _ia_fecha (conversor de fecha ya usado por
+    las herramientas de IA) y el mismo cálculo de riesgo de no-show que
+    crm_plus.leer_hoy() (vía cp._clave), en vez de reinventar ninguno."""
+    hoy = datetime.now(cp.TZ).date()
+    limite = hoy + timedelta(days=max(1, horas // 24))
+    try:
+        filas = crm.leer_agendados()['filas']
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer AGENDADOS de Drive: {e}')
+
+    riesgo = {}
+    for f in filas:
+        st = str(f.get('Q') or '').upper().strip()
+        if not st:
+            continue
+        tel = re.sub(r'\D', '', str(f.get('I') or ''))
+        r = riesgo.setdefault(cp._clave(tel, f.get('G')), {'total': 0, 'no_show': 0})
+        r['total'] += 1
+        if 'NO ASISTIO' in st or 'NO CONTEST' in st:
+            r['no_show'] += 1
+
+    out = []
+    for f in filas:
+        fecha = _ia_fecha(f.get('L'), f.get('M'), f.get('N'))
+        if not fecha or not (hoy <= fecha <= limite):
+            continue
+        st = str(f.get('Q') or '').upper()
+        if 'CANCEL' in st or 'NO ASISTIO' in st:
+            continue
+        tel = re.sub(r'\D', '', str(f.get('I') or ''))
+        r = riesgo.get(cp._clave(tel, f.get('G')), {'total': 0, 'no_show': 0})
+        out.append({
+            'fila': f.get('_fila'), 'nombre': f.get('G'), 'telefono': f.get('I'),
+            'dia': f.get('L'), 'mes': f.get('M'), 'anio': f.get('N'), 'hora': f.get('P'),
+            'campana': f.get('O'), 'confirmado': f.get('Q'), 'reconfirmado': f.get('S'),
+            'fecha_cita': fecha.isoformat(), 'dias_para_cita': (fecha - hoy).days,
+            'riesgo_no_show': r['no_show'], 'riesgo_alto': r['no_show'] >= 2,
+        })
+    out.sort(key=lambda x: (x['dias_para_cita'], x['hora'] or '99'))
+    return {'ok': True, 'total': len(out), 'citas': out}
 
 
 @app.post('/api/crm/agendados/{fila}/compro')
