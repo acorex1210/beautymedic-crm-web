@@ -4139,11 +4139,16 @@ function plantillaParaCita(c) {
   return PLANTILLAS_WSP.intermedio_3mas_dias(c.nombre, fechaCitaTexto(c), c.hora);
 }
 function abrirWhatsAppCita(fila) {
+  // A pedido explícito de Andre: abre el chat SIN mensaje precargado (sin
+  // ?text=). Técnicamente wa.me nunca envía nada solo — con o sin ?text= el
+  // envío real lo hace un clic humano dentro de WhatsApp — así que esto no
+  // cambia el riesgo de bloqueo, pero deja el flujo 100% manual (copiar con
+  // el botón de al lado y pegar) si así se prefiere.
   const c = CONFIRM48 && CONFIRM48.citas.find(x => x.fila === fila);
   if (!c) return;
   const tel = limpiarTelPeru(c.telefono);
   if (!tel) { toast('Ese paciente no tiene un teléfono válido', 'err'); return; }
-  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(plantillaParaCita(c))}`, '_blank', 'noopener');
+  window.open(`https://wa.me/${tel}`, '_blank', 'noopener');
 }
 async function copiarMensajeCita(fila) {
   const c = CONFIRM48 && CONFIRM48.citas.find(x => x.fila === fila);
