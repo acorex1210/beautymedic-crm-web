@@ -335,44 +335,6 @@ def invalidar(nombre):
         os.remove(ruta)
 
 
-# fid -> headRevisionId de la última vez que ESTE proceso subió con éxito
-# ese archivo. Junto con _base_confiable()/_registrar_subida(), evita un
-# hueco real de consistencia eventual de Drive: get_media() puede tardar
-# unos segundos en reflejar una subida propia MUY reciente aunque la
-# metadata (headRevisionId, ya usada por el chequeo de conflicto de más
-# abajo) la refleje al toque. Sin esto, dos escrituras seguidas a la misma
-# hoja (editar la misma fila dos veces seguidas, o agregar una venta justo
-# después de otra) podían basarse en una copia vieja de Drive descargada
-# de nuevo y pisar/perder el cambio recién guardado — confirmado en
-# producción el 2026-08-31 en VENTA DIARIA: una edición hecha ~1 minuto
-# después de otra revirtió la primera sin ningún error visible.
-_REVISION_SUBIDA = {}  # fid -> revision_id
-
-
-def _base_confiable(nombre, fid, rev_actual):
-    """Ruta local a usar como base de una escritura (agregar/editar/borrar/
-    ocultar una fila). Si la última subida propia a este archivo sigue
-    siendo la revisión vigente en Drive (nadie más lo tocó desde entonces),
-    reusa esa copia local tal cual en vez de volver a pedir el contenido a
-    Drive con get_media(). Si no, o si no hay copia previa, fuerza una
-    descarga fresca — mismo comportamiento que antes."""
-    ruta_cache = _ruta_cache(nombre)
-    if _REVISION_SUBIDA.get(fid) == rev_actual and os.path.exists(ruta_cache):
-        return ruta_cache
-    return descargar(nombre, fid, forzar=True)
-
-
-def _registrar_subida(fid, nombre, destino):
-    """Tras subir con éxito: la copia recién subida pasa a ser también la
-    caché local de lectura (en vez de borrarla con invalidar(), que forzaba
-    a la siguiente lectura —normal o de otra edición seguida— a volver a
-    pedirle el contenido a Drive, con el mismo riesgo de servir una copia
-    vieja). Se recuerda además bajo qué revisión quedó, para que
-    _base_confiable() sepa cuándo puede confiar en ella."""
-    shutil.copy2(destino, _ruta_cache(nombre))
-    _REVISION_SUBIDA[fid] = _revision_actual(fid)
-
-
 def fecha_descarga(nombre):
     ruta = _ruta_cache(nombre)
     if os.path.exists(ruta):
@@ -992,7 +954,7 @@ def _agregar_xlsx_seguro_multi(nombre, fid, hoja, estilo, lista_valores, adaptad
     conflicto = False
     for intento in range(MAX_REINTENTOS):
         rev_antes = _revision_actual(fid)
-        ruta = _base_confiable(nombre, fid, rev_antes)
+        ruta = descargar(nombre, fid, forzar=True)
         valores_hoja = ([adaptador(ruta, v) for v in lista_valores]
                         if adaptador else lista_valores)
         fila = _siguiente_fila(ruta, hoja)
@@ -1006,7 +968,7 @@ def _agregar_xlsx_seguro_multi(nombre, fid, hoja, estilo, lista_valores, adaptad
         subir_drive(fid, destino)
         conflicto = _conflicto_post_subida(fid, rev_antes)
         break
-    _registrar_subida(fid, nombre, destino)
+    invalidar(nombre)
     return fila, conflicto
 
 
@@ -1031,7 +993,7 @@ def _agregar_xlsx_seguro(nombre, fid, hoja, estilo, valores, adaptador=None):
     conflicto = False
     for intento in range(MAX_REINTENTOS):
         rev_antes = _revision_actual(fid)
-        ruta = _base_confiable(nombre, fid, rev_antes)
+        ruta = descargar(nombre, fid, forzar=True)
         valores_hoja = adaptador(ruta, valores) if adaptador else valores
         fila = _siguiente_fila(ruta, hoja)
         agregar_fila_xlsx(ruta, destino, hoja, fila, valores_hoja, estilo)
@@ -1044,7 +1006,7 @@ def _agregar_xlsx_seguro(nombre, fid, hoja, estilo, valores, adaptador=None):
         subir_drive(fid, destino)
         conflicto = _conflicto_post_subida(fid, rev_antes)
         break
-    _registrar_subida(fid, nombre, destino)
+    invalidar(nombre)
     return fila, conflicto
 
 
@@ -1054,7 +1016,7 @@ def _borrar_xlsx_seguro(nombre, fid, hoja, fila_num, mapas_header):
     conflicto = False
     for intento in range(MAX_REINTENTOS):
         rev_antes = _revision_actual(fid)
-        ruta = _base_confiable(nombre, fid, rev_antes)
+        ruta = descargar(nombre, fid, forzar=True)
         encabezado, _, _ = _detectar_columnas(ruta, hoja, mapas_header)
         if fila_num <= encabezado:
             raise ValueError('No se puede borrar una fila de encabezados')
@@ -1067,7 +1029,7 @@ def _borrar_xlsx_seguro(nombre, fid, hoja, fila_num, mapas_header):
         subir_drive(fid, destino)
         conflicto = _conflicto_post_subida(fid, rev_antes)
         break
-    _registrar_subida(fid, nombre, destino)
+    invalidar(nombre)
     return conflicto
 
 
@@ -1240,7 +1202,7 @@ def _editar_xlsx_seguro(nombre, fid, hoja, fila_num, valores, adaptador=None):
     conflicto = False
     for intento in range(MAX_REINTENTOS):
         rev_antes = _revision_actual(fid)
-        ruta = _base_confiable(nombre, fid, rev_antes)
+        ruta = descargar(nombre, fid, forzar=True)
         valores_hoja = adaptador(ruta, valores) if adaptador else valores
         reescribir_fila_xlsx(ruta, destino, hoja, fila_num, valores_hoja,
                              DEFAULT_STYLE[hoja])
@@ -1252,7 +1214,7 @@ def _editar_xlsx_seguro(nombre, fid, hoja, fila_num, valores, adaptador=None):
         subir_drive(fid, destino)
         conflicto = _conflicto_post_subida(fid, rev_antes)
         break
-    _registrar_subida(fid, nombre, destino)
+    invalidar(nombre)
     return conflicto
 
 
@@ -1681,7 +1643,7 @@ def ocultar_remarketing(hoja, fila_num, oculto=True):
         fid = am.REMARKETING_FID
         for intento in range(MAX_REINTENTOS):
             rev_antes = _revision_actual(fid)
-            ruta = _base_confiable('REMARKETING', fid, rev_antes)
+            ruta = descargar('REMARKETING', fid, forzar=True)
             ocultar_fila_xlsx(ruta, destino, hoja, fila_num, oculto)
             if _revision_actual(fid) != rev_antes:
                 if intento < MAX_REINTENTOS - 1:
@@ -1691,7 +1653,7 @@ def ocultar_remarketing(hoja, fila_num, oculto=True):
             subir_drive(fid, destino)
             conflicto = _conflicto_post_subida(fid, rev_antes)
             break
-        _registrar_subida(fid, 'REMARKETING', destino)
+        invalidar('REMARKETING')
     return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'oculto': oculto,
             'conflicto': conflicto}
 
