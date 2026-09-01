@@ -34,6 +34,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import zipfile
 from collections import defaultdict
 from datetime import datetime
@@ -46,8 +47,12 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
-_TMP_DEFAULT = os.path.expanduser(
-    '/var/folders/fc/2jp7n0610cbfckv3jpbzt73h0000gn/T/opencode/maestro_auto')
+# Antes esto apuntaba a una ruta absoluta de un Mac de desarrollo puntual
+# (/var/folders/.../opencode/maestro_auto) — inofensivo mientras algo externo
+# (como desktop.py) sobreescriba TMP_DIR antes de importar este módulo, pero
+# roto en cualquier otra máquina si alguien lo usa suelto. tempfile.gettempdir()
+# es el temp real del sistema operativo en el que se esté corriendo.
+_TMP_DEFAULT = os.path.join(tempfile.gettempdir(), 'derma_essenza_maestro_auto')
 CREDENCIALES = os.environ.get('CREDENCIALES',
                               os.path.expanduser('~/credenciales-derma-essenza.json'))
 GDRIVE_CREDENTIALS_JSON = os.environ.get('GDRIVE_CREDENTIALS_JSON', '')

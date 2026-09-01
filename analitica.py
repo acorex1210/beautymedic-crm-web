@@ -29,6 +29,29 @@ _MM = ['', 'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO',
 
 _MM_ORD = {m: i for i, m in enumerate(_MM)}
 
+# Derma Essenza opera desde julio 2026. El maestro BD DATA.xlsx es una hoja
+# reutilizada de un negocio anterior (Beauty Medic) y arrastra filas suyas
+# con fecha anterior a esa (p.ej. la ejecutiva "STEFANY", ago-set 2025) — no
+# son datos reales de Derma Essenza y no deben entrar en ningún cálculo
+# histórico (tendencia, comparativo año anterior, recurrencia, reactivación,
+# proyección). _filas_maestro() las descarta en el origen para que todas las
+# funciones de este módulo queden protegidas automáticamente.
+_INICIO_OPERACION = (2026, 7)  # (año, mes) del primer mes real de Derma Essenza
+
+
+def _antes_de_inicio(anio, mes_txt):
+    """True si (anio, mes_txt) es anterior al inicio real de operación de
+    Derma Essenza — o sea, no puede ser un dato genuino de este negocio."""
+    if not anio or not mes_txt:
+        return False
+    mi = _MM_ORD.get(str(mes_txt).strip().upper())
+    if not mi:
+        return False
+    try:
+        return (int(anio), mi) < _INICIO_OPERACION
+    except (TypeError, ValueError):
+        return False
+
 
 def _cita_pasada(f):
     """True si la fecha de cita de la fila ya ocurrió (comparada con hoy)."""
@@ -154,6 +177,13 @@ def _filas_maestro():
              'montos': [ws.cell(row=r, column=c).value for c in col['PAGO']],
              'pago_total': ws.cell(row=r, column=col['PAGO_TOTAL']).value,
              }
+        # Descarta filas anteriores al inicio real de operación de Derma
+        # Essenza (arrastradas del negocio anterior que usaba esta hoja) —
+        # ver _INICIO_OPERACION. Si cualquiera de las dos fechas de la fila
+        # (agendado o cita) cae antes, la fila entera no es un dato real.
+        if (_antes_de_inicio(f['anio_ag'], f['mes_ag'])
+                or _antes_de_inicio(f['anio_cita'], f['mes_cita'])):
+            continue
         filas.append(f)
     return filas, col
 
