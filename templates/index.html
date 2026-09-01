@@ -16,6 +16,12 @@
 </script>
 <script src="/static/chart.umd.min.js" defer></script>
 <style>
+/* Tipografía de marca: Manrope para todo el cuerpo/UI (geométrica, cálida,
+   se lee bien en tamaños chicos de tabla y formulario), Playfair Display
+   sólo para el wordmark del sidebar — un toque editorial premium sin
+   tocar botones, tablas ni formularios. Si la red bloquea el import, cae
+   a la pila de sistema sin romper nada. */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');
 :root {
    --azul: #2c5aa0; --azul2: #3a7bd5; --azul3: #5aa0e8;
    --crema: #faf6e9; --dorado: #c9a847;
@@ -25,7 +31,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     background: var(--fondo); color: var(--gris); font-size: 14px;
   }
   a { color: var(--azul2); text-decoration: none; }
@@ -444,7 +450,7 @@
   .me-barra { display: inline-block; width: 64px; height: 8px; background: #e4eaf3; border-radius: 5px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
   .me-barra span { display: block; height: 100%; background: var(--azul3); }
   .me-barra span.full { background: var(--rojo); }
-  .badge-est, .badge-ef { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+  .badge-est, .badge-ef { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 750; white-space: nowrap; }
   .badge-est.activa, .badge-ef.bueno { background: #e2f7e6; color: #1f9d55; }
   .badge-est.inactiva { background: #eef0f4; color: #8a93a6; }
   .badge-ef.malo { background: #fde8e8; color: #d64545; }
@@ -524,7 +530,10 @@
     background: linear-gradient(145deg, #3178df, #1b4f9e);
     box-shadow: 0 7px 16px rgba(2, 18, 44, .33), inset 0 1px rgba(255,255,255,.22);
   }
-  .logo h1 { font-size: 16px; letter-spacing: .1px; }
+  .logo h1 {
+    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    font-size: 18px; font-weight: 700; letter-spacing: .2px;
+  }
   .logo p { color: #9eb2d3; }
   .nav { padding: 16px 12px; }
   .nav a {
@@ -613,6 +622,30 @@
   /* ---------- Empty / loading states pulidos ---------- */
   .vacio { color: var(--texto-suave); }
   .spinner { border-color: var(--celeste); border-top-color: var(--azul2); }
+
+  /* ---------- Scrollbars finos (detalle premium en zonas con scroll
+     propio: tablas, chat de IA, kanban, modales) ---------- */
+  .tabla-wrap, .ia-mensajes, .kanban, .modal {
+    scrollbar-width: thin; scrollbar-color: #c3cee0 transparent;
+  }
+  .tabla-wrap::-webkit-scrollbar, .ia-mensajes::-webkit-scrollbar,
+  .kanban::-webkit-scrollbar, .modal::-webkit-scrollbar { width: 9px; height: 9px; }
+  .tabla-wrap::-webkit-scrollbar-track, .ia-mensajes::-webkit-scrollbar-track,
+  .kanban::-webkit-scrollbar-track, .modal::-webkit-scrollbar-track { background: transparent; }
+  .tabla-wrap::-webkit-scrollbar-thumb, .ia-mensajes::-webkit-scrollbar-thumb,
+  .kanban::-webkit-scrollbar-thumb, .modal::-webkit-scrollbar-thumb {
+    background: #c3cee0; border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
+  }
+  .tabla-wrap::-webkit-scrollbar-thumb:hover, .ia-mensajes::-webkit-scrollbar-thumb:hover,
+  .kanban::-webkit-scrollbar-thumb:hover, .modal::-webkit-scrollbar-thumb:hover { background: #a9b8d2; }
+  /* El sidebar/nav siempre es navy (no cambia con el tema claro/oscuro),
+     así que su scrollbar usa un tono claro translúcido en vez del gris
+     azulado de arriba, pensado para fondo blanco. */
+  .nav { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.22) transparent; }
+  .nav::-webkit-scrollbar { width: 8px; }
+  .nav::-webkit-scrollbar-track { background: transparent; }
+  .nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 999px; }
+  .nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.34); }
 
   /* ---------- Móvil ---------- */
   @media (max-width: 860px) {
@@ -737,6 +770,12 @@
   :root[data-theme="dark"] .chip.warn, :root[data-theme="dark"] .chip.ambar { background: #382c11; color: #eec372; }
   :root[data-theme="dark"] .chip.bad { background: #3a1a20; color: #f296a0; }
   :root[data-theme="dark"] .chip.gris { background: #202a3d; color: #9aa8c4; }
+  /* .badge-est/.badge-ef quedaban con hex fijos pensados para tema claro
+     (mismo problema que .btn.borde abajo): en oscuro perdían contraste. */
+  :root[data-theme="dark"] .badge-est.activa, :root[data-theme="dark"] .badge-ef.bueno { background: #16352a; color: #5fe3ab; }
+  :root[data-theme="dark"] .badge-est.inactiva, :root[data-theme="dark"] .badge-ef.neutro { background: #202a3d; color: #9aa8c4; }
+  :root[data-theme="dark"] .badge-ef.malo { background: #3a1a20; color: #f296a0; }
+  :root[data-theme="dark"] .badge-ef.medio { background: #382c11; color: #eec372; }
   :root[data-theme="dark"] .kcol { background: #131c30; border-color: var(--borde); }
   :root[data-theme="dark"] .kcol h4 .cuen { background: #1e2c48; color: #9dc0fb; }
   :root[data-theme="dark"] .modal-fondo { background: rgba(2, 8, 20, .68); }
@@ -758,6 +797,16 @@
   :root[data-theme="dark"] .cal-dia .cal-huella-txt { color: var(--texto-suave); }
   :root[data-theme="dark"] .dtab tbody tr:hover { background: #1c2740; }
   :root[data-theme="dark"] .kcard .kn { color: var(--texto); }
+  /* Scrollbars finos: el thumb gris-azulado claro de arriba está pensado
+     para superficies blancas, en oscuro casi no se distinguía del fondo. */
+  :root[data-theme="dark"] .tabla-wrap, :root[data-theme="dark"] .ia-mensajes,
+  :root[data-theme="dark"] .kanban, :root[data-theme="dark"] .modal {
+    scrollbar-color: #2c3a58 transparent;
+  }
+  :root[data-theme="dark"] .tabla-wrap::-webkit-scrollbar-thumb, :root[data-theme="dark"] .ia-mensajes::-webkit-scrollbar-thumb,
+  :root[data-theme="dark"] .kanban::-webkit-scrollbar-thumb, :root[data-theme="dark"] .modal::-webkit-scrollbar-thumb { background: #2c3a58; }
+  :root[data-theme="dark"] .tabla-wrap::-webkit-scrollbar-thumb:hover, :root[data-theme="dark"] .ia-mensajes::-webkit-scrollbar-thumb:hover,
+  :root[data-theme="dark"] .kanban::-webkit-scrollbar-thumb:hover, :root[data-theme="dark"] .modal::-webkit-scrollbar-thumb:hover { background: #3a4a6e; }
   /* .btn.borde: azul oscuro sobre borde clarito, ambos pensados para
      fondo blanco. En oscuro casi no se leía sobre la tarjeta. */
   :root[data-theme="dark"] .btn.borde { color: var(--azul2); border-color: rgba(111,160,248,.5); }
