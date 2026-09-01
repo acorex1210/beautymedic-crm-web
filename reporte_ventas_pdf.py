@@ -33,7 +33,9 @@ from datetime import datetime
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.patches import FancyBboxPatch
 import numpy as np
 import openpyxl
 
@@ -42,22 +44,52 @@ import alimentar_maestro as am
 import meta_ads as mads
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ============================================================
+# Tipografía: Playfair Display (titulares, cifras grandes) + Manrope
+# (texto/tablas) — el mismo par editorial-premium que se usa en la web
+# (fuentes propias, licencia OFL de Google Fonts, en fonts/). Se registran
+# una vez al importar el módulo; si por algún motivo faltan los archivos
+# (entorno nuevo sin el folder fonts/), se cae de vuelta a la fuente por
+# defecto de matplotlib sin romper el reporte.
+FONT_DIR = os.path.join(BASE_DIR, 'fonts')
+FUENTE_SERIF = 'Playfair Display'
+FUENTE_SANS = 'Manrope'
+try:
+    for _f in os.listdir(FONT_DIR):
+        if _f.endswith('.ttf'):
+            fm.fontManager.addfont(os.path.join(FONT_DIR, _f))
+    # DejaVu Sans (la que trae matplotlib) como respaldo: Manrope no incluye
+    # los glifos ▲▼▶ que se usan para las variaciones — matplotlib cae
+    # automáticamente a la siguiente fuente de la lista si falta un glifo.
+    plt.rcParams['font.family'] = [FUENTE_SANS, 'DejaVu Sans']
+except (FileNotFoundError, OSError):
+    FUENTE_SERIF = FUENTE_SANS = plt.rcParams['font.family'][0]
+# Fuentes TrueType embebidas de verdad en el PDF (no Type 3): texto nítido,
+# seleccionable y buscable en cualquier lector.
+matplotlib.rcParams['pdf.fonttype'] = 42
 SALIDA = os.path.join(BASE_DIR, 'Reporte_Ventas_1-10_Agosto_2026.pdf')
 MES = 'AGO'
 ANIO = 2026
 D1, D2 = 1, 10
 FUENTE = 'maestro'   # maestro = pivotes guardados | auto = integra AGENDADOS+VENTA (Drive)
 
-FONDO_TITULO = '#1f3864'
-AZUL = '#2f5597'
-CELESTE = '#9dc3e6'
-VERDE = '#70ad47'
-NARANJA = '#ed7d31'
-GRIS = '#595959'
-ROJO = '#c00000'
-FONDO_CLARO = '#eaf1f8'
-GRIS_LINEA = '#d9d9d9'
-GRIS_PIE = '#999999'
+# Paleta alineada a la identidad de marca de la web (navy + dorado + crema,
+# ver templates/index.html :root) para que el PDF se sienta parte del mismo
+# producto premium, no un reporte de Excel aparte.
+FONDO_TITULO = '#16264d'    # navy del sidebar de la web
+AZUL = '#2c5aa0'            # --azul
+CELESTE = '#5aa0e8'         # --azul3
+VERDE = '#38a543'           # --verde
+NARANJA = '#c9a847'         # --dorado — acento premium (antes era naranja puro)
+NARANJA_VIVO = '#e58e2d'    # --naranja original, para gráficas donde 3+ series
+                            # necesitan distinguirse de VERDE y del dorado
+GRIS = '#5b6a7e'            # --gris
+ROJO = '#d44436'            # --rojo
+FONDO_CLARO = '#faf3e0'     # tinte crema (--crema), reemplaza el celeste frío
+GRIS_LINEA = '#e4e8f0'      # --borde
+GRIS_PIE = '#93a0b5'
+DORADO_CLARO = '#f3e6c2'    # fondo suave para acentos dorados (barras, chips)
 
 # Alto (fracción de página) de una fila de tabla a fontsize=9 cuando se usa
 # estilo_tabla(..., max_row_h=1.0), es decir cuando la tabla llena exactamente
@@ -66,8 +98,8 @@ ALTO_FILA_TABLA = 0.032
 
 CRM_ORDEN = ['KOMMO', 'WHATSAPP', 'ORGANICO', 'SIN CRM']
 CANALES = ['KOMMO', 'WHATSAPP', 'ORGANICO']
-COLOR_CANAL = {'KOMMO': AZUL, 'WHATSAPP': VERDE, 'ORGANICO': NARANJA}
-PALETA = [AZUL, VERDE, NARANJA, CELESTE]
+COLOR_CANAL = {'KOMMO': AZUL, 'WHATSAPP': VERDE, 'ORGANICO': NARANJA_VIVO}
+PALETA = [AZUL, VERDE, NARANJA_VIVO, CELESTE]
 
 # ============================================================
 # Sistema de diseño: encabezado/pie consistentes en todas las páginas
@@ -99,22 +131,27 @@ def nueva_pagina(titulo, subtitulo=None, num=None, total=None):
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.axis('off')
 
-    # Franja superior de marca
+    # Franja superior de marca — versalitas con tracking (se simula con
+    # espacios entre letras; matplotlib no soporta letter-spacing real) para
+    # que se lea como una cabecera editorial, no una barra de título de Excel.
     ax.add_patch(plt.Rectangle((0, 0.978), 1, 0.022, facecolor=FONDO_TITULO,
                                edgecolor='none', transform=ax.transAxes, zorder=3))
-    ax.text(MARGEN_IZQ, 0.989, _marca_nombre().upper(), ha='left', va='center',
-            fontsize=8, color='white', fontweight='bold', transform=ax.transAxes, zorder=4)
+    ax.text(MARGEN_IZQ, 0.989, ' '.join(_marca_nombre().upper()), ha='left', va='center',
+            fontsize=7.5, color=NARANJA, fontweight='bold', family=FUENTE_SANS,
+            transform=ax.transAxes, zorder=4)
     ax.text(MARGEN_DER, 0.989, f'{D1} al {D2} de {NOMBRES_MES.get(MES, MES)} {ANIO}',
-            ha='right', va='center', fontsize=8, color='white', transform=ax.transAxes, zorder=4)
+            ha='right', va='center', fontsize=8, color='white', family=FUENTE_SANS,
+            transform=ax.transAxes, zorder=4)
 
-    # Título con marca de acento a la izquierda
-    ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.924), 0.006, 0.030, facecolor=NARANJA,
-                               edgecolor='none', transform=ax.transAxes, zorder=4))
-    ax.text(MARGEN_IZQ + 0.016, 0.939, titulo, ha='left', va='center', fontsize=17,
-            fontweight='bold', color=FONDO_TITULO, transform=ax.transAxes)
+    # Título editorial: serif grande + filete dorado fino debajo (en vez del
+    # tick de color a la izquierda) — más elegante que un bloque de color.
+    ax.text(MARGEN_IZQ, 0.940, titulo, ha='left', va='center', fontsize=19,
+            fontweight='bold', color=FONDO_TITULO, family=FUENTE_SERIF, transform=ax.transAxes)
+    ax.plot([MARGEN_IZQ, MARGEN_IZQ + 0.052], [0.920, 0.920], color=NARANJA, linewidth=2,
+            solid_capstyle='round', transform=ax.transAxes, zorder=4)
     if subtitulo:
-        ax.text(MARGEN_IZQ + 0.016, 0.912, subtitulo, ha='left', va='center', fontsize=9.5,
-                color=GRIS, transform=ax.transAxes)
+        ax.text(MARGEN_IZQ, 0.906, subtitulo, ha='left', va='center', fontsize=9.5,
+                color=GRIS, family=FUENTE_SANS, transform=ax.transAxes)
     ax.plot([MARGEN_IZQ, MARGEN_DER], [Y_LINEA_TITULO, Y_LINEA_TITULO], color=GRIS_LINEA,
             linewidth=0.8, transform=ax.transAxes)
 
@@ -122,10 +159,11 @@ def nueva_pagina(titulo, subtitulo=None, num=None, total=None):
     ax.plot([MARGEN_IZQ, MARGEN_DER], [Y_LINEA_PIE, Y_LINEA_PIE], color=GRIS_LINEA,
             linewidth=0.8, transform=ax.transAxes)
     ax.text(MARGEN_IZQ, 0.03, f'{_marca_nombre()} · documento interno, uso confidencial',
-            ha='left', va='center', fontsize=7, color=GRIS_PIE, transform=ax.transAxes)
+            ha='left', va='center', fontsize=7, color=GRIS_PIE, family=FUENTE_SANS,
+            transform=ax.transAxes)
     if num is not None and total is not None:
         ax.text(MARGEN_DER, 0.03, f'Página {num} de {total}', ha='right', va='center',
-                fontsize=7, color=GRIS_PIE, transform=ax.transAxes)
+                fontsize=7, color=GRIS_PIE, family=FUENTE_SANS, transform=ax.transAxes)
     return fig, ax
 
 
@@ -884,7 +922,8 @@ def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
     tabla.auto_set_font_size(False)
     tabla.set_fontsize(fontsize)
     for (i, j), cel in tabla.get_celld().items():
-        cel.set_edgecolor('#bfbfbf')
+        cel.set_edgecolor(GRIS_LINEA)
+        cel.set_linewidth(0.7)
         if altura_fila:
             cel.set_height(altura_fila)
         if i == 0:
@@ -893,18 +932,20 @@ def estilo_tabla(ax, datos, col_w, header=None, color_titulo=FONDO_TITULO,
         elif alinear_izq_col0 and j == 0:
             cel.set_text_props(fontweight='bold', ha='left')
         elif i % 2 == 0:
-            cel.set_facecolor('#f2f2f2')
+            cel.set_facecolor('#f8f5ee')
     return tabla
 
 
 def caja_kpi(fig, x, y, w, h, titulo, valor, sub, color, var_pct=None):
     ax = fig.add_axes([x, y, w, h]); ax.axis('off')
-    ax.add_patch(plt.Rectangle((0, 0), 1, 1, facecolor=color, edgecolor='none',
-                               transform=ax.transAxes))
-    fs = 24 if len(valor) <= 3 else 22
-    ax.text(0.5, 0.72, valor, ha='center', va='center', fontsize=fs,
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.add_patch(FancyBboxPatch((0.015, 0.03), 0.97, 0.94, facecolor=color, edgecolor='none',
+                                boxstyle='round,pad=0,rounding_size=0.05',
+                                mutation_aspect=w / h if h else 1, transform=ax.transAxes))
+    fs = 25 if len(valor) <= 3 else 23
+    ax.text(0.5, 0.72, valor, ha='center', va='center', fontsize=fs, family=FUENTE_SERIF,
             fontweight='bold', color='white', transform=ax.transAxes)
-    ax.text(0.5, 0.44, titulo, ha='center', va='center', fontsize=10,
+    ax.text(0.5, 0.44, titulo, ha='center', va='center', fontsize=9.5,
             color='white', fontweight='bold', transform=ax.transAxes)
     sub_txt = sub
     if var_pct is not None:
@@ -932,8 +973,9 @@ def pagina_resumen(pdf, tot, agg, num, total, variacion=None, gasto_ads=None):
         x = MARGEN_IZQ + i * (w + gap)
         caja_kpi(fig, x, 0.775, w, 0.085, t, val, s, c, var_pct=vp)
 
-    ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.555), ANCHO_UTIL, 0.175, facecolor=FONDO_CLARO,
-                               edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+    ax.add_patch(FancyBboxPatch((MARGEN_IZQ, 0.555), ANCHO_UTIL, 0.175, facecolor=FONDO_CLARO,
+                                edgecolor=NARANJA, linewidth=1.1, boxstyle='round,pad=0,rounding_size=0.012',
+                                mutation_aspect=8.27 / 11.69, transform=fig.transFigure))
     ax.text(MARGEN_IZQ + 0.03, 0.702, 'Indicadores clave', fontsize=11.5, fontweight='bold',
             color=FONDO_TITULO, transform=fig.transFigure)
     if tot['co']:
@@ -1101,10 +1143,12 @@ def pagina_flujo(pdf, tot, num, total):
         w = max(0.14, ancho_max * val / maxv)
         x0 = 0.5 - w / 2
         x1 = x0 + w
-        ax.add_patch(plt.Rectangle((x0, y_bot), w, bar_h, facecolor=c, edgecolor='none',
-                                   transform=fig.transFigure, clip_on=False))
+        ax.add_patch(FancyBboxPatch((x0, y_bot), w, bar_h, facecolor=c, edgecolor='none',
+                                    boxstyle='round,pad=0,rounding_size=0.012',
+                                    mutation_aspect=8.27 / 11.69, transform=fig.transFigure,
+                                    clip_on=False))
         ax.text(x1 + 0.025, y_bot + bar_h / 2, f'{nom}   {val}', ha='left', va='center',
-                fontsize=13.5, fontweight='bold', color=c, transform=fig.transFigure)
+                fontsize=13.5, fontweight='bold', color=c, family=FUENTE_SERIF, transform=fig.transFigure)
         if i < len(etapas) - 1:
             conv = pct(etapas[i + 1][1], val)
             y_next_top = y_tops[i + 1]
@@ -1119,10 +1163,11 @@ def pagina_flujo(pdf, tot, num, total):
     y_ultimo_bot = y_tops[-1] - bar_h
     banner_top = y_ultimo_bot - 0.055
     banner_h = 0.125
-    ax.add_patch(plt.Rectangle((0.20, banner_top - banner_h), 0.60, banner_h, facecolor=FONDO_TITULO,
-                               edgecolor='none', transform=fig.transFigure, clip_on=False))
-    ax.text(0.5, banner_top - 0.042, monto(tot['mon']), ha='center', va='center', fontsize=24,
-            fontweight='bold', color='white', transform=fig.transFigure)
+    ax.add_patch(FancyBboxPatch((0.20, banner_top - banner_h), 0.60, banner_h, facecolor=FONDO_TITULO,
+                                edgecolor='none', boxstyle='round,pad=0,rounding_size=0.015',
+                                mutation_aspect=8.27 / 11.69, transform=fig.transFigure, clip_on=False))
+    ax.text(0.5, banner_top - 0.042, monto(tot['mon']), ha='center', va='center', fontsize=25,
+            fontweight='bold', color='white', family=FUENTE_SERIF, transform=fig.transFigure)
     ax.text(0.5, banner_top - 0.088, 'MONTO VENDIDO EN EL PERIODO', ha='center', va='center',
             fontsize=9.5, color='white', transform=fig.transFigure)
 
@@ -1490,8 +1535,9 @@ def pagina_motivos(pdf, motivos, num, total):
         for yi, va in zip(ypos, vals):
             ax_g1.text(va + 0.05, yi, str(va), va='center', fontsize=8, color=GRIS)
     else:
-        ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.60), ANCHO_UTIL, 0.23, facecolor=FONDO_CLARO,
-                                   edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+        ax.add_patch(FancyBboxPatch((MARGEN_IZQ, 0.60), ANCHO_UTIL, 0.23, facecolor=FONDO_CLARO,
+                                    edgecolor=CELESTE, linewidth=1, boxstyle='round,pad=0,rounding_size=0.012',
+                                    mutation_aspect=8.27 / 11.69, transform=fig.transFigure))
         ax.text(0.5, 0.72, 'Sin motivos de no asistencia registrados en el periodo.',
                 ha='center', va='center', fontsize=10, color=GRIS, transform=fig.transFigure)
         ax.text(0.5, 0.67, 'Tipificación en la columna "MOTIVO NO ASISTIO" (col AB) del maestro BD DATA.',
@@ -1522,8 +1568,9 @@ def pagina_motivos(pdf, motivos, num, total):
         for yi, va in zip(ypos2, vals2):
             ax_g2.text(va + 0.05, yi, str(va), va='center', fontsize=8, color=GRIS)
     else:
-        ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.21), ANCHO_UTIL, 0.23, facecolor=FONDO_CLARO,
-                                   edgecolor=CELESTE, linewidth=1, transform=fig.transFigure))
+        ax.add_patch(FancyBboxPatch((MARGEN_IZQ, 0.21), ANCHO_UTIL, 0.23, facecolor=FONDO_CLARO,
+                                    edgecolor=CELESTE, linewidth=1, boxstyle='round,pad=0,rounding_size=0.012',
+                                    mutation_aspect=8.27 / 11.69, transform=fig.transFigure))
         ax.text(0.5, 0.33, 'Sin motivos de no compra registrados en el periodo.',
                 ha='center', va='center', fontsize=10, color=GRIS, transform=fig.transFigure)
         ax.text(0.5, 0.28, 'Tipificación en la columna "MOTIVO NO COMPRA" (col AC) del maestro BD DATA.',
@@ -1684,10 +1731,11 @@ def pagina_proyeccion(pdf, proy, patrones, pareto, num, total):
             color=FONDO_TITULO, transform=fig.transFigure)
     if pareto['n_pacientes']:
         alto_riesgo = pareto['top20_pct_monto'] >= 50
-        color_caja = '#fdeee4' if alto_riesgo else FONDO_CLARO
-        color_borde = NARANJA if alto_riesgo else CELESTE
-        ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.12), ANCHO_UTIL, 0.095, facecolor=color_caja,
-                                   edgecolor=color_borde, linewidth=1, transform=fig.transFigure))
+        color_caja = '#fbe9e7' if alto_riesgo else FONDO_CLARO
+        color_borde = ROJO if alto_riesgo else CELESTE
+        ax.add_patch(FancyBboxPatch((MARGEN_IZQ, 0.12), ANCHO_UTIL, 0.095, facecolor=color_caja,
+                                    edgecolor=color_borde, linewidth=1, boxstyle='round,pad=0,rounding_size=0.012',
+                                    mutation_aspect=8.27 / 11.69, transform=fig.transFigure))
         ax.text(MARGEN_IZQ + 0.02, 0.192, f"El {round(100 * pareto['top20_n'] / pareto['n_pacientes'])}% de los "
                 f"pacientes que compraron ({pareto['top20_n']} de {pareto['n_pacientes']}) generó el "
                 f"{pareto['top20_pct_monto']:.0f}% de los S/ {pareto['total']:,.0f} vendidos en el periodo.",
@@ -1789,10 +1837,11 @@ def pagina_reactivacion(pdf, react, num, total, meses_umbral=3):
                            f'vez pero no vuelven hace más de {meses_umbral} meses (a hoy)',
                            num=num, total=total)
 
-    ax.add_patch(plt.Rectangle((MARGEN_IZQ, 0.795), ANCHO_UTIL, 0.075, facecolor=FONDO_TITULO,
-                               edgecolor='none', transform=fig.transFigure))
+    ax.add_patch(FancyBboxPatch((MARGEN_IZQ, 0.795), ANCHO_UTIL, 0.075, facecolor=FONDO_TITULO,
+                                edgecolor='none', boxstyle='round,pad=0,rounding_size=0.015',
+                                mutation_aspect=8.27 / 11.69, transform=fig.transFigure))
     ax.text(0.5, 0.8325, f'{len(react)} pacientes para contactar', ha='center', va='center',
-            fontsize=17, fontweight='bold', color='white', transform=fig.transFigure)
+            fontsize=17, fontweight='bold', color='white', family=FUENTE_SERIF, transform=fig.transFigure)
 
     if react:
         filas = [[p['nombre'][:26], p['telefono'], p['ultima_cita'], p['meses_sin_volver']]
