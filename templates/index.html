@@ -2534,9 +2534,26 @@ async function cargarResumenPanel() {
   const cont = $('panelResumen');
   cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando resumen&hellip;</div>';
   $('linkPanelExportarExcel').href = `/api/reportes/exportar?tipo=kpis&mes=${HOY_M}&anio=${HOY_A}`;
+  try {
+    await cargarResumenPanelInterno(cont);
+  } catch (e) {
+    // Red de seguridad: si algo revienta antes de terminar de armar las
+    // tarjetas (una API caída, un error inesperado), esto evita que la
+    // tarjeta se quede en "Cargando…" para siempre sin ningún aviso —
+    // se vio pasar en la práctica con un 502 puntual de Drive.
+    cont.innerHTML = `<div class="vacio">No se pudo cargar el resumen (${esc(e.message)}).
+      <div style="margin-top:10px;"><button type="button" class="btn borde pequeno" onclick="cargarResumenPanel()">Reintentar</button></div>
+    </div>`;
+  }
+}
+
+async function cargarResumenPanelInterno(cont) {
   const qNow = HOY_D <= 15 ? 1 : 2;
-  const nada = Promise.reject(new Error('sin acceso'));
-  const si = (sec, p) => (puedeVer(sec) ? p() : nada);
+  // Función (no promesa ya creada) para que cada uso genere su propio
+  // rechazo: una sola promesa rechazada reutilizada varias veces en el
+  // array de abajo disparaba avisos falsos de "unhandled rejection".
+  const nada = () => Promise.reject(new Error('sin acceso'));
+  const si = (sec, p) => (puedeVer(sec) ? p() : nada());
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
@@ -2545,11 +2562,11 @@ async function cargarResumenPanel() {
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
     si('planilla', () => api(`/api/crm/planilla?anio=${HOY_A}&mes=${HOY_M}&quincena=${qNow}`)),
-    quiereAg ? api('/api/crm/agendados') : nada,
+    quiereAg ? api('/api/crm/agendados') : nada(),
     si('venta', () => api('/api/crm/venta')),
     si('pacientes', () => api('/api/crm/pacientes')),
     si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
-    quiereAg ? api('/api/crm/agendados/confirmaciones') : nada,
+    quiereAg ? api('/api/crm/agendados/confirmaciones') : nada(),
     si('venta', () => api('/api/sync/estado')),
   ]);
   const tarjetas = [];
