@@ -373,28 +373,73 @@ def monto(sol):
     return f"S/ {sol:,.0f}" if sol else "S/ 0"
 
 
-def _campana_origen_por_telefono(ag_path):
-    """Teléfono -> campaña de su PRIMERA cita en todo el historial de
-    AGENDADOS (no solo el periodo del reporte). Un cliente reagendado para
-    retoque/evaluación bajo otra "campaña" sigue contando en la que lo trajo,
-    igual que en el cuadre manual."""
-    agendados, ag_col = am.leer_agendados(ag_path)
-    if not ag_col:
-        return {}
-    orden_mes = list(NOMBRES_MES)
+_VENTANA_ATRIBUCION_DIAS = 21  # 3 semanas
 
-    def clave(fc):
-        dia, mes, anio = fc
-        return (anio, orden_mes.index(mes) if mes in orden_mes else 99, dia)
 
+def _atribucion_campanas(ws):
+    """Atribuye cada fila (cita) del maestro a la campaña que la trajo,
+    encadenando reagendados en vez de fijar para siempre la campaña de la
+    PRIMERA cita del teléfono (bug reportado por Andre: una paciente que se
+    hacía 2-5 tratamientos seguía figurando con la campaña de su primera
+    cita, aunque hubiera agendado mucho después por otra campaña distinta).
+
+    Reglas (confirmadas con Andre, 2026-09-02):
+    - Una cita con campaña real propia (``campana_valida``) abre una cadena
+      nueva atribuida a esa campaña (o reemplaza la anterior si ya había una).
+    - Una cita "otros" (retoque/evaluación/recurrente/etc., ver
+      ``CATEGORIAS_OTROS``) va por su cuenta: no hereda la cadena activa ni
+      la extiende — sólo cuentan como "volver a agendar" los reagendados sin
+      campaña propia.
+    - Una cita sin campaña propia (celda CAMPAÑA vacía) hereda la campaña de
+      la cadena activa SOLO si esa cadena sigue abierta y su fecha de
+      agendamiento está a ≤21 días (3 semanas) de la fecha de agendamiento
+      de la última cita de la cadena. Cada salto reinicia la ventana.
+    - En cuanto una cita de la cadena termina en compra real (ASISTIO +
+      monto > 0), la cadena se cierra: nada posterior — así esté dentro de
+      las 3 semanas — vuelve a atribuirse a esa campaña.
+
+    Se calcula directamente sobre el maestro (no AGENDADOS.xlsx aparte)
+    porque ya trae campaña + fecha de agendamiento + asistencia + monto por
+    fila. Devuelve {r: campaña_atribuida} para las filas reales de Derma.
+    """
     por_tel = defaultdict(list)
-    for _r, f in agendados:
-        tel = am.norm_phone(f.get(ag_col['TELEFONO']))
-        camp = str(f.get(ag_col['CAMPANA']) or '').strip()
-        fc = am.norm_fecha(f.get(ag_col['DIA2']), f.get(ag_col['MES3']), f.get(ag_col['ANIO4']))
-        if tel and camp and fc:
-            por_tel[tel].append((fc, camp))
-    return {tel: min(opts, key=lambda x: clave(x[0]))[1] for tel, opts in por_tel.items()}
+    for r in range(5, ws.max_row + 1):
+        if not _fila_real_derma(ws, r):
+            continue
+        tel = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
+        if not tel:
+            continue
+        fecha_ag = _fecha_valida(ws.cell(row=r, column=COL['DIA']).value,
+                                 ws.cell(row=r, column=COL['MES']).value,
+                                 ws.cell(row=r, column=COL['ANIO']).value)
+        if not fecha_ag:
+            continue
+        por_tel[tel].append((fecha_ag, r))
+
+    atribucion = {}
+    for filas in por_tel.values():
+        filas.sort(key=lambda x: x[0])
+        campana_activa = None
+        ancla = None
+        for fecha_ag, r in filas:
+            camp_val = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
+            if campana_valida(camp_val):
+                campana_activa, ancla = camp_val, fecha_ag
+                atribucion[r] = camp_val
+            elif camp_val:
+                atribucion[r] = camp_val
+            elif campana_activa and (fecha_ag - ancla).days <= _VENTANA_ATRIBUCION_DIAS:
+                atribucion[r] = campana_activa
+                ancla = fecha_ag
+            else:
+                atribucion[r] = '(SIN CAMPANA)'
+                campana_activa = ancla = None
+
+            if campana_activa:
+                asist = str(ws.cell(row=r, column=COL['ASISTENCIA']).value or '').strip()
+                if asist == 'ASISTIO' and pago_total(ws, r) > 0:
+                    campana_activa = ancla = None  # compra real: se cierra la cadena
+    return atribucion
 
 
 def build_data():
@@ -424,16 +469,15 @@ def build_data():
         agg[(camp, crm)]['ag'] = counts['ag']
 
     # Asistidos y monto: desde el maestro (fuente de verdad para VENTA), con
-    # la campaña de origen (primera cita) del cliente por teléfono, para que
-    # una venta de un reagendado no se pierda en la campaña del día de venta.
-    origen_por_telefono = _campana_origen_por_telefono(ag_path)
+    # la campaña atribuida por cadena de reagendados (ver _atribucion_campanas)
+    # para que una venta de un reagendado sin campaña propia no se pierda.
+    atribucion = _atribucion_campanas(ws)
     for r in range(5, ws.max_row + 1):
         if not _fila_real_derma(ws, r):
             continue
         crm = ws.cell(row=r, column=COL['CANAL']).value or 'SIN CRM'
-        tel = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
         camp_maestro = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
-        camp_ag_key = origen_por_telefono.get(tel) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
+        camp_ag_key = atribucion.get(r) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
         d = agg[(camp_ag_key, crm)]
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO
                 and ws.cell(row=r, column=COL['MES3']).value == MES
@@ -2143,7 +2187,7 @@ def datos_reporte_breve_web(mes='AGO', anio=2026, desde=1, hasta=10):
         agg[key]['ag'] = counts['ag']
         pac[key]['agendaron'] = counts.get('pacientes', [])
 
-    origen_por_telefono = _campana_origen_por_telefono(ag_path)
+    atribucion = _atribucion_campanas(ws)
     for r in range(5, ws.max_row + 1):
         if not _fila_real_derma(ws, r):
             continue
@@ -2151,7 +2195,7 @@ def datos_reporte_breve_web(mes='AGO', anio=2026, desde=1, hasta=10):
         tel = am.norm_phone(ws.cell(row=r, column=COL['TELEFONO']).value)
         nombre = ws.cell(row=r, column=COL['NOMBRE']).value or ''
         camp_maestro = str(ws.cell(row=r, column=COL['CAMPANA']).value or '').strip()
-        camp_ag_key = origen_por_telefono.get(tel) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
+        camp_ag_key = atribucion.get(r) or (camp_maestro if camp_maestro else '(SIN CAMPANA)')
         key = (camp_ag_key, crm)
         d = agg[key]
         if (ws.cell(row=r, column=COL['ANIO4']).value == ANIO

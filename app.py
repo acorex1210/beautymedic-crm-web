@@ -167,6 +167,34 @@ def _sync_diario_loop():
 
 threading.Thread(target=_sync_diario_loop, daemon=True).start()
 
+_sync_pendiente = threading.Event()
+
+
+def _disparar_sync_bg():
+    """Sincroniza el maestro en segundo plano, sin bloquear la respuesta al
+    usuario. El maestro (fuente de /api/analitica/kpis, la meta de ventas
+    del mes y los reportes) antes sólo se actualizaba una vez al día
+    (_sync_diario_loop) o al generar un reporte manualmente — una venta
+    recién registrada podía tardar hasta 24h en reflejarse en la meta.
+    Se llama tras cada alta/edición/borrado en VENTA DIARIA. ``_sync_pendiente``
+    evita apilar sincronizaciones si varias ventas se registran seguidas: la
+    que ya está en curso vuelve a descargar de Drive al momento de correr,
+    así que igual recoge los cambios más recientes."""
+    if _sync_pendiente.is_set():
+        return
+    _sync_pendiente.set()
+
+    def _run():
+        try:
+            with _bloqueo:
+                am.ejecutar_sync(aplicar=True)
+        except Exception as e:  # noqa: BLE001
+            print(f'[sync tras venta] error: {e}', file=sys.stderr)
+        finally:
+            _sync_pendiente.clear()
+
+    threading.Thread(target=_run, daemon=True).start()
+
 app = FastAPI(title='Reportes Derma Essenza', version='1.0.0')
 
 # Con sesión por cookie ya no se puede abrir el CORS a todo el mundo: sólo el
@@ -2038,6 +2066,7 @@ async def crm_venta_nuevo(data: VentaReq):
                 aviso_inventario = f'{codigo}: {e}'
     if aviso_inventario:
         res['aviso_inventario'] = aviso_inventario
+    _disparar_sync_bg()
     return res
 
 
@@ -2059,6 +2088,7 @@ async def crm_venta_borrar(fila: int, hoja: str):
                 res['aviso_inventario'] = aviso
         except Exception as e:  # noqa: BLE001
             res['aviso_inventario'] = f'No se pudo devolver el stock automáticamente: {e}'
+    _disparar_sync_bg()
     return res
 
 
@@ -2070,11 +2100,13 @@ async def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
         raise HTTPException(400, 'Indica el nombre del paciente')
     with _bloqueo:
         try:
-            return crm.editar_venta(hoja, fila, d)
+            res = crm.editar_venta(hoja, fila, d)
         except ValueError as e:
             raise HTTPException(400, str(e))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo editar la venta en Drive: {e}')
+    _disparar_sync_bg()
+    return res
 
 
 @app.get('/api/crm/venta/recibo')
