@@ -28,6 +28,7 @@ Configuración vía variables de entorno (útiles para despliegue web):
 """
 import argparse
 import base64
+import contextlib
 import io
 import json
 import os
@@ -35,6 +36,8 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import zipfile
 from collections import defaultdict
 from datetime import datetime
@@ -68,6 +71,67 @@ MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 SCOPE_RW = 'https://www.googleapis.com/auth/drive'
 TMP_DIR = os.environ.get('TMP_DIR', _TMP_DEFAULT)
 os.makedirs(TMP_DIR, exist_ok=True)
+
+
+# ============================================================
+# DIAGNÓSTICO DE TIEMPOS (temporal)
+# ============================================================
+# Instrumentación de bajo riesgo para medir en producción dónde se va el
+# tiempo en cada request: descarga/subida a Drive, parseo del .xlsx y
+# espera del candado de escritura. No cambia ningún comportamiento, sólo
+# imprime a stderr (Railway lo captura como logs de "deploy"). Pensada
+# para quitarse (o silenciarse) una vez que el diagnóstico esté hecho.
+_TIEMPOS_ON = os.environ.get('DIAG_TIEMPOS', '1') != '0'
+
+
+@contextlib.contextmanager
+def cronometro(etiqueta, umbral_ms=0):
+    """Loguea cuánto tardó el bloque ``etiqueta``. Con ``umbral_ms`` sólo
+    loguea si superó ese umbral (para no llenar los logs con ruido de
+    operaciones que ya son rápidas)."""
+    if not _TIEMPOS_ON:
+        yield
+        return
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        ms = (time.perf_counter() - t0) * 1000
+        if ms >= umbral_ms:
+            print(f'[tiempos] {etiqueta}: {ms:.0f} ms', file=sys.stderr)
+
+
+class LockConTiempos:
+    """Envoltorio de threading.Lock()/RLock() que loguea cuánto se espera
+    para adquirirlo y cuánto se lo retiene. Mismo protocolo de context
+    manager que un Lock normal, así que reemplaza a ``threading.Lock()``
+    sin tocar los ``with _lock:`` existentes.
+
+    Sirve para confirmar (o descartar) si las escrituras se están
+    encolando detrás de un candado global compartido por muchas acciones
+    distintas del CRM (notas, tarjetas, caja, inventario, planillas...)."""
+
+    def __init__(self, nombre, reentrante=False, umbral_espera_ms=50, umbral_retencion_ms=200):
+        self._lock = threading.RLock() if reentrante else threading.Lock()
+        self._nombre = nombre
+        self._umbral_espera = umbral_espera_ms
+        self._umbral_retencion = umbral_retencion_ms
+        self._t_adquirido = None
+
+    def __enter__(self):
+        t0 = time.perf_counter()
+        self._lock.acquire()
+        espera_ms = (time.perf_counter() - t0) * 1000
+        self._t_adquirido = time.perf_counter()
+        if _TIEMPOS_ON and espera_ms >= self._umbral_espera:
+            print(f'[tiempos] lock {self._nombre}: esperó {espera_ms:.0f} ms', file=sys.stderr)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        retenido_ms = (time.perf_counter() - self._t_adquirido) * 1000
+        self._lock.release()
+        if _TIEMPOS_ON and retenido_ms >= self._umbral_retencion:
+            print(f'[tiempos] lock {self._nombre}: retenido {retenido_ms:.0f} ms', file=sys.stderr)
 
 
 def _normalizar_json_credenciales(v):
@@ -211,24 +275,25 @@ def descargar(fid, nombre, forzar=False):
     ruta = os.path.join(TMP_DIR, f'{nombre}.xlsx')
     if os.path.exists(ruta) and not forzar:
         return ruta
-    garantizar_credenciales()
-    if not os.path.exists(CREDENCIALES):
-        raise FileNotFoundError(
-            f'No hay credenciales en {CREDENCIALES}. Configura CREDENCIALES o '
-            'GDRIVE_CREDENTIALS_JSON.')
-    creds = service_account.Credentials.from_service_account_file(
-        CREDENCIALES, scopes=['https://www.googleapis.com/auth/drive.readonly'])
-    drive = build('drive', 'v3', credentials=creds)
-    meta = drive.files().get(fileId=fid, fields='mimeType').execute()
-    if meta.get('mimeType') == MIME_XLSX:
-        req = drive.files().get_media(fileId=fid)
-    else:
-        req = drive.files().export(fileId=fid, mimeType=MIME_XLSX)
-    with open(ruta, 'wb') as fh:
-        dl = MediaIoBaseDownload(fh, req)
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
+    with cronometro(f'maestro descargar({nombre}) [drive, sin caché desde arranque]'):
+        garantizar_credenciales()
+        if not os.path.exists(CREDENCIALES):
+            raise FileNotFoundError(
+                f'No hay credenciales en {CREDENCIALES}. Configura CREDENCIALES o '
+                'GDRIVE_CREDENTIALS_JSON.')
+        creds = service_account.Credentials.from_service_account_file(
+            CREDENCIALES, scopes=['https://www.googleapis.com/auth/drive.readonly'])
+        drive = build('drive', 'v3', credentials=creds)
+        meta = drive.files().get(fileId=fid, fields='mimeType').execute()
+        if meta.get('mimeType') == MIME_XLSX:
+            req = drive.files().get_media(fileId=fid)
+        else:
+            req = drive.files().export(fileId=fid, mimeType=MIME_XLSX)
+        with open(ruta, 'wb') as fh:
+            dl = MediaIoBaseDownload(fh, req)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
     print(f'  Descargado {nombre} -> {os.path.basename(ruta)}')
     return ruta
 

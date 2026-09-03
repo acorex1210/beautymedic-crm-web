@@ -108,7 +108,7 @@ MONEDAS_SOLES = [5, 2, 1, 0.5, 0.2, 0.1]
 DENOMINACIONES_CAJA = BILLETES_SOLES + MONEDAS_SOLES
 DENOMINACIONES_USD = [100, 50, 20, 10]
 
-_lock = threading.RLock()
+_lock = am.LockConTiempos('CRM.xlsx', reentrante=True)
 
 
 def _ahora():
@@ -151,10 +151,11 @@ def _crear_wb():
 
 
 def _fid():
-    drv = cd._drive()
-    res = drv.files().list(
-        q=f"name='{NOMBRE_ARCHIVO}' and trashed=false",
-        fields='files(id)', pageSize=10).execute()
+    with am.cronometro('crm_plus _fid() [drive, busca por nombre sin caché]', umbral_ms=200):
+        drv = cd._drive()
+        res = drv.files().list(
+            q=f"name='{NOMBRE_ARCHIVO}' and trashed=false",
+            fields='files(id)', pageSize=10).execute()
     archivos = res.get('files', [])
     if archivos:
         return archivos[0]['id']
@@ -175,18 +176,19 @@ def _bajar():
     ruta = os.path.join(am.TMP_DIR, NOMBRE_ARCHIVO)
     if os.path.exists(ruta) and time.time() - os.path.getmtime(ruta) < cd.CACHE_TTL:
         return ruta
-    fid = _fid()
-    drv = cd._drive()
-    meta = drv.files().get(fileId=fid, fields='mimeType').execute()
-    if meta.get('mimeType') == cd.MIME_XLSX:
-        req = drv.files().get_media(fileId=fid)
-    else:
-        req = drv.files().export(fileId=fid, mimeType=cd.MIME_XLSX)
-    with open(ruta, 'wb') as fh:
-        dl = cd.MediaIoBaseDownload(fh, req)
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
+    with am.cronometro(f'crm_plus _bajar({NOMBRE_ARCHIVO}) [drive, cache vencido]'):
+        fid = _fid()
+        drv = cd._drive()
+        meta = drv.files().get(fileId=fid, fields='mimeType').execute()
+        if meta.get('mimeType') == cd.MIME_XLSX:
+            req = drv.files().get_media(fileId=fid)
+        else:
+            req = drv.files().export(fileId=fid, mimeType=cd.MIME_XLSX)
+        with open(ruta, 'wb') as fh:
+            dl = cd.MediaIoBaseDownload(fh, req)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
     return ruta
 
 
@@ -207,7 +209,8 @@ def _cargar_wb(ruta):
             cache[1].close()
         except Exception:  # noqa: BLE001
             pass
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    with am.cronometro(f'crm_plus parsear xlsx ({os.path.basename(ruta)}) [cache miss]'):
+        wb = openpyxl.load_workbook(ruta, data_only=True)
     _WB_CACHE[ruta] = (mtime, wb)
     return wb
 
@@ -234,7 +237,7 @@ def _leer_hoja(nombre):
 
 
 def _guardar(filas_por_hoja):
-    with _lock:
+    with _lock, am.cronometro('crm_plus _guardar() [reconstruye + sube CRM.xlsx entero]'):
         wb = _crear_wb()
         # _crear_wb() sólo arma las hojas conocidas (HOJAS): si el archivo
         # real en Drive tiene alguna hoja extra (agregada a mano, o de un
@@ -244,18 +247,19 @@ def _guardar(filas_por_hoja):
         # Se copian los valores (no fórmulas/estilos, igual que el resto de
         # este archivo) antes de sobrescribir, para no perder nada.
         try:
-            ruta_actual = _bajar()
-            wb_actual = openpyxl.load_workbook(ruta_actual, data_only=True)
-            for nombre in wb_actual.sheetnames:
-                if nombre in HOJAS:
-                    continue
-                origen = wb_actual[nombre]
-                destino = wb.create_sheet(nombre)
-                for row in origen.iter_rows():
-                    for celda in row:
-                        if celda.value is not None:
-                            destino.cell(row=celda.row, column=celda.column, value=celda.value)
-            wb_actual.close()
+            with am.cronometro('crm_plus _guardar(): preservar hojas extra'):
+                ruta_actual = _bajar()
+                wb_actual = openpyxl.load_workbook(ruta_actual, data_only=True)
+                for nombre in wb_actual.sheetnames:
+                    if nombre in HOJAS:
+                        continue
+                    origen = wb_actual[nombre]
+                    destino = wb.create_sheet(nombre)
+                    for row in origen.iter_rows():
+                        for celda in row:
+                            if celda.value is not None:
+                                destino.cell(row=celda.row, column=celda.column, value=celda.value)
+                wb_actual.close()
         except Exception:  # noqa: BLE001
             # Si no se pudo leer el archivo actual (primera vez, archivo
             # corrupto, etc.) se sigue con las hojas conocidas nada más;
@@ -268,10 +272,11 @@ def _guardar(filas_por_hoja):
                     if v is not None and v != '':
                         ws.cell(row=i, column=openpyxl.utils.column_index_from_string(k),
                                 value=v)
-        buf = io.BytesIO()
-        wb.save(buf)
-        wb.close()
-        buf.seek(0)
+        with am.cronometro('crm_plus _guardar(): wb.save() en memoria'):
+            buf = io.BytesIO()
+            wb.save(buf)
+            wb.close()
+            buf.seek(0)
         destino = os.path.join(am.TMP_DIR,
                                os.path.splitext(NOMBRE_ARCHIVO)[0] + '_editado.xlsx')
         with open(destino, 'wb') as fh:

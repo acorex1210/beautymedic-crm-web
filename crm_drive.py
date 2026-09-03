@@ -49,7 +49,7 @@ CACHE_TTL = 600          # segundos que se conserva la copia local antes de re-d
 MAX_REINTENTOS = 3       # reintentos ante conflicto 412 (alguien editó el xlsx a la vez)
 _SELECTO_LIMIT = 200
 
-_lock = threading.Lock()
+_lock = am.LockConTiempos('AGENDADOS/VENTA')
 
 # Columnas de cada hoja (letra -> nombre mostrable en el CRM)
 AGENDADOS_COLS = {
@@ -161,7 +161,8 @@ def _cargar_wb(ruta):
             cache[1].close()
         except Exception:  # noqa: BLE001
             pass
-    wb = openpyxl.load_workbook(ruta, data_only=True)
+    with am.cronometro(f'crm_drive parsear xlsx ({os.path.basename(ruta)}) [cache miss]'):
+        wb = openpyxl.load_workbook(ruta, data_only=True)
     _WB_CACHE[ruta] = (mtime, wb)
     return wb
 
@@ -248,11 +249,13 @@ def _credenciales():
 
 
 def _drive():
-    return build('drive', 'v3', credentials=_credenciales())
+    with am.cronometro('crm_drive _drive() [build cliente Google API]', umbral_ms=150):
+        return build('drive', 'v3', credentials=_credenciales())
 
 
 def _sheets():
-    return build('sheets', 'v4', credentials=_credenciales())
+    with am.cronometro('crm_drive _sheets() [build cliente Google API]', umbral_ms=150):
+        return build('sheets', 'v4', credentials=_credenciales())
 
 
 _ES_SHEETS_CACHE = {}  # fid -> bool; el tipo de un archivo no cambia en la vida del proceso
@@ -270,17 +273,19 @@ def _es_sheets(fid):
 
 def subir_drive(fid, ruta):
     """Sube el contenido de ruta a Drive conservando el mismo file id."""
-    drv = _drive()
-    with open(ruta, 'rb') as fh:
-        data = fh.read()
-    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=MIME_XLSX,
-                              resumable=False)
-    drv.files().update(fileId=fid, media_body=media).execute()
+    with am.cronometro(f'crm_drive subir_drive({os.path.basename(ruta)}) [drive]'):
+        drv = _drive()
+        with open(ruta, 'rb') as fh:
+            data = fh.read()
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=MIME_XLSX,
+                                  resumable=False)
+        drv.files().update(fileId=fid, media_body=media).execute()
 
 
 def _revision_actual(fid):
     """Revisión actual (headRevisionId) del archivo en Drive."""
-    meta = _drive().files().get(fileId=fid, fields='headRevisionId').execute()
+    with am.cronometro('crm_drive _revision_actual [drive]', umbral_ms=300):
+        meta = _drive().files().get(fileId=fid, fields='headRevisionId').execute()
     return meta.get('headRevisionId')
 
 
@@ -291,9 +296,10 @@ def _conflicto_post_subida(fid, rev_padre):
     solo detecta y avisa; no puede evitarlo.
     """
     try:
-        res = _drive().files().revisions().list(
-            fileId=fid, pageSize=10, fields='revisions(id,modifiedTime)',
-            orderBy='modifiedTime desc').execute()
+        with am.cronometro('crm_drive _conflicto_post_subida [drive]', umbral_ms=300):
+            res = _drive().files().revisions().list(
+                fileId=fid, pageSize=10, fields='revisions(id,modifiedTime)',
+                orderBy='modifiedTime desc').execute()
         for i, r in enumerate(res.get('revisions', [])):
             if r['id'] == rev_padre:
                 return i != 1
@@ -315,17 +321,19 @@ def descargar(nombre, fid, forzar=False):
     if (not forzar and os.path.exists(ruta)
             and time.time() - os.path.getmtime(ruta) < CACHE_TTL):
         return ruta
-    drv = _drive()
-    meta = drv.files().get(fileId=fid, fields='mimeType').execute()
-    if meta.get('mimeType') == MIME_XLSX:
-        req = drv.files().get_media(fileId=fid)
-    else:
-        req = drv.files().export(fileId=fid, mimeType=MIME_XLSX)
-    with open(ruta, 'wb') as fh:
-        dl = MediaIoBaseDownload(fh, req)
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
+    etiqueta = f'crm_drive descargar({nombre}) [drive, {"forzado" if forzar else "cache vencido"}]'
+    with am.cronometro(etiqueta):
+        drv = _drive()
+        meta = drv.files().get(fileId=fid, fields='mimeType').execute()
+        if meta.get('mimeType') == MIME_XLSX:
+            req = drv.files().get_media(fileId=fid)
+        else:
+            req = drv.files().export(fileId=fid, mimeType=MIME_XLSX)
+        with open(ruta, 'wb') as fh:
+            dl = MediaIoBaseDownload(fh, req)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
     return ruta
 
 

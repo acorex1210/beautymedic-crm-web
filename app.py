@@ -250,6 +250,19 @@ def _usuario_de(request: Request):
     return usr.leer_token(request.cookies.get(COOKIE_SESION))
 
 
+async def _con_tiempo(request, call_next):
+    """Diagnóstico temporal: cuánto tarda cada request de punta a punta, para
+    cruzarlo con los tiempos de Drive logueados en crm_drive/crm_plus. Sólo
+    mide y loguea, no cambia la respuesta."""
+    t0 = time.perf_counter()
+    resp = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
+    if ms >= 300:
+        print(f'[tiempos] {request.method} {request.url.path}: {ms:.0f} ms '
+              f'({resp.status_code})', file=sys.stderr)
+    return resp
+
+
 @app.middleware('http')
 async def control_de_acceso(request: Request, call_next):
     """Puerta única de entrada: toda ruta pide sesión salvo las públicas, y el
@@ -261,7 +274,7 @@ async def control_de_acceso(request: Request, call_next):
     if '/../' in ruta or ruta.endswith('/..'):
         return JSONResponse({'detail': 'Ruta inválida'}, status_code=400)
     if request.method == 'OPTIONS' or usr.es_publica(ruta):
-        return await call_next(request)
+        return await _con_tiempo(request, call_next)
 
     perfil = _usuario_de(request)
     if not perfil:
@@ -277,7 +290,7 @@ async def control_de_acceso(request: Request, call_next):
             status_code=403)
 
     request.state.usuario = perfil
-    return await call_next(request)
+    return await _con_tiempo(request, call_next)
 
 BRAND = {
     'BRAND_NOMBRE': os.environ.get('BRAND_NOMBRE', 'Derma Essenza'),
