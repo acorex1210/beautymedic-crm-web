@@ -1038,6 +1038,7 @@
           </div>
           <div class="mensaje okm oculto" id="msgSyncOk">DATOS ACTUALIZADOS</div>
           <div class="mensaje err oculto" id="msgSync"></div>
+          <div class="oculto" id="syncRevisarBox" style="margin-top:14px;"></div>
         </div>
       </section>
 
@@ -2206,7 +2207,7 @@ function pagina(nombre) {
   if (nombre === 'usuarios') cargarUsuarios();
   // La meta se alimenta de Meta Ads y Analítica: quien no los ve, no la carga.
   if (nombre === 'panel') { cargarEstado(); if (puedeVerMeta()) cargarMetaMensual(); cargarResumenPanel(); if (puedeVer('hoy')) cargarHoy(); }
-  if (nombre === 'reportes') cargarEstado();
+  if (nombre === 'reportes') { cargarEstado(); cargarSyncEstado(); }
   if (nombre === 'calendario') cargarCalendario();
   if (nombre === 'pacientes') cargarPacientes();
   if (nombre === 'remarketing') cargarRemarketing();
@@ -2411,7 +2412,7 @@ $('btnMetaGuardar').addEventListener('click', async () => {
    igual que /api/crm/pacientes): NO CONTESTÓ de hoy, citas de hoy aún sin
    confirmar, tareas vencidas (leer_hoy() en crm_plus.py), citas de mañana
    sin confirmar y pacientes para reactivar por inactividad. */
-function pintarAlertasPanel(hoyR, confirmR, inactR) {
+function pintarAlertasPanel(hoyR, confirmR, inactR, syncR) {
   const caja = $('panelAlertasCaja'), cont = $('panelAlertas');
   const items = [];
 
@@ -2454,6 +2455,19 @@ function pintarAlertasPanel(hoyR, confirmR, inactR) {
     }
   }
 
+  if (syncR && syncR.status === 'fulfilled') {
+    // 'revisar' (ventas que podrían pertenecer a 2 citas y el sistema no
+    // adivinó) y 'sin_hueco' (una visita con más de 4 tratamientos): ninguna
+    // de las dos escribe el monto solo en el maestro, así que sin este aviso
+    // esa plata queda invisible hasta que alguien la investigue a mano.
+    const s = syncR.value;
+    const n = (s.revisar || 0) + (s.sin_hueco || 0);
+    if (n > 0) {
+      items.push({ n, txt: n === 1 ? 'venta necesita revisión manual' : 'ventas necesitan revisión manual',
+                   cls: 'bad', pag: 'reportes' });
+    }
+  }
+
   if (!items.length) { caja.classList.add('oculto'); cont.innerHTML = ''; return; }
   caja.classList.remove('oculto');
   cont.innerHTML = `<div class="estado-line">` + items.map(it => `
@@ -2471,7 +2485,7 @@ async function cargarResumenPanel() {
   // Calendario y Agendados salen de la misma fuente: se pide una sola vez.
   const quiereAg = puedeVer('agendados') || puedeVer('calendario');
 
-  const [hoyR, cajaR, invR, plR, agR, veR, pacR, inactR, confirmR] = await Promise.allSettled([
+  const [hoyR, cajaR, invR, plR, agR, veR, pacR, inactR, confirmR, syncR] = await Promise.allSettled([
     si('hoy', () => api('/api/crm/hoy')),
     si('caja', () => api('/api/crm/caja')),
     si('inventario', () => api('/api/crm/inventario/productos')),
@@ -2481,9 +2495,10 @@ async function cargarResumenPanel() {
     si('pacientes', () => api('/api/crm/pacientes')),
     si('pacientes', () => api('/api/pacientes/inactivos?dias=45')),
     quiereAg ? api('/api/crm/agendados/confirmaciones') : nada,
+    si('venta', () => api('/api/sync/estado')),
   ]);
   const tarjetas = [];
-  pintarAlertasPanel(hoyR, confirmR, inactR);
+  pintarAlertasPanel(hoyR, confirmR, inactR, syncR);
 
   if (hoyR.status === 'fulfilled') {
     const h = hoyR.value;
@@ -2660,6 +2675,33 @@ function pintarDetalleCampana(det) {
   </div>`;
 }
 
+// Ventas que el sync no pudo escribir solas en el maestro: 'revisar' (podría
+// ser de 2 citas distintas, no se adivina) y 'sin_hueco' (la visita ya tiene
+// 4 tratamientos). Sin esto quedaban invisibles hasta investigarlas a mano.
+function pintarSyncRevisar(d) {
+  const box = $('syncRevisarBox');
+  const filas = [...(d?.detalle_revisar || []).map(v => ({ ...v, tipo: v.motivo || 'a revisar' })),
+                ...(d?.detalle_sin_hueco || []).map(v => ({ ...v, tipo: 'sin espacio libre (5º tratamiento de la visita)' }))];
+  if (!filas.length) { box.classList.add('oculto'); box.innerHTML = ''; return; }
+  box.classList.remove('oculto');
+  box.innerHTML = `
+    <div class="mensaje err" style="margin-bottom:8px;">
+      ${filas.length === 1 ? '1 venta no se pudo aplicar sola al maestro' : filas.length + ' ventas no se pudieron aplicar solas al maestro'} —
+      revísalas a mano (puede ser que dos pacientes compartan un mismo teléfono en AGENDADOS, o que la cita ya tenga 4 tratamientos).
+    </div>
+    <div class="tabla-wrap"><table class="drive"><thead><tr>
+      <th>Paciente</th><th>Teléfono</th><th>Fecha</th><th>Tratamiento</th><th>Monto</th><th>Motivo</th>
+    </tr></thead><tbody>
+      ${filas.map(v => `<tr>
+        <td>${esc(v.nombre || '—')}</td><td>${esc(v.cel || '—')}</td><td>${esc(v.fecha || '—')}</td>
+        <td>${esc(v.tratamiento || '—')}</td><td>${v.monto != null ? fmtMon(v.monto) : '—'}</td>
+        <td>${esc(v.tipo)}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+}
+async function cargarSyncEstado() {
+  try { pintarSyncRevisar(await api('/api/sync/estado')); } catch (e) { /* silencioso */ }
+}
 async function sync() {
   const btn = $('btnSyncAplicar');
   const loading = $('syncCargando');
@@ -2677,6 +2719,7 @@ async function sync() {
     loading.classList.add('oculto');
     okMsg.classList.remove('oculto');
     toast('Maestro actualizado', 'okm');
+    pintarSyncRevisar(res.resumen);
     cargarEstado();
   } catch (e) {
     loading.classList.add('oculto');

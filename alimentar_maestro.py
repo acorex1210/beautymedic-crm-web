@@ -1108,6 +1108,18 @@ class Calculo:
                     u = self.updates.setdefault(r, {})
                     u[c_asist] = None
 
+    @staticmethod
+    def _venta_resumida(v, motivo=None):
+        def entero(x):
+            return int(x) if isinstance(x, float) and x.is_integer() else x
+        d = {'nombre': v.get('nombre'), 'cel': norm_phone(v.get('cel')),
+             'fecha': f"{entero(v.get('dia'))}/{v.get('mes')}/{entero(v.get('anio'))}",
+             'tratamiento': v.get('tratamiento'), 'monto': v.get('venta'),
+             'status': v.get('status'), 'hoja': v.get('hoja'), 'fila': v.get('fila')}
+        if motivo:
+            d['motivo'] = motivo
+        return d
+
     def resumen(self):
         n_match_exacto = sum(1 for _, _, m, _ in self.matches if m in ('telefono+fecha', 'nombre+fecha'))
         n_sin_fecha = sum(1 for _, _, m, _ in self.matches if m == 'sin fecha' or 'sin fecha' in m)
@@ -1123,6 +1135,13 @@ class Calculo:
             'sin_hueco': len(self.sin_hueco),
             'filas_a_actualizar': len(self.updates),
             'celdas_a_escribir': sum(len(v) for v in self.updates.values()),
+            # Detalle de los casos que quedan pendientes de revisión manual:
+            # 'revisar' y 'sin_hueco' no escriben nada en el maestro (a
+            # diferencia de 'pendientes', que en su mayoría son ventas ya
+            # sincronizadas en una corrida anterior) — sin este detalle, esa
+            # plata quedaba invisible hasta que alguien la investigara a mano.
+            'detalle_revisar': [self._venta_resumida(v, motivo) for v, motivo in self.revisar],
+            'detalle_sin_hueco': [self._venta_resumida(v) for v, _fila_m in self.sin_hueco],
         }
 
 

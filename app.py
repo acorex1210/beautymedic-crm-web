@@ -134,6 +134,33 @@ _bloqueo = threading.Lock()
 
 SYNC_HORA_UTC = int(os.environ.get('SYNC_HORA_UTC', '10'))  # 10:00 UTC = 05:00 Perú
 
+SYNC_ESTADO_PATH = os.path.join(DATA_DIR, 'sync_estado.json')
+
+
+def _guardar_estado_sync(resultado):
+    """Persiste el resumen de la última sincronización (en particular los
+    casos 'revisar'/'sin_hueco': ventas que no se pudieron escribir en el
+    maestro solas) para que el Panel pueda avisar sin importar si el sync
+    corrió por el botón manual, el cron diario o tras registrar una venta —
+    antes esos casos quedaban invisibles salvo que alguien leyera el texto
+    del reporte a mano."""
+    if not resultado or not resultado.get('ok'):
+        return
+    resumen = resultado.get('resumen') or {}
+    estado = {
+        'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'revisar': resumen.get('revisar', 0),
+        'sin_hueco': resumen.get('sin_hueco', 0),
+        'detalle_revisar': resumen.get('detalle_revisar', []),
+        'detalle_sin_hueco': resumen.get('detalle_sin_hueco', []),
+    }
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(SYNC_ESTADO_PATH, 'w', encoding='utf-8') as f:
+            json.dump(estado, f, ensure_ascii=False, indent=2)
+    except Exception as e:  # noqa: BLE001
+        print(f'[sync estado] error guardando: {e}', file=sys.stderr)
+
 
 def _sync_diario_loop():
     """Corre alimentar_maestro.ejecutar_sync(aplicar=True) una vez al día,
@@ -150,7 +177,8 @@ def _sync_diario_loop():
         time.sleep((objetivo - ahora).total_seconds())
         try:
             with _bloqueo:
-                am.ejecutar_sync(aplicar=True)
+                resultado = am.ejecutar_sync(aplicar=True)
+            _guardar_estado_sync(resultado)
         except Exception as e:  # noqa: BLE001
             print(f'[sync diario] error: {e}', file=sys.stderr)
         # Cada backup en su propio try: que falle uno (p. ej. Drive caído
@@ -187,7 +215,8 @@ def _disparar_sync_bg():
     def _run():
         try:
             with _bloqueo:
-                am.ejecutar_sync(aplicar=True)
+                resultado = am.ejecutar_sync(aplicar=True)
+            _guardar_estado_sync(resultado)
         except Exception as e:  # noqa: BLE001
             print(f'[sync tras venta] error: {e}', file=sys.stderr)
         finally:
@@ -1117,7 +1146,24 @@ async def borrar_reporte(archivo: str):
 async def sincronizar(data: SyncReq):
     with _bloqueo:
         resultado = am.ejecutar_sync(aplicar=data.aplicar)
+    _guardar_estado_sync(resultado)
     return resultado
+
+
+@app.get('/api/sync/estado')
+async def sync_estado():
+    """Resultado de la última sincronización (manual, cron diario o tras una
+    venta): en particular si quedaron ventas sin poder escribirse solas en
+    el maestro (revisar/sin_hueco), para que el Panel pueda avisar."""
+    vacio = {'ok': True, 'fecha': None, 'revisar': 0, 'sin_hueco': 0,
+             'detalle_revisar': [], 'detalle_sin_hueco': []}
+    if not os.path.exists(SYNC_ESTADO_PATH):
+        return vacio
+    try:
+        with open(SYNC_ESTADO_PATH, 'r', encoding='utf-8') as f:
+            return {'ok': True, **json.load(f)}
+    except Exception:  # noqa: BLE001
+        return vacio
 
 
 # ============================================================
