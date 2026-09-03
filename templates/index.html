@@ -216,7 +216,7 @@
 
   /* ---------- Mensajes ---------- */
   .toast {
-    /* bottom: 72px, no 20px — el botón flotante "AI GROWTH" vive en la misma
+    /* bottom: 72px, no 20px — el botón flotante de Tiki vive en la misma
        esquina (right:20px; bottom:20px) y con 20px el toast le quedaba
        encima, tapando ambos. Se detectó probando la animación de salida. */
     position: fixed; right: 20px; bottom: 72px; z-index: 60; background: var(--azul); color: #fff;
@@ -231,9 +231,21 @@
   .toast.abierto { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
   .toast.err { background: var(--rojo); } .toast.okm { background: var(--verde); }
 
-  /* ---------- Asistente de IA (AI Growth) ---------- */
+  /* ---------- Asistente de IA (Tiki) ---------- */
+  .tiki-avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex: none; position: relative;
+    background: linear-gradient(135deg, var(--dorado), #e3c675);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(20,37,74,.2);
+  }
+  .tiki-avatar svg { width: 68%; height: 68%; display: block; }
+  .tiki-avatar.chico { width: 26px; height: 26px; }
+  .tiki-ico-wrap { position: relative; display: inline-flex; flex: none; }
+  .tiki-fab-ico { width: 24px; height: 24px; flex: none; display: block; }
+  .ia-cab .tiki-fab-ico { width: 30px; height: 30px; }
   .ia-dot { width: 8px; height: 8px; border-radius: 50%; background: #2e9e5b; display: inline-block; flex: none;
     box-shadow: 0 0 0 3px rgba(46,158,91,.25); animation: ia-pulso 2s ease-in-out infinite; }
+  .ia-dot.esquina { position: absolute; right: -1px; bottom: -1px; box-shadow: 0 0 0 2px #1a2a52; }
   @keyframes ia-pulso { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
   .ia-fab {
     position: fixed; right: 20px; bottom: 20px; z-index: 55; display: flex; align-items: center; gap: 8px;
@@ -254,10 +266,17 @@
   .ia-cab .nota { color: rgba(255,255,255,.75); }
   .ia-cab .cerrar { color: #fff; }
   .ia-mensajes { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; background: var(--fondo); }
-  .ia-msg { max-width: 88%; padding: 9px 13px; border-radius: 13px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--texto); }
-  .ia-msg.asistente { align-self: flex-start; background: var(--superficie); border: 1px solid var(--borde); border-bottom-left-radius: 3px; }
-  .ia-msg.usuario { align-self: flex-end; background: var(--azul2); color: #fff; border-bottom-right-radius: 3px; }
-  .ia-msg.ia-cargando { display: flex; align-items: center; }
+  .ia-msg { max-width: 88%; font-size: 13.5px; line-height: 1.45; color: var(--texto); }
+  .ia-msg.asistente { display: flex; align-items: flex-start; gap: 7px; align-self: flex-start; }
+  .ia-msg.asistente .ia-msg-texto {
+    padding: 9px 13px; border-radius: 13px; background: var(--superficie); border: 1px solid var(--borde);
+    border-bottom-left-radius: 3px; white-space: pre-wrap; word-break: break-word;
+  }
+  .ia-msg.usuario {
+    align-self: flex-end; padding: 9px 13px; border-radius: 13px; background: var(--azul2); color: #fff;
+    border-bottom-right-radius: 3px; white-space: pre-wrap; word-break: break-word;
+  }
+  .ia-msg.ia-cargando .ia-msg-texto { display: flex; align-items: center; gap: 6px; }
   .ia-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--borde); flex: none; background: var(--superficie); }
   .ia-form input { flex: 1; padding: 9px 12px; border: 1px solid var(--borde); border-radius: 9px; font-size: 13.5px; background: var(--superficie); color: var(--texto); }
   @media (max-width: 480px) {
@@ -1930,17 +1949,53 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- ============ ASISTENTE IA (AI Growth) ============ -->
+<!-- ============ ASISTENTE IA (Tiki) ============ -->
 <button type="button" class="ia-fab oculto" id="iaFab" aria-label="Abrir asistente de IA">
-  <span class="ia-dot"></span> AI GROWTH ACTIVO
+  <span class="tiki-ico-wrap">
+    <svg class="tiki-fab-ico" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M17 15C7 19 5 34 13 47c3.7 6 10.3 4.3 10.3-2.8C23.3 33 20.8 23.5 17 15Z" fill="#f2ddab"/>
+      <path d="M47 15C57 19 59 34 51 47c-3.7 6-10.3 4.3-10.3-2.8C40.7 33 43.2 23.5 47 15Z" fill="#f2ddab"/>
+      <ellipse cx="32" cy="35" rx="19" ry="17" fill="#f2ddab"/>
+      <circle cx="25.3" cy="33" r="3.6" fill="#16264d"/>
+      <circle cx="38.7" cy="33" r="3.6" fill="#16264d"/>
+      <ellipse cx="32" cy="43" rx="3.3" ry="2.6" fill="#16264d"/>
+    </svg>
+    <span class="ia-dot esquina"></span>
+  </span>
+  Tiki
 </button>
 <div class="ia-panel oculto" id="iaPanel">
   <div class="ia-cab">
-    <div><span class="ia-dot"></span><b>AI Growth</b><div class="nota" style="margin:0;">Asistente de negocio</div></div>
+    <div>
+      <span class="tiki-ico-wrap">
+        <svg class="tiki-fab-ico" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M17 15C7 19 5 34 13 47c3.7 6 10.3 4.3 10.3-2.8C23.3 33 20.8 23.5 17 15Z" fill="#f2ddab"/>
+          <path d="M47 15C57 19 59 34 51 47c-3.7 6-10.3 4.3-10.3-2.8C40.7 33 43.2 23.5 47 15Z" fill="#f2ddab"/>
+          <ellipse cx="32" cy="35" rx="19" ry="17" fill="#f2ddab"/>
+          <circle cx="25.3" cy="33" r="3.6" fill="#16264d"/>
+          <circle cx="38.7" cy="33" r="3.6" fill="#16264d"/>
+          <ellipse cx="32" cy="43" rx="3.3" ry="2.6" fill="#16264d"/>
+        </svg>
+        <span class="ia-dot esquina"></span>
+      </span>
+      <b>Tiki</b><div class="nota" style="margin:0;">Asistente de negocio</div>
+    </div>
     <button type="button" class="cerrar" id="btnIACerrar" aria-label="Cerrar">&times;</button>
   </div>
   <div class="ia-mensajes" id="iaMensajes">
-    <div class="ia-msg asistente">Hola, soy tu asistente de crecimiento. Pregúntame sobre ventas, citas de hoy, campañas o qué priorizar.</div>
+    <div class="ia-msg asistente">
+      <span class="tiki-avatar chico">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M17 15C7 19 5 34 13 47c3.7 6 10.3 4.3 10.3-2.8C23.3 33 20.8 23.5 17 15Z" fill="#fff9ec"/>
+          <path d="M47 15C57 19 59 34 51 47c-3.7 6-10.3 4.3-10.3-2.8C40.7 33 43.2 23.5 47 15Z" fill="#fff9ec"/>
+          <ellipse cx="32" cy="35" rx="19" ry="17" fill="#fff9ec"/>
+          <circle cx="25.3" cy="33" r="3.6" fill="#16264d"/>
+          <circle cx="38.7" cy="33" r="3.6" fill="#16264d"/>
+          <ellipse cx="32" cy="43" rx="3.3" ry="2.6" fill="#16264d"/>
+        </svg>
+      </span>
+      <span class="ia-msg-texto">¡Hola! Soy Tiki, tu asistente de negocio. Pregúntame sobre ventas, citas de hoy, campañas o qué priorizar.</span>
+    </div>
   </div>
   <form id="formIA" class="ia-form">
     <input type="text" id="iaInput" placeholder="Escribe tu pregunta…" autocomplete="off" maxlength="2000">
@@ -6239,7 +6294,14 @@ $('meSelect').addEventListener('change', mostrarMeta);
 $('btnMeRecargar').addEventListener('click', () => { meActual = null; cargarMeta(); });
 $('btnMeBorrar').addEventListener('click', borrarMeta);
 
-/* ---------------- Asistente de IA (AI Growth) ---------------- */
+/* ---------------- Asistente de IA (Tiki) ---------------- */
+const TIKI_AVATAR_HTML = '<span class="tiki-avatar chico"><svg viewBox="0 0 64 64" ' +
+  'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+  '<path d="M17 15C7 19 5 34 13 47c3.7 6 10.3 4.3 10.3-2.8C23.3 33 20.8 23.5 17 15Z" fill="#fff9ec"/>' +
+  '<path d="M47 15C57 19 59 34 51 47c-3.7 6-10.3 4.3-10.3-2.8C40.7 33 43.2 23.5 47 15Z" fill="#fff9ec"/>' +
+  '<ellipse cx="32" cy="35" rx="19" ry="17" fill="#fff9ec"/>' +
+  '<circle cx="25.3" cy="33" r="3.6" fill="#16264d"/><circle cx="38.7" cy="33" r="3.6" fill="#16264d"/>' +
+  '<ellipse cx="32" cy="43" rx="3.3" ry="2.6" fill="#16264d"/></svg></span>';
 let IA_HISTORIAL = [];
 async function verificarIA() {
   try {
@@ -6262,7 +6324,12 @@ function iaAgregarMensaje(rol, texto) {
   const cont = $('iaMensajes');
   const div = document.createElement('div');
   div.className = 'ia-msg ' + rol;
-  div.textContent = texto;
+  if (rol === 'asistente') {
+    div.innerHTML = TIKI_AVATAR_HTML + '<span class="ia-msg-texto"></span>';
+    div.querySelector('.ia-msg-texto').textContent = texto;
+  } else {
+    div.textContent = texto;
+  }
   cont.appendChild(div);
   cont.scrollTop = cont.scrollHeight;
   return div;
@@ -6276,7 +6343,7 @@ $('formIA').addEventListener('submit', async (e) => {
   iaAgregarMensaje('usuario', mensaje);
   const cargando = iaAgregarMensaje('asistente', '');
   cargando.classList.add('ia-cargando');
-  cargando.innerHTML = '<span class="spinner"></span>Pensando&hellip;';
+  cargando.querySelector('.ia-msg-texto').innerHTML = '<span class="spinner"></span>Pensando&hellip;';
   $('btnIAEnviar').disabled = true;
   try {
     const r = await api('/api/asistente/chat', {
