@@ -2163,18 +2163,34 @@ function hoyISO() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+// Deduplicación de GETs en vuelo: el Panel, por ejemplo, dispara
+// cargarResumenPanel() y cargarHoy() casi a la vez y ambas piden
+// /api/crm/hoy — sin esto salían dos requests idénticas en paralelo (y
+// cuando el caché de Drive estaba vencido, dos descargas del mismo
+// archivo a la vez). Si ya hay una GET a la misma URL en curso, la
+// segunda llamada reutiliza esa misma respuesta en vez de disparar otra.
+const _enVuelo = new Map();
 async function api(url, opts = {}) {
-  const r = await fetch(url, opts);
-  let j = null;
-  try { j = await r.json(); } catch (e) { j = { ok: false }; }
-  if (!r.ok) {
-    // Si la sesión caducó no tiene sentido mostrar el error: se vuelve al login.
-    if (r.status === 401 && !url.startsWith('/api/login')) { location.href = '/login'; }
-    const err = new Error(typeof j.detail === 'string' ? j.detail : (j.detail ? JSON.stringify(j.detail) : 'Error del servidor'));
-    err.status = r.status; err.data = j.detail;
-    throw err;
+  const esGet = !opts.method || opts.method === 'GET';
+  if (esGet && _enVuelo.has(url)) return _enVuelo.get(url);
+  const promesa = (async () => {
+    const r = await fetch(url, opts);
+    let j = null;
+    try { j = await r.json(); } catch (e) { j = { ok: false }; }
+    if (!r.ok) {
+      // Si la sesión caducó no tiene sentido mostrar el error: se vuelve al login.
+      if (r.status === 401 && !url.startsWith('/api/login')) { location.href = '/login'; }
+      const err = new Error(typeof j.detail === 'string' ? j.detail : (j.detail ? JSON.stringify(j.detail) : 'Error del servidor'));
+      err.status = r.status; err.data = j.detail;
+      throw err;
+    }
+    return j;
+  })();
+  if (esGet) {
+    _enVuelo.set(url, promesa);
+    promesa.finally(() => { if (_enVuelo.get(url) === promesa) _enVuelo.delete(url); });
   }
-  return j;
+  return promesa;
 }
 
 /* ---------------- Sesión y permisos ---------------- */
