@@ -12,11 +12,9 @@ AGENDADOS y VENTA DIARIA), el catálogo/kardex de inventario y la planilla
 quincenal de sueldos.
 """
 import calendar
-import io
 import json
 import os
 import re
-import threading
 import time
 import unicodedata
 from datetime import datetime
@@ -136,20 +134,6 @@ def _fecha_orden(fecha):
 # ============================================================
 # WORKBOOK CRM.xlsx (Drive)
 # ============================================================
-def _crear_wb():
-    wb = openpyxl.Workbook()
-    for i, nombre in enumerate(HOJAS):
-        ws = wb.active if i == 0 else wb.create_sheet(nombre)
-        ws.title = nombre
-        for c, col in enumerate(HOJAS[nombre], 1):
-            celda = ws.cell(row=1, column=c, value=col)
-            celda.font = openpyxl.styles.Font(bold=True, color='FFFFFF')
-            celda.fill = openpyxl.styles.PatternFill('solid', fgColor='1F3864')
-        ws.auto_filter.ref = f'A1:{openpyxl.utils.get_column_letter(len(HOJAS[nombre]))}1'
-        ws.freeze_panes = 'A2'
-    return wb
-
-
 _FID_CACHE = None  # el fid de CRM.xlsx no cambia en la vida del proceso (medido:
                    # ~500ms por búsqueda sin caché, y se llamaba 2 veces por escritura)
 
@@ -244,60 +228,40 @@ def _leer_hoja(nombre):
     return filas
 
 
+def _filas_a_valores(nombre, filas):
+    """[{letra: valor}] -> filas en el formato de rango 2D de la API de
+    Sheets, en el orden de columnas de HOJAS[nombre]."""
+    letras = [openpyxl.utils.get_column_letter(i) for i in range(1, len(HOJAS[nombre]) + 1)]
+    return [[f.get(letra, '') for letra in letras] for f in filas]
+
+
 def _guardar(filas_por_hoja):
-    with _lock, am.cronometro('crm_plus _guardar() [reconstruye + sube CRM.xlsx entero]'):
-        wb = _crear_wb()
-        # _crear_wb() sólo arma las hojas conocidas (HOJAS): si el archivo
-        # real en Drive tiene alguna hoja extra (agregada a mano, o de un
-        # esquema anterior), _guardar() la borraba en silencio en la
-        # siguiente escritura de CUALQUIER función (crear una tarea, una
-        # tarjeta, etc.), porque el workbook nuevo simplemente no la incluye.
-        # Se copian los valores (no fórmulas/estilos, igual que el resto de
-        # este archivo) antes de sobrescribir, para no perder nada.
-        try:
-            with am.cronometro('crm_plus _guardar(): preservar hojas extra'):
-                ruta_actual = _bajar()
-                wb_actual = openpyxl.load_workbook(ruta_actual, data_only=True)
-                for nombre in wb_actual.sheetnames:
-                    if nombre in HOJAS:
-                        continue
-                    origen = wb_actual[nombre]
-                    destino = wb.create_sheet(nombre)
-                    for row in origen.iter_rows():
-                        for celda in row:
-                            if celda.value is not None:
-                                destino.cell(row=celda.row, column=celda.column, value=celda.value)
-                wb_actual.close()
-        except Exception:  # noqa: BLE001
-            # Si no se pudo leer el archivo actual (primera vez, archivo
-            # corrupto, etc.) se sigue con las hojas conocidas nada más;
-            # no vale la pena bloquear el guardado por esto.
-            pass
+    """Reemplaza el contenido (desde la fila 2) de cada hoja indicada, vía la
+    API de Sheets. CRM.xlsx es una Google Sheet nativa (no un .xlsx binario
+    subido): escribir por la API de Sheets evita la exportación/reimportación
+    de formato que hacía lenta cada escritura (medido: 4-6s por acción, la
+    mayor parte en subir el archivo completo). Sólo se tocan las hojas que
+    vienen en filas_por_hoja; las demás quedan intactas sin necesidad de
+    "preservarlas" — nunca se reconstruye el archivo entero."""
+    with _lock, am.cronometro('crm_plus _guardar() [Sheets API, solo hojas tocadas]'):
+        fid = _fid()
+        sheets = cd._sheets()
         for nombre, filas in filas_por_hoja.items():
-            ws = wb[nombre]
-            for i, f in enumerate(filas, 2):
-                for k, v in f.items():
-                    if v is not None and v != '':
-                        ws.cell(row=i, column=openpyxl.utils.column_index_from_string(k),
-                                value=v)
-        with am.cronometro('crm_plus _guardar(): wb.save() en memoria'):
-            buf = io.BytesIO()
-            wb.save(buf)
-            wb.close()
-            buf.seek(0)
-        destino = os.path.join(am.TMP_DIR,
-                               os.path.splitext(NOMBRE_ARCHIVO)[0] + '_editado.xlsx')
-        with open(destino, 'wb') as fh:
-            fh.write(buf.read())
-        cd.subir_drive(_fid(), destino)
+            ultima_col = openpyxl.utils.get_column_letter(len(HOJAS[nombre]))
+            with am.cronometro(f'crm_plus _guardar(): {nombre} [drive]'):
+                sheets.spreadsheets().values().clear(
+                    spreadsheetId=fid, range=f"'{nombre}'!A2:{ultima_col}", body={}).execute()
+                if filas:
+                    sheets.spreadsheets().values().update(
+                        spreadsheetId=fid, range=f"'{nombre}'!A2",
+                        valueInputOption='RAW',
+                        body={'values': _filas_a_valores(nombre, filas)}).execute()
         cd.invalidar(os.path.splitext(NOMBRE_ARCHIVO)[0])
 
 
 def _reescribir(hoja, filas):
-    with _lock:
-        todo = {n: _leer_hoja(n) for n in HOJAS}
-        todo[hoja] = filas
-        _guardar(todo)
+    """Reemplaza el contenido completo de una hoja (fila 2 en adelante)."""
+    _guardar({hoja: filas})
 
 
 def _siguiente_id(filas):
@@ -1463,7 +1427,7 @@ def registrar_movimiento_stock(codigo, tipo, cantidad, referencia='', nota=''):
              'G': nuevo_stock, 'H': str(referencia or '').strip(),
              'I': str(nota or '').strip()}
         todo['MOVIMIENTOS_STOCK'].append(m)
-        _guardar(todo)
+        _guardar({'PRODUCTOS': todo['PRODUCTOS'], 'MOVIMIENTOS_STOCK': todo['MOVIMIENTOS_STOCK']})
         return {'producto': _producto_named(prod_f), 'movimiento': _movimiento_named(m)}
 
 
@@ -1766,7 +1730,7 @@ def generar_planilla_quincena(anio, mes, quincena):
                      'I': round(sueldo + comision, 2), 'J': 'PENDIENTE'}
                 todo['PLANILLA'].append(f)
                 creados += 1
-        _guardar(todo)
+        _guardar({'PLANILLA': todo['PLANILLA']})
         return {'creados': creados, 'actualizados': actualizados, 'sin_tocar': sin_tocar}
 
 
@@ -1808,7 +1772,7 @@ def registrar_extra(trabajador_id, anio, mes, quincena, extra, motivo=''):
         fila['N'] = extra
         fila['O'] = str(motivo or '').strip()
         fila['I'] = round((am.num(fila.get('G')) or 0) + (am.num(fila.get('H')) or 0) + extra, 2)
-        _guardar(todo)
+        _guardar({'PLANILLA': todo['PLANILLA']})
         return _pago_named(fila)
 
 
