@@ -134,6 +134,15 @@ MESES = {'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
 ASISTE_POR_TEXTO = ('SE REALIZO', 'NO SE REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO')
 REVISAR_STATUS = ()
 
+# Subconjunto de ASISTE_POR_TEXTO que además implica que hubo pago (todos
+# menos 'NO SE REALIZO'). Único lugar donde se define esta lista: antes
+# _calcular_ventas() tenía su propia copia recortada ('SE REALIZO', 'COMPRO',
+# 'DEJO PAGADO', sin 'COMPLETA' ni 'SESION') que se desalineó de esta y de
+# crm_plus._es_venta_registrada() — una venta con status "SESION 1 DE 4"
+# quedaba marcada ASISTIO pero su monto nunca se escribía en el maestro, así
+# que desaparecía de KPIs/meta/reportes aunque el dinero sí se había cobrado.
+COMPRA_POR_TEXTO = tuple(x for x in ASISTE_POR_TEXTO if x != 'NO SE REALIZO')
+
 # ============================================================
 # UTILIDADES DE NORMALIZACIÓN
 # ============================================================
@@ -1052,7 +1061,7 @@ class Calculo:
                 # Solo escribir tratamiento/pago si se realizó (SE REALIZO, COMPRO, etc.)
                 # 'NO SE REALIZO' = asistió pero no compró → solo ASISTIO, sin TRAT/PAGO
                 es_compra = any(x in (txt(v['status']) or '').upper()
-                                for x in ('SE REALIZO', 'COMPRO', 'DEJO PAGADO'))
+                                for x in COMPRA_POR_TEXTO)
                 if not es_compra:
                     continue
                 if self._tiene_tratamiento(fila_m, v):

@@ -765,7 +765,7 @@ def _es_venta_registrada(v):
     s = _status_normalizado(v)
     if _es_no_realizado(v):
         return False
-    return any(x in s for x in ('REALIZO', 'COMPRO', 'COMPLETA', 'SESION', 'DEJO PAGADO'))
+    return any(x in s for x in am.COMPRA_POR_TEXTO)
 
 
 def leer_dashboard(anio=None, mes=None):
