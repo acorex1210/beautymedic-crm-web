@@ -690,19 +690,19 @@ def _validar_cupo_hora(dia, mes, anio, hora, excluir_fila=None):
 # Página y estado
 # ============================================================
 @app.get('/', response_class=HTMLResponse)
-async def index():
+def index():
     return HTMLResponse(_html_index())
 
 
 @app.get('/salud')
-async def salud():
+def salud():
     """Healthcheck de Railway: '/' ahora redirige al login y un 302 no sirve
     para comprobar que la app está viva."""
     return {'ok': True}
 
 
 @app.get('/api/debug/asistidos')
-async def debug_asistidos():
+def debug_asistidos():
     """Endpoint temporal: muestra ASISTIO del maestro en Railway."""
     from collections import defaultdict
     import reporte_ventas_pdf as rv
@@ -730,7 +730,7 @@ async def debug_asistidos():
 
 
 @app.get('/api/debug/venta')
-async def debug_venta():
+def debug_venta():
     """Muestra TODA la VENTA DIARIA del drive."""
     import alimentar_maestro as am
     from collections import defaultdict
@@ -755,7 +755,7 @@ async def debug_venta():
 
 
 @app.get('/api/debug/agendados')
-async def debug_agendados():
+def debug_agendados():
     """Muestra AGENDADOS del drive con filtro de periodo."""
     from collections import defaultdict
     import alimentar_maestro as am
@@ -787,7 +787,7 @@ async def debug_agendados():
 
 
 @app.get('/api/debug/cruce')
-async def debug_cruce(mes: str = '', anio: str = '', desde: str = '', hasta: str = ''):
+def debug_cruce(mes: str = '', anio: str = '', desde: str = '', hasta: str = ''):
     """Cruce completo: AGENDADOS → VENTA → maestro para un periodo."""
     import alimentar_maestro as am
     m, a, d, h = _filtros(mes, anio, desde, hasta)
@@ -847,7 +847,7 @@ async def debug_cruce(mes: str = '', anio: str = '', desde: str = '', hasta: str
 
 
 @app.get('/api/debug/maestro-ago')
-async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
+def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
     """Muestra filas del maestro para un mes/año dado: CAMPAÑA, ASISTENCIA, NOMBRE, TRAT/PAGO."""
     import alimentar_maestro as am
     from openpyxl.utils import column_index_from_string as c2n
@@ -896,7 +896,7 @@ async def debug_maestro_ago(mes: str = 'AGO', anio: str = '2026'):
 
 
 @app.get('/api/debug/agendados-cols')
-async def debug_agendados_cols():
+def debug_agendados_cols():
     """Muestra qué columnas detecta leer_agendados de la hoja AGENDADOS."""
     import alimentar_maestro as am
     import os
@@ -930,14 +930,14 @@ class UsuarioReq(BaseModel):
 
 
 @app.get('/login', response_class=HTMLResponse)
-async def login_pagina(request: Request):
+def login_pagina(request: Request):
     if _usuario_de(request):
         return RedirectResponse('/', status_code=302)
     return HTMLResponse(_html_login())
 
 
 @app.post('/api/login')
-async def login(data: LoginReq, request: Request):
+def login(data: LoginReq, request: Request):
     try:
         perfil = usr.autenticar(data.usuario, data.clave)
     except ValueError as e:
@@ -956,14 +956,14 @@ async def login(data: LoginReq, request: Request):
 
 
 @app.post('/api/logout')
-async def logout():
+def logout():
     r = JSONResponse({'ok': True})
     r.delete_cookie(COOKIE_SESION, path='/')
     return r
 
 
 @app.get('/api/yo')
-async def yo(request: Request):
+def yo(request: Request):
     perfil = _usuario_de(request)
     if not perfil:
         raise HTTPException(401, 'Sesión expirada o no iniciada')
@@ -971,7 +971,7 @@ async def yo(request: Request):
 
 
 @app.post('/api/yo/clave')
-async def cambiar_mi_clave(data: CambioClaveReq, request: Request):
+def cambiar_mi_clave(data: CambioClaveReq, request: Request):
     """Cambio de contraseña propia: pide la actual para que una sesión robada
     no baste para dejar al dueño fuera de su cuenta."""
     perfil = request.state.usuario
@@ -984,12 +984,12 @@ async def cambiar_mi_clave(data: CambioClaveReq, request: Request):
 
 
 @app.get('/api/usuarios')
-async def usuarios_listar():
+def usuarios_listar():
     return {'ok': True, 'usuarios': usr.listar(), 'roles': usr.ROLES}
 
 
 @app.post('/api/usuarios')
-async def usuarios_crear(data: UsuarioReq):
+def usuarios_crear(data: UsuarioReq):
     try:
         u = usr.crear(data.usuario, data.clave, data.rol or usr.ROL_POR_DEFECTO, data.nombre)
     except ValueError as e:
@@ -998,7 +998,7 @@ async def usuarios_crear(data: UsuarioReq):
 
 
 @app.patch('/api/usuarios/{usuario}')
-async def usuarios_editar(usuario: str, data: UsuarioReq, request: Request):
+def usuarios_editar(usuario: str, data: UsuarioReq, request: Request):
     cambios = data.model_dump(exclude_unset=True)
     cambios.pop('usuario', None)
     # Nadie puede desactivarse a sí mismo y quedarse fuera del sistema.
@@ -1015,7 +1015,7 @@ async def usuarios_editar(usuario: str, data: UsuarioReq, request: Request):
 
 
 @app.delete('/api/usuarios/{usuario}')
-async def usuarios_borrar(usuario: str, request: Request):
+def usuarios_borrar(usuario: str, request: Request):
     if usr.normalizar_usuario(usuario) == request.state.usuario['usuario']:
         raise HTTPException(400, 'No puedes borrar tu propio usuario')
     try:
@@ -1028,7 +1028,7 @@ async def usuarios_borrar(usuario: str, request: Request):
 
 
 @app.get('/api/estado')
-async def estado():
+def estado():
     maestro_ok = am.MAESTRO_FID or os.path.exists(am.ruta_maestro_local())
     return {
         'credenciales_ok': am.credenciales_disponibles(),
@@ -1047,7 +1047,7 @@ async def estado():
 # Generar reporte PDF
 # ============================================================
 @app.post('/api/reporte')
-async def generar_reporte(data: ReporteReq):
+def generar_reporte(data: ReporteReq):
     mes = (data.mes or 'AGO').upper().replace('SEP', 'SET')
     if mes not in rv.NOMBRES_MES:
         raise HTTPException(400, f'Mes inválido: {mes}')
@@ -1115,7 +1115,7 @@ async def generar_reporte(data: ReporteReq):
 
 
 @app.get('/api/reporte/breve')
-async def reporte_breve(mes: str = 'AGO', anio: int = 2026, desde: int = 1, hasta: int = 10):
+def reporte_breve(mes: str = 'AGO', anio: int = 2026, desde: int = 1, hasta: int = 10):
     mes = (mes or 'AGO').upper().replace('SEP', 'SET')
     if mes not in rv.NOMBRES_MES:
         raise HTTPException(400, f'Mes inválido: {mes}')
@@ -1131,12 +1131,12 @@ async def reporte_breve(mes: str = 'AGO', anio: int = 2026, desde: int = 1, hast
 
 
 @app.get('/api/reportes')
-async def listar_reportes():
+def listar_reportes():
     return _listar_reportes()
 
 
 @app.get('/api/reporte/download/{archivo}')
-async def descargar_reporte(archivo: str):
+def descargar_reporte(archivo: str):
     p = os.path.join(REPORTES_DIR, os.path.basename(archivo))
     if not os.path.isfile(p):
         raise HTTPException(404, 'Reporte no encontrado')
@@ -1144,7 +1144,7 @@ async def descargar_reporte(archivo: str):
 
 
 @app.delete('/api/reporte/{archivo}')
-async def borrar_reporte(archivo: str):
+def borrar_reporte(archivo: str):
     p = os.path.join(REPORTES_DIR, os.path.basename(archivo))
     if not os.path.isfile(p):
         raise HTTPException(404, 'Reporte no encontrado')
@@ -1156,7 +1156,7 @@ async def borrar_reporte(archivo: str):
 # Sincronizar maestro desde Drive
 # ============================================================
 @app.post('/api/sync')
-async def sincronizar(data: SyncReq):
+def sincronizar(data: SyncReq):
     with _bloqueo:
         resultado = am.ejecutar_sync(aplicar=data.aplicar)
     _guardar_estado_sync(resultado)
@@ -1164,7 +1164,7 @@ async def sincronizar(data: SyncReq):
 
 
 @app.get('/api/sync/estado')
-async def sync_estado():
+def sync_estado():
     """Resultado de la última sincronización (manual, cron diario o tras una
     venta): en particular si quedaron ventas sin poder escribirse solas en
     el maestro (revisar/sin_hueco), para que el Panel pueda avisar."""
@@ -1200,7 +1200,7 @@ async def subir_maestro(file: UploadFile = File(...)):
 
 
 @app.get('/api/maestro/download')
-async def descargar_maestro():
+def descargar_maestro():
     ruta = am.ruta_maestro_local()
     if not os.path.exists(ruta):
         raise HTTPException(404, 'No hay maestro subido')
@@ -1208,7 +1208,7 @@ async def descargar_maestro():
 
 
 @app.put('/api/maestro/motivo')
-async def registrar_motivo(req: MotivoReq):
+def registrar_motivo(req: MotivoReq):
     if req.tipo not in ('no_asistio', 'no_compra'):
         raise HTTPException(400, "tipo debe ser 'no_asistio' o 'no_compra'")
     if not req.motivo.strip():
@@ -1241,7 +1241,7 @@ def _filtros(mes: str = '', anio: str = '', desde: str = '', hasta: str = ''):
 
 
 @app.get('/api/analitica/kpis')
-async def analitica_kpis(mes: str = '', anio: str = '',
+def analitica_kpis(mes: str = '', anio: str = '',
                          desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1271,7 +1271,7 @@ def _guardar_proyeccion_congelada(clave, datos):
 
 
 @app.get('/api/analitica/proyeccion')
-async def analitica_proyeccion(mes: str = '', anio: str = ''):
+def analitica_proyeccion(mes: str = '', anio: str = ''):
     """La meta proyectada se calcula una sola vez por mes (como si fuera el
     día 1, antes de que exista ninguna venta real) y queda fija en disco:
     así no sube ni baja según avance el mes. El avance real (lo ya vendido)
@@ -1315,7 +1315,7 @@ async def analitica_proyeccion(mes: str = '', anio: str = ''):
 
 
 @app.post('/api/analitica/proyeccion/recalcular')
-async def analitica_proyeccion_recalcular(mes: str = '', anio: str = ''):
+def analitica_proyeccion_recalcular(mes: str = '', anio: str = ''):
     """Borra la meta fija guardada de un mes para que se vuelva a calcular
     (con los parámetros actuales) la próxima vez que se pida. Útil cuando se
     ajusta el modelo de proyección y hay que refrescar meses ya congelados."""
@@ -1333,7 +1333,7 @@ async def analitica_proyeccion_recalcular(mes: str = '', anio: str = ''):
 
 
 @app.get('/api/analitica/serie')
-async def analitica_serie(mes: str = '', anio: str = '',
+def analitica_serie(mes: str = '', anio: str = '',
                           desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1343,7 +1343,7 @@ async def analitica_serie(mes: str = '', anio: str = '',
 
 
 @app.get('/api/analitica/perfil')
-async def analitica_perfil(mes: str = '', anio: str = '',
+def analitica_perfil(mes: str = '', anio: str = '',
                            desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1353,7 +1353,7 @@ async def analitica_perfil(mes: str = '', anio: str = '',
 
 
 @app.get('/api/analitica/comparativo')
-async def analitica_comparativo(mes: str = '', anio: str = '',
+def analitica_comparativo(mes: str = '', anio: str = '',
                                 desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1363,7 +1363,7 @@ async def analitica_comparativo(mes: str = '', anio: str = '',
 
 
 @app.get('/api/analitica/recurrentes')
-async def analitica_recurrentes(mes: str = '', anio: str = '',
+def analitica_recurrentes(mes: str = '', anio: str = '',
                                 desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1373,7 +1373,7 @@ async def analitica_recurrentes(mes: str = '', anio: str = '',
 
 
 @app.get('/api/analitica/historico')
-async def analitica_historico():
+def analitica_historico():
     try:
         return {'ok': True, 'meses': ana.ventas_por_mes()}
     except Exception as e:  # noqa: BLE001
@@ -1381,7 +1381,7 @@ async def analitica_historico():
 
 
 @app.get('/api/analitica/paciente')
-async def analitica_paciente(telefono: str = '', dni: str = ''):
+def analitica_paciente(telefono: str = '', dni: str = ''):
     if not telefono and not dni:
         raise HTTPException(400, 'Indica teléfono o DNI del paciente')
     try:
@@ -1397,7 +1397,7 @@ async def analitica_paciente(telefono: str = '', dni: str = ''):
 
 
 @app.get('/api/analitica/reactivar')
-async def analitica_reactivar(meses: int = 3):
+def analitica_reactivar(meses: int = 3):
     try:
         return {'ok': True, 'pacientes': ana.pacientes_a_reactivar(meses)}
     except Exception as e:  # noqa: BLE001
@@ -1405,7 +1405,7 @@ async def analitica_reactivar(meses: int = 3):
 
 
 @app.get('/api/analitica/ejecutivas')
-async def analitica_ejecutivas(mes: str = '', anio: str = '',
+def analitica_ejecutivas(mes: str = '', anio: str = '',
                                desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1415,7 +1415,7 @@ async def analitica_ejecutivas(mes: str = '', anio: str = '',
 
 
 @app.get('/api/analitica/motivos')
-async def analitica_motivos(mes: str = '', anio: str = '',
+def analitica_motivos(mes: str = '', anio: str = '',
                             desde: str = '', hasta: str = ''):
     m, a, d, h = _filtros(mes, anio, desde, hasta)
     try:
@@ -1447,14 +1447,14 @@ class MetaMensualReq(BaseModel):
 
 
 @app.get('/api/meta-mensual')
-async def obtener_meta_mensual(mes: str = '', anio: str = ''):
+def obtener_meta_mensual(mes: str = '', anio: str = ''):
     m, a, _, _ = _filtros(mes, anio, '1', '31')
     metas = _leer_metas_mensuales()
     return {'ok': True, 'mes': m, 'anio': a, 'meta': metas.get(f'{m}-{a}', 0)}
 
 
 @app.put('/api/meta-mensual')
-async def guardar_meta_mensual(data: MetaMensualReq):
+def guardar_meta_mensual(data: MetaMensualReq):
     if data.meta < 0:
         raise HTTPException(400, 'La meta no puede ser negativa')
     m = data.mes.upper().replace('SEP', 'SET')
@@ -1471,7 +1471,7 @@ async def guardar_meta_mensual(data: MetaMensualReq):
 # Backups y exportaciones
 # ============================================================
 @app.post('/api/backup')
-async def hacer_backup():
+def hacer_backup():
     hechas = []
     errores = []
     try:
@@ -1494,7 +1494,7 @@ async def hacer_backup():
 
 
 @app.get('/api/backups')
-async def listar_backups():
+def listar_backups():
     out = []
     for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
         if f.lower().endswith(('.xlsx', '.zip')):
@@ -1506,7 +1506,7 @@ async def listar_backups():
 
 
 @app.get('/api/backup/download/{archivo}')
-async def descargar_backup(archivo: str):
+def descargar_backup(archivo: str):
     p = os.path.join(BACKUP_DIR, os.path.basename(archivo))
     if not os.path.isfile(p):
         raise HTTPException(404, 'Backup no encontrado')
@@ -1530,7 +1530,7 @@ def _csv_response(columnas, filas, nombre):
 
 
 @app.get('/api/exportar/{tipo}')
-async def exportar_csv(tipo: str):
+def exportar_csv(tipo: str):
     tipo = tipo.lower()
     try:
         if tipo == 'agendados':
@@ -1600,7 +1600,7 @@ def _xlsx_response(columnas, filas, nombre, titulo=None):
 
 
 @app.get('/api/reportes/exportar')
-async def exportar_reporte_xlsx(tipo: str, mes: str = '', anio: str = '',
+def exportar_reporte_xlsx(tipo: str, mes: str = '', anio: str = '',
                                 desde: str = '', hasta: str = '', hoja: str = ''):
     tipo = tipo.lower().strip()
     try:
@@ -1715,7 +1715,7 @@ def _valores_venta():
 
 
 @app.get('/api/crm/agendados')
-async def crm_agendados():
+def crm_agendados():
     try:
         data = crm.leer_agendados()
     except Exception as e:  # noqa: BLE001
@@ -1748,7 +1748,7 @@ async def crm_agendados():
 
 
 @app.post('/api/crm/agendados')
-async def crm_agendados_nuevo(data: AgendadoReq):
+def crm_agendados_nuevo(data: AgendadoReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     _validar_fecha(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'),
@@ -1770,7 +1770,7 @@ async def crm_agendados_nuevo(data: AgendadoReq):
 
 
 @app.delete('/api/crm/agendados/{fila}')
-async def crm_agendados_borrar(fila: int):
+def crm_agendados_borrar(fila: int):
     with _bloqueo:
         try:
             return crm.borrar_agendado(fila)
@@ -1781,7 +1781,7 @@ async def crm_agendados_borrar(fila: int):
 
 
 @app.put('/api/crm/agendados/{fila}')
-async def crm_agendados_editar(fila: int, data: AgendadoReq):
+def crm_agendados_editar(fila: int, data: AgendadoReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     _validar_fecha(d.get('dia_cita'), d.get('mes_cita'), d.get('anio_cita'),
@@ -1803,7 +1803,7 @@ async def crm_agendados_editar(fila: int, data: AgendadoReq):
 
 
 @app.post('/api/crm/agendados/{fila}/confirmar')
-async def crm_agendados_confirmar(fila: int):
+def crm_agendados_confirmar(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'Q': 'CONFIRMADO'})
@@ -1814,7 +1814,7 @@ async def crm_agendados_confirmar(fila: int):
 
 
 @app.post('/api/crm/agendados/{fila}/cancelar')
-async def crm_agendados_cancelar(fila: int):
+def crm_agendados_cancelar(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'Q': 'CANCELA'})
@@ -1825,7 +1825,7 @@ async def crm_agendados_cancelar(fila: int):
 
 
 @app.post('/api/crm/agendados/{fila}/reprogramar')
-async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
+def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if d.get('dia') is None and not d.get('mes') and d.get('anio') is None:
@@ -1854,7 +1854,7 @@ async def crm_agendados_reprogramar(fila: int, data: ReprogramarReq):
 
 
 @app.post('/api/crm/agendados/{fila}/reconfirmar')
-async def crm_agendados_reconfirmar(fila: int):
+def crm_agendados_reconfirmar(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'S': 'RECONFIRMADO'})
@@ -1865,7 +1865,7 @@ async def crm_agendados_reconfirmar(fila: int):
 
 
 @app.get('/api/crm/agendados/confirmaciones')
-async def crm_agendados_confirmaciones(horas: int = 48):
+def crm_agendados_confirmaciones(horas: int = 48):
     """Citas sin resolver dentro de las próximas `horas` (por defecto 48,
     es decir hoy/mañana/pasado), para priorizar a quién confirmar hoy.
 
@@ -1914,7 +1914,7 @@ async def crm_agendados_confirmaciones(horas: int = 48):
 
 
 @app.post('/api/crm/agendados/{fila}/compro')
-async def crm_agendados_compro(fila: int, data: ComproReq):
+def crm_agendados_compro(fila: int, data: ComproReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if not d.get('nombre'):
@@ -1959,7 +1959,7 @@ async def crm_agendados_compro(fila: int, data: ComproReq):
 
 
 @app.post('/api/crm/agendados/{fila}/asistio')
-async def crm_agendados_asistio(fila: int):
+def crm_agendados_asistio(fila: int):
     """Marca que el paciente vino al consultorio (sin registrar venta)."""
     with _bloqueo:
         try:
@@ -1971,7 +1971,7 @@ async def crm_agendados_asistio(fila: int):
 
 
 @app.post('/api/crm/agendados/{fila}/nocompro')
-async def crm_agendados_nocompro(fila: int):
+def crm_agendados_nocompro(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'Q': 'ASISTIO SIN COMPRA'})
@@ -1982,7 +1982,7 @@ async def crm_agendados_nocompro(fila: int):
 
 
 @app.post('/api/crm/agendados/{fila}/noasistio')
-async def crm_agendados_noasistio(fila: int):
+def crm_agendados_noasistio(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'Q': 'NO ASISTIO'})
@@ -1993,7 +1993,7 @@ async def crm_agendados_noasistio(fila: int):
 
 
 @app.post('/api/crm/agendados/{fila}/nocontesto')
-async def crm_agendados_nocontesto(fila: int):
+def crm_agendados_nocontesto(fila: int):
     with _bloqueo:
         try:
             return crm.actualizar_campos_agendado(fila, {'Q': 'NO CONTESTO'})
@@ -2004,7 +2004,7 @@ async def crm_agendados_nocontesto(fila: int):
 
 
 @app.get('/api/crm/remarketing')
-async def crm_remarketing():
+def crm_remarketing():
     try:
         data = crm.leer_remarketing()
     except Exception as e:  # noqa: BLE001
@@ -2021,7 +2021,7 @@ async def crm_remarketing():
 
 
 @app.post('/api/crm/remarketing/{fila}')
-async def crm_remarketing_registrar(fila: int, data: RemarketingReq):
+def crm_remarketing_registrar(fila: int, data: RemarketingReq):
     hoja = data.hoja if data.hoja == 'BASE FESTIVAL' else 'REMARKETING'
     campos = {}
     if hoja == 'BASE FESTIVAL':
@@ -2049,7 +2049,7 @@ async def crm_remarketing_registrar(fila: int, data: RemarketingReq):
 
 
 @app.post('/api/crm/remarketing')
-async def crm_remarketing_nuevo(data: NuevoRemarketingReq):
+def crm_remarketing_nuevo(data: NuevoRemarketingReq):
     with _bloqueo:
         try:
             return crm.agregar_remarketing(data.celular, data.campana)
@@ -2060,7 +2060,7 @@ async def crm_remarketing_nuevo(data: NuevoRemarketingReq):
 
 
 @app.post('/api/crm/remarketing/{fila}/ocultar')
-async def crm_remarketing_ocultar(fila: int, data: OcultarRemarketingReq):
+def crm_remarketing_ocultar(fila: int, data: OcultarRemarketingReq):
     hoja = data.hoja if data.hoja == 'BASE FESTIVAL' else 'REMARKETING'
     with _bloqueo:
         try:
@@ -2072,7 +2072,7 @@ async def crm_remarketing_ocultar(fila: int, data: OcultarRemarketingReq):
 
 
 @app.get('/api/crm/venta')
-async def crm_venta():
+def crm_venta():
     try:
         data = crm.leer_venta()
     except Exception as e:  # noqa: BLE001
@@ -2095,7 +2095,7 @@ async def crm_venta():
 
 
 @app.post('/api/crm/venta')
-async def crm_venta_nuevo(data: VentaReq):
+def crm_venta_nuevo(data: VentaReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if not d.get('nombre'):
@@ -2130,7 +2130,7 @@ async def crm_venta_nuevo(data: VentaReq):
 
 
 @app.delete('/api/crm/venta/{fila}')
-async def crm_venta_borrar(fila: int, hoja: str):
+def crm_venta_borrar(fila: int, hoja: str):
     with _bloqueo:
         try:
             res = crm.borrar_venta(hoja, fila)
@@ -2152,7 +2152,7 @@ async def crm_venta_borrar(fila: int, hoja: str):
 
 
 @app.put('/api/crm/venta/{fila}')
-async def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
+def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
     d = data.model_dump()
     _validar_fecha(d.get('dia'), d.get('mes'), d.get('anio'))
     if not d.get('nombre'):
@@ -2169,7 +2169,7 @@ async def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
 
 
 @app.get('/api/crm/venta/recibo')
-async def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
+def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
     """Recibo interno en PDF de una venta (una o varias líneas consecutivas
     de VENTA DIARIA que comparten la misma compra). No es una boleta o
     factura electrónica válida ante SUNAT."""
@@ -2207,7 +2207,7 @@ async def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
 # CRM Plus: Pipeline kanban
 # ============================================================
 @app.get('/api/crm/pipeline')
-async def crm_pipeline():
+def crm_pipeline():
     try:
         return {'ok': True, 'etapas': cp.ETAPAS, 'tarjetas': cp.leer_tarjetas()}
     except Exception as e:  # noqa: BLE001
@@ -2215,7 +2215,7 @@ async def crm_pipeline():
 
 
 @app.post('/api/crm/pipeline')
-async def crm_pipeline_nueva(data: TarjetaReq):
+def crm_pipeline_nueva(data: TarjetaReq):
     try:
         res = cp.crear_tarjeta(data.model_dump(exclude_unset=True))
     except Exception as e:  # noqa: BLE001
@@ -2224,7 +2224,7 @@ async def crm_pipeline_nueva(data: TarjetaReq):
 
 
 @app.patch('/api/crm/pipeline/{tid}')
-async def crm_pipeline_actualizar(tid: int, data: TarjetaReq):
+def crm_pipeline_actualizar(tid: int, data: TarjetaReq):
     try:
         res = cp.actualizar_tarjeta(tid, data.model_dump(exclude_unset=True))
     except Exception as e:  # noqa: BLE001
@@ -2235,7 +2235,7 @@ async def crm_pipeline_actualizar(tid: int, data: TarjetaReq):
 
 
 @app.delete('/api/crm/pipeline/{tid}')
-async def crm_pipeline_borrar(tid: int):
+def crm_pipeline_borrar(tid: int):
     try:
         ok = cp.borrar_tarjeta(tid)
     except Exception as e:  # noqa: BLE001
@@ -2249,7 +2249,7 @@ async def crm_pipeline_borrar(tid: int):
 # CRM Plus: Tareas y recordatorios
 # ============================================================
 @app.get('/api/crm/tareas')
-async def crm_tareas(estado: str = ''):
+def crm_tareas(estado: str = ''):
     try:
         return {'ok': True, 'tareas': cp.leer_tareas(estado=estado or None)}
     except Exception as e:  # noqa: BLE001
@@ -2257,7 +2257,7 @@ async def crm_tareas(estado: str = ''):
 
 
 @app.post('/api/crm/tareas')
-async def crm_tareas_nueva(data: TareaReq):
+def crm_tareas_nueva(data: TareaReq):
     if not data.titulo:
         raise HTTPException(400, 'Indica el título de la tarea')
     try:
@@ -2268,7 +2268,7 @@ async def crm_tareas_nueva(data: TareaReq):
 
 
 @app.patch('/api/crm/tareas/{tid}')
-async def crm_tareas_actualizar(tid: int, data: TareaReq):
+def crm_tareas_actualizar(tid: int, data: TareaReq):
     try:
         res = cp.actualizar_tarea(tid, data.model_dump(exclude_unset=True))
     except Exception as e:  # noqa: BLE001
@@ -2279,7 +2279,7 @@ async def crm_tareas_actualizar(tid: int, data: TareaReq):
 
 
 @app.delete('/api/crm/tareas/{tid}')
-async def crm_tareas_borrar(tid: int):
+def crm_tareas_borrar(tid: int):
     try:
         ok = cp.borrar_tarea(tid)
     except Exception as e:  # noqa: BLE001
@@ -2293,7 +2293,7 @@ async def crm_tareas_borrar(tid: int):
 # CRM Plus: Notas de seguimiento
 # ============================================================
 @app.get('/api/crm/notas')
-async def crm_notas(telefono: str = '', contacto: str = ''):
+def crm_notas(telefono: str = '', contacto: str = ''):
     try:
         return {'ok': True, 'notas': cp.leer_notas(
             telefono=telefono or None, contacto=contacto or None)}
@@ -2302,7 +2302,7 @@ async def crm_notas(telefono: str = '', contacto: str = ''):
 
 
 @app.post('/api/crm/notas')
-async def crm_notas_nueva(data: NotaReq):
+def crm_notas_nueva(data: NotaReq):
     if not data.texto:
         raise HTTPException(400, 'Escribe la nota')
     try:
@@ -2316,7 +2316,7 @@ async def crm_notas_nueva(data: NotaReq):
 # CRM Plus: Cuotas / pagos a plazos
 # ============================================================
 @app.get('/api/crm/cuotas')
-async def crm_cuotas(estado: str = '', telefono: str = ''):
+def crm_cuotas(estado: str = '', telefono: str = ''):
     try:
         return {'ok': True, 'cuotas': cp.leer_cuotas(
             estado=estado or None, telefono=telefono or None)}
@@ -2325,7 +2325,7 @@ async def crm_cuotas(estado: str = '', telefono: str = ''):
 
 
 @app.post('/api/crm/cuotas')
-async def crm_cuotas_nueva(data: CuotaReq):
+def crm_cuotas_nueva(data: CuotaReq):
     if not data.paciente and not data.telefono:
         raise HTTPException(400, 'Indica el paciente o teléfono')
     if data.monto_total is not None and data.monto_total <= 0:
@@ -2338,7 +2338,7 @@ async def crm_cuotas_nueva(data: CuotaReq):
 
 
 @app.patch('/api/crm/cuotas/{cid}')
-async def crm_cuotas_actualizar(cid: int, data: CuotaReq):
+def crm_cuotas_actualizar(cid: int, data: CuotaReq):
     # Mismas validaciones que crear_cuota (crm_cuotas_nueva): antes el PATCH
     # no las tenía y se podía dejar, p. ej., n_cuotas=0 o pagadas por encima
     # de n_cuotas, dando un saldo absurdo (negativo, o "PAGADO" sin cobrar
@@ -2363,7 +2363,7 @@ async def crm_cuotas_actualizar(cid: int, data: CuotaReq):
 
 
 @app.post('/api/crm/cuotas/{cid}/pago')
-async def crm_cuotas_pago(cid: int):
+def crm_cuotas_pago(cid: int):
     try:
         res = cp.registrar_pago_cuota(cid)
     except Exception as e:  # noqa: BLE001
@@ -2376,7 +2376,7 @@ async def crm_cuotas_pago(cid: int):
 
 
 @app.delete('/api/crm/cuotas/{cid}')
-async def crm_cuotas_borrar(cid: int):
+def crm_cuotas_borrar(cid: int):
     try:
         ok = cp.borrar_cuota(cid)
     except Exception as e:  # noqa: BLE001
@@ -2390,7 +2390,7 @@ async def crm_cuotas_borrar(cid: int):
 # CRM Plus: Caja (apertura / movimientos / cierre del día)
 # ============================================================
 @app.get('/api/crm/caja')
-async def crm_caja_estado(fecha: str = ''):
+def crm_caja_estado(fecha: str = ''):
     try:
         return {'ok': True, **cp.estado_caja(fecha or None)}
     except Exception as e:  # noqa: BLE001
@@ -2398,7 +2398,7 @@ async def crm_caja_estado(fecha: str = ''):
 
 
 @app.get('/api/crm/caja/historial')
-async def crm_caja_historial(limite: int = 30):
+def crm_caja_historial(limite: int = 30):
     try:
         return {'ok': True, 'historial': cp.historial_caja(limite)}
     except Exception as e:  # noqa: BLE001
@@ -2406,7 +2406,7 @@ async def crm_caja_historial(limite: int = 30):
 
 
 @app.post('/api/crm/caja/apertura')
-async def crm_caja_apertura(data: AperturaCajaReq):
+def crm_caja_apertura(data: AperturaCajaReq):
     try:
         if cp.estado_caja()['abierta']:
             raise HTTPException(400, 'La caja de hoy ya está abierta')
@@ -2423,7 +2423,7 @@ async def crm_caja_apertura(data: AperturaCajaReq):
 
 
 @app.post('/api/crm/caja/movimiento')
-async def crm_caja_movimiento(data: MovimientoCajaReq):
+def crm_caja_movimiento(data: MovimientoCajaReq):
     try:
         estado = cp.estado_caja()
         if not estado['abierta']:
@@ -2441,7 +2441,7 @@ async def crm_caja_movimiento(data: MovimientoCajaReq):
 
 
 @app.delete('/api/crm/caja/{cid}')
-async def crm_caja_borrar(cid: int):
+def crm_caja_borrar(cid: int):
     try:
         ok = cp.borrar_movimiento_caja(cid)
     except Exception as e:  # noqa: BLE001
@@ -2452,7 +2452,7 @@ async def crm_caja_borrar(cid: int):
 
 
 @app.post('/api/crm/caja/cierre')
-async def crm_caja_cierre(data: CierreCajaReq):
+def crm_caja_cierre(data: CierreCajaReq):
     try:
         estado = cp.estado_caja()
         if not estado['abierta']:
@@ -2473,7 +2473,7 @@ async def crm_caja_cierre(data: CierreCajaReq):
 # CRM Plus: Inventario (catálogo de productos + kardex de stock)
 # ============================================================
 @app.get('/api/crm/inventario/productos')
-async def inventario_productos():
+def inventario_productos():
     try:
         return {'ok': True, 'productos': cp.leer_productos()}
     except Exception as e:  # noqa: BLE001
@@ -2481,7 +2481,7 @@ async def inventario_productos():
 
 
 @app.post('/api/crm/inventario/productos')
-async def inventario_producto_nuevo(data: ProductoReq):
+def inventario_producto_nuevo(data: ProductoReq):
     try:
         p = cp.crear_producto(data.model_dump())
     except ValueError as e:
@@ -2492,7 +2492,7 @@ async def inventario_producto_nuevo(data: ProductoReq):
 
 
 @app.patch('/api/crm/inventario/productos/{pid}')
-async def inventario_producto_editar(pid: int, data: ProductoReq):
+def inventario_producto_editar(pid: int, data: ProductoReq):
     try:
         p = cp.actualizar_producto(pid, data.model_dump())
     except ValueError as e:
@@ -2505,7 +2505,7 @@ async def inventario_producto_editar(pid: int, data: ProductoReq):
 
 
 @app.delete('/api/crm/inventario/productos/{pid}')
-async def inventario_producto_borrar(pid: int):
+def inventario_producto_borrar(pid: int):
     try:
         ok = cp.borrar_producto(pid)
     except Exception as e:  # noqa: BLE001
@@ -2516,7 +2516,7 @@ async def inventario_producto_borrar(pid: int):
 
 
 @app.get('/api/crm/inventario/movimientos')
-async def inventario_movimientos(codigo: str = '', limite: int = 200):
+def inventario_movimientos(codigo: str = '', limite: int = 200):
     try:
         return {'ok': True, 'movimientos': cp.leer_movimientos_stock(codigo or None, limite)}
     except Exception as e:  # noqa: BLE001
@@ -2524,7 +2524,7 @@ async def inventario_movimientos(codigo: str = '', limite: int = 200):
 
 
 @app.post('/api/crm/inventario/productos/{pid}/movimiento')
-async def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
+def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
     try:
         productos = cp.leer_productos()
     except Exception as e:  # noqa: BLE001
@@ -2548,7 +2548,7 @@ async def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
 # CRM Plus: Planilla (trabajadores + pagos quincenales)
 # ============================================================
 @app.get('/api/crm/planilla/trabajadores')
-async def planilla_trabajadores(solo_activos: bool = False):
+def planilla_trabajadores(solo_activos: bool = False):
     try:
         return {'ok': True, 'trabajadores': cp.leer_trabajadores(solo_activos)}
     except Exception as e:  # noqa: BLE001
@@ -2556,7 +2556,7 @@ async def planilla_trabajadores(solo_activos: bool = False):
 
 
 @app.post('/api/crm/planilla/trabajadores')
-async def planilla_trabajador_nuevo(data: TrabajadorReq):
+def planilla_trabajador_nuevo(data: TrabajadorReq):
     try:
         t = cp.crear_trabajador(data.model_dump())
     except ValueError as e:
@@ -2567,7 +2567,7 @@ async def planilla_trabajador_nuevo(data: TrabajadorReq):
 
 
 @app.patch('/api/crm/planilla/trabajadores/{tid}')
-async def planilla_trabajador_editar(tid: int, data: TrabajadorReq):
+def planilla_trabajador_editar(tid: int, data: TrabajadorReq):
     try:
         t = cp.actualizar_trabajador(tid, data.model_dump())
     except ValueError as e:
@@ -2580,7 +2580,7 @@ async def planilla_trabajador_editar(tid: int, data: TrabajadorReq):
 
 
 @app.delete('/api/crm/planilla/trabajadores/{tid}')
-async def planilla_trabajador_borrar(tid: int):
+def planilla_trabajador_borrar(tid: int):
     try:
         ok = cp.borrar_trabajador(tid)
     except Exception as e:  # noqa: BLE001
@@ -2591,7 +2591,7 @@ async def planilla_trabajador_borrar(tid: int):
 
 
 @app.get('/api/crm/planilla')
-async def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
+def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
     # Antes de leer, refresca la comisión de los pagos PENDIENTE de esa
     # quincena con las ventas actuales (nunca toca los ya marcados PAGADO):
     # así la comisión del médico queda al día cada vez que se abre la
@@ -2629,7 +2629,7 @@ async def planilla_listar(anio: int = 0, mes: str = '', quincena: int = 0):
 
 
 @app.post('/api/crm/planilla/generar')
-async def planilla_generar(data: GenerarPlanillaReq):
+def planilla_generar(data: GenerarPlanillaReq):
     _validar_fecha(None, data.mes, data.anio, requerido_mes=True)
     if data.quincena not in (1, 2):
         raise HTTPException(400, 'La quincena debe ser 1 o 2')
@@ -2643,7 +2643,7 @@ async def planilla_generar(data: GenerarPlanillaReq):
 
 
 @app.post('/api/crm/planilla/extra')
-async def planilla_extra(data: ExtraPlanillaReq):
+def planilla_extra(data: ExtraPlanillaReq):
     _validar_fecha(None, data.mes, data.anio, requerido_mes=True)
     try:
         pago = cp.registrar_extra(data.trabajador_id, data.anio, data.mes,
@@ -2656,7 +2656,7 @@ async def planilla_extra(data: ExtraPlanillaReq):
 
 
 @app.patch('/api/crm/planilla/{pid}')
-async def planilla_pago_editar(pid: int, data: PagoPlanillaReq):
+def planilla_pago_editar(pid: int, data: PagoPlanillaReq):
     cambios = data.model_dump()
     if cambios.get('estado') and cambios['estado'] not in cp.ESTADO_PAGO:
         raise HTTPException(400, f"Estado inválido: {cambios['estado']}")
@@ -2670,7 +2670,7 @@ async def planilla_pago_editar(pid: int, data: PagoPlanillaReq):
 
 
 @app.delete('/api/crm/planilla/{pid}')
-async def planilla_pago_borrar(pid: int):
+def planilla_pago_borrar(pid: int):
     try:
         ok = cp.borrar_pago_planilla(pid)
     except Exception as e:  # noqa: BLE001
@@ -2684,7 +2684,7 @@ async def planilla_pago_borrar(pid: int):
 # CRM Plus: Directorio, dashboard y actividades de hoy
 # ============================================================
 @app.get('/api/crm/pacientes')
-async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
+def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
     """Directorio de pacientes.
 
     Por defecto sólo los que fueron al consultorio (compraron o no).
@@ -2702,7 +2702,7 @@ async def crm_pacientes(desde: str = '', hasta: str = '', todos: bool = False):
 
 
 @app.get('/api/pacientes/inactivos')
-async def pacientes_inactivos(dias: int = 45):
+def pacientes_inactivos(dias: int = 45):
     try:
         pacientes = cp.leer_pacientes_inactivos(dias=dias)
     except Exception as e:  # noqa: BLE001
@@ -2711,7 +2711,7 @@ async def pacientes_inactivos(dias: int = 45):
 
 
 @app.get('/api/buscar')
-async def buscar(q: str = ''):
+def buscar(q: str = ''):
     """Búsqueda global (Cmd+K) por nombre o teléfono.
 
     Reutiliza cp.leer_pacientes(solo_atendidos=False), que ya combina
@@ -2744,7 +2744,7 @@ async def buscar(q: str = ''):
 
 
 @app.get('/api/crm/historias')
-async def crm_historias_clinicas(telefono: str = '', paciente: str = '',
+def crm_historias_clinicas(telefono: str = '', paciente: str = '',
                                  desde: str = '', hasta: str = ''):
     try:
         return {'ok': True,
@@ -2758,7 +2758,7 @@ async def crm_historias_clinicas(telefono: str = '', paciente: str = '',
 
 
 @app.post('/api/crm/historias')
-async def crm_historia_nueva(data: HistoriaReq):
+def crm_historia_nueva(data: HistoriaReq):
     with _bloqueo:
         try:
             return {'ok': True, 'historia': cp.crear_historia(data.model_dump())}
@@ -2769,7 +2769,7 @@ async def crm_historia_nueva(data: HistoriaReq):
 
 
 @app.patch('/api/crm/historias/{hid}')
-async def crm_historia_editar(hid: int, data: HistoriaReq):
+def crm_historia_editar(hid: int, data: HistoriaReq):
     with _bloqueo:
         try:
             h = cp.actualizar_historia(hid, data.model_dump(exclude_unset=True))
@@ -2783,7 +2783,7 @@ async def crm_historia_editar(hid: int, data: HistoriaReq):
 
 
 @app.delete('/api/crm/historias/{hid}')
-async def crm_historia_borrar(hid: int):
+def crm_historia_borrar(hid: int):
     with _bloqueo:
         try:
             ok = cp.borrar_historia(hid)
@@ -2795,7 +2795,7 @@ async def crm_historia_borrar(hid: int):
 
 
 @app.get('/api/crm/pacientes/historias')
-async def crm_historias_listar(clave: str):
+def crm_historias_listar(clave: str):
     try:
         return {'ok': True, 'documentos': hist.listar(HISTORIAS_DIR, clave)}
     except ValueError as e:
@@ -2819,7 +2819,7 @@ async def crm_historias_subir(clave: str, nota: str = '',
 
 
 @app.get('/api/crm/pacientes/historias/{doc_id}')
-async def crm_historias_descargar(doc_id: str, clave: str):
+def crm_historias_descargar(doc_id: str, clave: str):
     try:
         ruta = hist.ruta(HISTORIAS_DIR, clave, doc_id)
         doc = hist.documento(HISTORIAS_DIR, clave, doc_id)
@@ -2830,7 +2830,7 @@ async def crm_historias_descargar(doc_id: str, clave: str):
 
 
 @app.delete('/api/crm/pacientes/historias/{doc_id}')
-async def crm_historias_borrar(doc_id: str, clave: str):
+def crm_historias_borrar(doc_id: str, clave: str):
     try:
         return hist.borrar(HISTORIAS_DIR, clave, doc_id)
     except ValueError as e:
@@ -2840,7 +2840,7 @@ async def crm_historias_borrar(doc_id: str, clave: str):
 
 
 @app.get('/api/crm/dashboard')
-async def crm_dashboard(anio: int = 0, mes: str = ''):
+def crm_dashboard(anio: int = 0, mes: str = ''):
     try:
         return {'ok': True, **cp.leer_dashboard(anio or None, mes or None)}
     except Exception as e:  # noqa: BLE001
@@ -2848,7 +2848,7 @@ async def crm_dashboard(anio: int = 0, mes: str = ''):
 
 
 @app.get('/api/crm/hoy')
-async def crm_hoy():
+def crm_hoy():
     try:
         return {'ok': True, **cp.leer_hoy()}
     except Exception as e:  # noqa: BLE001
@@ -3077,7 +3077,7 @@ class ChatIAReq(BaseModel):
 
 
 @app.get('/api/asistente/estado')
-async def asistente_estado():
+def asistente_estado():
     return {'ok': True, 'activo': bool(GEMINI_API_KEY)}
 
 
@@ -3104,7 +3104,7 @@ def _ia_llamar(contents, system_prompt):
 
 
 @app.post('/api/asistente/chat')
-async def asistente_chat(data: ChatIAReq):
+def asistente_chat(data: ChatIAReq):
     if not GEMINI_API_KEY:
         raise HTTPException(503, 'El asistente de IA no está configurado (falta GEMINI_API_KEY).')
     mensaje = data.mensaje.strip()
@@ -3164,7 +3164,7 @@ async def asistente_chat(data: ChatIAReq):
 # Meta Ads (import de reportes SIN API)
 # ============================================================
 @app.get('/api/meta')
-async def meta_listar():
+def meta_listar():
     try:
         return {'ok': True, 'cargas': mads.listar(META_DIR)}
     except Exception as e:  # noqa: BLE001
@@ -3184,7 +3184,7 @@ async def meta_subir(file: UploadFile = File(...)):
 
 
 @app.get('/api/meta/{carga_id}')
-async def meta_detalle(carga_id: str):
+def meta_detalle(carga_id: str):
     try:
         return {'ok': True, 'detalle': mads.detalle(META_DIR, carga_id)}
     except ValueError as e:
@@ -3194,7 +3194,7 @@ async def meta_detalle(carga_id: str):
 
 
 @app.delete('/api/meta/{carga_id}')
-async def meta_borrar(carga_id: str):
+def meta_borrar(carga_id: str):
     try:
         return mads.borrar(META_DIR, carga_id)
     except ValueError as e:
@@ -3207,7 +3207,7 @@ async def meta_borrar(carga_id: str):
 # WhatsApp: webhook de solo-lectura (Cloud API) -> Pipeline
 # ============================================================
 @app.get('/api/whatsapp/webhook')
-async def whatsapp_verificar(request: Request):
+def whatsapp_verificar(request: Request):
     """Handshake que pide Meta al configurar el webhook (hub.challenge)."""
     p = request.query_params
     if wa.VERIFY_TOKEN and p.get('hub.mode') == 'subscribe' and p.get('hub.verify_token') == wa.VERIFY_TOKEN:
@@ -3234,11 +3234,11 @@ class CampanasWhatsappReq(BaseModel):
 
 
 @app.get('/api/whatsapp/campanas')
-async def whatsapp_campanas_get():
+def whatsapp_campanas_get():
     return {'ok': True, 'campanas': wa.leer_campanas()}
 
 
 @app.put('/api/whatsapp/campanas')
-async def whatsapp_campanas_put(data: CampanasWhatsappReq):
+def whatsapp_campanas_put(data: CampanasWhatsappReq):
     wa.guardar_campanas(data.campanas)
     return {'ok': True, 'campanas': data.campanas}

@@ -150,15 +150,23 @@ def _crear_wb():
     return wb
 
 
+_FID_CACHE = None  # el fid de CRM.xlsx no cambia en la vida del proceso (medido:
+                   # ~500ms por búsqueda sin caché, y se llamaba 2 veces por escritura)
+
+
 def _fid():
-    with am.cronometro('crm_plus _fid() [drive, busca por nombre sin caché]', umbral_ms=200):
+    global _FID_CACHE
+    if _FID_CACHE:
+        return _FID_CACHE
+    with am.cronometro('crm_plus _fid() [drive, busca por nombre, 1 vez por proceso]', umbral_ms=200):
         drv = cd._drive()
         res = drv.files().list(
             q=f"name='{NOMBRE_ARCHIVO}' and trashed=false",
             fields='files(id)', pageSize=10).execute()
     archivos = res.get('files', [])
     if archivos:
-        return archivos[0]['id']
+        _FID_CACHE = archivos[0]['id']
+        return _FID_CACHE
     # La cuenta de servicio no puede crear archivos (no tiene cuota de
     # almacenamiento): pedimos un archivo vacío compartido con el bot.
     try:
