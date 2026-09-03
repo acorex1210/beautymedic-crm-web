@@ -168,19 +168,34 @@ def _bajar():
     ruta = os.path.join(am.TMP_DIR, NOMBRE_ARCHIVO)
     if os.path.exists(ruta) and time.time() - os.path.getmtime(ruta) < cd.CACHE_TTL:
         return ruta
-    with am.cronometro(f'crm_plus _bajar({NOMBRE_ARCHIVO}) [drive, cache vencido]'):
-        fid = _fid()
-        drv = cd._drive()
-        meta = drv.files().get(fileId=fid, fields='mimeType').execute()
-        if meta.get('mimeType') == cd.MIME_XLSX:
-            req = drv.files().get_media(fileId=fid)
-        else:
-            req = drv.files().export(fileId=fid, mimeType=cd.MIME_XLSX)
-        with open(ruta, 'wb') as fh:
-            dl = cd.MediaIoBaseDownload(fh, req)
-            done = False
-            while not done:
-                _, done = dl.next_chunk()
+    with am.lock_de_descarga(ruta):
+        # Otra request pudo haber refrescado el archivo mientras esperábamos
+        # el candado (evita una descarga redundante y, sobre todo, evita que
+        # dos descargas escriban el mismo archivo a la vez).
+        if os.path.exists(ruta) and time.time() - os.path.getmtime(ruta) < cd.CACHE_TTL:
+            return ruta
+        with am.cronometro(f'crm_plus _bajar({NOMBRE_ARCHIVO}) [drive, cache vencido]'):
+            fid = _fid()
+            drv = cd._drive()
+            meta = drv.files().get(fileId=fid, fields='mimeType').execute()
+            if meta.get('mimeType') == cd.MIME_XLSX:
+                req = drv.files().get_media(fileId=fid)
+            else:
+                req = drv.files().export(fileId=fid, mimeType=cd.MIME_XLSX)
+            # Se escribe a un .tmp y se renombra al final (rename es atómico
+            # en POSIX): así ruta nunca existe a medio escribir. El candado
+            # de arriba evita descargas simultáneas redundantes, pero el
+            # chequeo rápido de "¿está fresco?" de otras llamadas (más
+            # arriba, sin candado) igual podía leer ruta justo mientras
+            # open(ruta, 'wb') la había truncado pero no terminado de
+            # llenar — eso es lo que producía "File is not a zip file".
+            tmp = ruta + '.tmp'
+            with open(tmp, 'wb') as fh:
+                dl = cd.MediaIoBaseDownload(fh, req)
+                done = False
+                while not done:
+                    _, done = dl.next_chunk()
+            os.replace(tmp, ruta)
     return ruta
 
 

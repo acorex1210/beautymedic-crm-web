@@ -134,6 +134,25 @@ class LockConTiempos:
             print(f'[tiempos] lock {self._nombre}: retenido {retenido_ms:.0f} ms', file=sys.stderr)
 
 
+_descarga_locks = {}
+_descarga_locks_mutex = threading.Lock()
+
+
+def lock_de_descarga(ruta):
+    """Candado por archivo de caché local (una ruta -> un Lock reutilizado).
+
+    Con las rutas corriendo en pool de hilos (Fase 1), dos requests que
+    llegan casi al mismo tiempo con el caché vencido podían descargar el
+    mismo archivo a la vez: dos escrituras concurrentes al mismo path con
+    open(ruta, 'wb') se pisan entre sí y dejan un .xlsx corrupto a medio
+    escribir ("File is not a zip file") para quien lo lea justo en el medio.
+    Antes de ese fix no se notaba porque todo iba en serie por accidente."""
+    with _descarga_locks_mutex:
+        if ruta not in _descarga_locks:
+            _descarga_locks[ruta] = threading.Lock()
+        return _descarga_locks[ruta]
+
+
 def _normalizar_json_credenciales(v):
     """Devuelve el JSON crudo de la cuenta de servicio, aceptando JSON o base64."""
     if v is None:
@@ -275,25 +294,40 @@ def descargar(fid, nombre, forzar=False):
     ruta = os.path.join(TMP_DIR, f'{nombre}.xlsx')
     if os.path.exists(ruta) and not forzar:
         return ruta
-    with cronometro(f'maestro descargar({nombre}) [drive, sin caché desde arranque]'):
-        garantizar_credenciales()
-        if not os.path.exists(CREDENCIALES):
-            raise FileNotFoundError(
-                f'No hay credenciales en {CREDENCIALES}. Configura CREDENCIALES o '
-                'GDRIVE_CREDENTIALS_JSON.')
-        creds = service_account.Credentials.from_service_account_file(
-            CREDENCIALES, scopes=['https://www.googleapis.com/auth/drive.readonly'])
-        drive = build('drive', 'v3', credentials=creds)
-        meta = drive.files().get(fileId=fid, fields='mimeType').execute()
-        if meta.get('mimeType') == MIME_XLSX:
-            req = drive.files().get_media(fileId=fid)
-        else:
-            req = drive.files().export(fileId=fid, mimeType=MIME_XLSX)
-        with open(ruta, 'wb') as fh:
-            dl = MediaIoBaseDownload(fh, req)
-            done = False
-            while not done:
-                _, done = dl.next_chunk()
+    with lock_de_descarga(ruta):
+        # Otra request pudo haber refrescado el archivo mientras esperábamos
+        # el candado (evita una descarga redundante y, sobre todo, evita que
+        # dos descargas escriban el mismo archivo a la vez).
+        if os.path.exists(ruta) and not forzar:
+            return ruta
+        with cronometro(f'maestro descargar({nombre}) [drive, sin caché desde arranque]'):
+            garantizar_credenciales()
+            if not os.path.exists(CREDENCIALES):
+                raise FileNotFoundError(
+                    f'No hay credenciales en {CREDENCIALES}. Configura CREDENCIALES o '
+                    'GDRIVE_CREDENTIALS_JSON.')
+            creds = service_account.Credentials.from_service_account_file(
+                CREDENCIALES, scopes=['https://www.googleapis.com/auth/drive.readonly'])
+            drive = build('drive', 'v3', credentials=creds)
+            meta = drive.files().get(fileId=fid, fields='mimeType').execute()
+            if meta.get('mimeType') == MIME_XLSX:
+                req = drive.files().get_media(fileId=fid)
+            else:
+                req = drive.files().export(fileId=fid, mimeType=MIME_XLSX)
+            # Se escribe a un .tmp y se renombra al final (rename es atómico
+            # en POSIX): así ruta nunca existe a medio escribir. El candado
+            # de arriba evita descargas simultáneas redundantes, pero el
+            # chequeo rápido de "¿está fresco?" de otras llamadas (más
+            # arriba, sin candado) igual podía leer ruta justo mientras
+            # open(ruta, 'wb') la había truncado pero no terminado de
+            # llenar — eso es lo que producía "File is not a zip file".
+            tmp = ruta + '.tmp'
+            with open(tmp, 'wb') as fh:
+                dl = MediaIoBaseDownload(fh, req)
+                done = False
+                while not done:
+                    _, done = dl.next_chunk()
+            os.replace(tmp, ruta)
     print(f'  Descargado {nombre} -> {os.path.basename(ruta)}')
     return ruta
 
