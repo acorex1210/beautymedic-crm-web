@@ -784,6 +784,23 @@
   :root[data-theme="dark"] .topbar { border-bottom-color: var(--borde); }
   :root[data-theme="dark"] table.drive th { background: #1b2438; color: #b7c4de; border-bottom-color: var(--borde); }
   :root[data-theme="dark"] table.drive tbody tr:hover td { background: #1c2740; }
+  /* Columna de acciones fija a la derecha (opt-in vía data-acciones-fijas
+     en el <table>: no todas las tablas .drive terminan en botones —
+     algunas terminan en un dato normal, ahí no aplica). En tablas anchas
+     como Agendados (19 columnas, 100+ filas reales) evita tener que
+     hacer scroll horizontal largo en cada fila sólo para llegar a
+     Editar/Borrar. Se restablecen fila-par y hover para la última
+     columna porque, al fijarla, gana especificidad sobre esas reglas y
+     si no se restablecen quedaría siempre con el fondo base. */
+  table.drive[data-acciones-fijas] th:last-child,
+  table.drive[data-acciones-fijas] td:last-child {
+    position: sticky; right: 0; box-shadow: -6px 0 8px -6px rgba(20,37,74,.18);
+  }
+  table.drive[data-acciones-fijas] th:last-child { z-index: 3; }
+  table.drive[data-acciones-fijas] td:last-child { z-index: 1; background: var(--superficie); }
+  table.drive[data-acciones-fijas] tbody tr:nth-child(even) td:last-child { background: var(--superficie-2); }
+  table.drive[data-acciones-fijas] tbody tr:hover td:last-child { background: #edf4ff; }
+  :root[data-theme="dark"] table.drive[data-acciones-fijas] tbody tr:hover td:last-child { background: #1c2740; }
   :root[data-theme="dark"] .chip.ok { background: #16352a; color: #5fe3ab; }
   :root[data-theme="dark"] .chip.info { background: #182a45; color: #8fb4f5; }
   :root[data-theme="dark"] .chip.warn, :root[data-theme="dark"] .chip.ambar { background: #382c11; color: #eec372; }
@@ -1090,7 +1107,7 @@
             <button class="btn verde" id="btnAgNuevo">+ Nuevo agendado</button>
           </div>
           <div class="nota" id="agNota" style="margin:0 0 10px;"></div>
-          <div class="tabla-wrap"><table class="drive" id="tablaAgendados"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaAgendados" data-acciones-fijas></table></div>
           <div class="mas" id="agMas"></div>
         </div>
 
@@ -1190,7 +1207,7 @@
             <button class="btn verde" id="btnVeNuevo">+ Nueva venta</button>
           </div>
           <div class="nota" id="veNota" style="margin:0 0 10px;"></div>
-          <div class="tabla-wrap"><table class="drive" id="tablaVenta"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaVenta" data-acciones-fijas></table></div>
           <div class="mas" id="veMas"></div>
         </div>
       </section>
@@ -1242,7 +1259,7 @@
           <div class="toolbar" style="margin-top:10px;">
             <button class="btn verde" id="btnCajaMovAgregar">+ Agregar</button>
           </div>
-          <div class="tabla-wrap" style="margin-top:14px;"><table class="drive" id="tablaCajaMovimientos"></table></div>
+          <div class="tabla-wrap" style="margin-top:14px;"><table class="drive" id="tablaCajaMovimientos" data-acciones-fijas></table></div>
         </div>
 
         <!-- 2. EFECTIVO AL CIERRE + 5. AJUSTE -->
@@ -1290,7 +1307,7 @@
             <button class="btn gris" id="btnInvRecargar">Actualizar</button>
             <button class="btn verde" id="btnInvNuevo">+ Nuevo producto</button>
           </div>
-          <div class="tabla-wrap"><table class="drive" id="tablaInventario"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaInventario" data-acciones-fijas></table></div>
         </div>
 
         <div class="tarjeta" style="margin-top:18px;">
@@ -1326,12 +1343,12 @@
             sin tocar los que ya están marcados como Pagado. La <b>comisión</b> se paga una sola vez al mes, en la
             <b>quincena 2</b>, calculada sobre las ventas de todo el mes. Para horas extra, feriados o bonos usa
             <b>"+ Monto"</b> en la fila del trabajador: funciona aunque la quincena todavía no esté generada.</p>
-          <div class="tabla-wrap"><table class="drive" id="tablaPlanilla"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaPlanilla" data-acciones-fijas></table></div>
         </div>
 
         <div class="tarjeta" style="margin-top:18px;">
           <h3>Catálogo de trabajadores</h3>
-          <div class="tabla-wrap"><table class="drive" id="tablaTrabajadores"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaTrabajadores" data-acciones-fijas></table></div>
         </div>
       </section>
 
@@ -1454,7 +1471,7 @@
 
         <div class="tarjeta">
           <h3>Historial de llamadas</h3>
-          <div class="tabla-wrap"><table class="drive" id="tablaRemarketing"></table></div>
+          <div class="tabla-wrap"><table class="drive" id="tablaRemarketing" data-acciones-fijas></table></div>
           <div class="mas" id="rmMasHist"></div>
         </div>
       </section>
@@ -2136,7 +2153,11 @@ function toast(msg, tipo = '') {
   clearTimeout(t._h);
   t._h = setTimeout(() => t.classList.remove('abierto'), 4000);
 }
-function fmtMon(n) { return 'S/ ' + Number(n || 0).toLocaleString('es-PE').replace(/,/g, ' '); }
+// maximumFractionDigits: 0 a propósito — sin esto, un monto entero (ventas,
+// totales) sale sin decimales pero un promedio (ticket promedio = facturado /
+// realizados) sale con hasta 3 ("S/ 396.957"), inconsistente con el resto de
+// las cifras de la misma pantalla que sí son enteras.
+function fmtMon(n) { return 'S/ ' + Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 }).replace(/,/g, ' '); }
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
