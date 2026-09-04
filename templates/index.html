@@ -5028,19 +5028,52 @@ async function buscarHistorial() {
     $('paHistorial').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
   }
 }
+// Mismo mecanismo que abrirWhatsAppCita/copiarMensajeCita: wa.me sin
+// ?text= (el envío real siempre lo hace un clic humano) + "Copiar mensaje"
+// aparte con una plantilla de reactivación, distinta a la de confirmación.
+let REACTIVAR_LISTA = [];
+function plantillaReactivacion(nombre) {
+  return `¡Hola ${nombre || ''}! 👋
+
+Somos {{BRAND_NOMBRE}} 💛 Hace tiempo no te vemos por acá y nos encantaría que vuelvas a visitarnos.
+
+¿Te gustaría agendar una nueva cita? Te esperamos con mucho gusto ✨`;
+}
+function abrirWhatsAppReactivar(i) {
+  const p = REACTIVAR_LISTA[i];
+  if (!p) return;
+  const tel = limpiarTelPeru(p.telefono);
+  if (!tel) { toast('Ese paciente no tiene un teléfono válido', 'err'); return; }
+  window.open(`https://wa.me/${tel}`, '_blank', 'noopener');
+}
+async function copiarMensajeReactivar(i) {
+  const p = REACTIVAR_LISTA[i];
+  if (!p) return;
+  try {
+    await navigator.clipboard.writeText(plantillaReactivacion(p.nombre));
+    toast('Mensaje copiado', 'okm');
+  } catch (e) { toast('No se pudo copiar (revisa permisos del navegador)', 'err'); }
+}
 async function cargarReactivar() {
   const meses = $('paReactivarMeses').value;
   $('paReactivar').innerHTML = '<div class="carga"><span class="spinner"></span>Cargando&hellip;</div>';
   try {
     const r = await api('/api/analitica/reactivar?meses=' + meses);
     if (!r.pacientes.length) {
+      REACTIVAR_LISTA = [];
       $('paReactivar').innerHTML = '<div class="nota">Sin pacientes por reactivar en ese rango.</div>';
       return;
     }
-    $('paReactivar').innerHTML = r.pacientes.slice(0, 20).map(p =>
+    REACTIVAR_LISTA = r.pacientes.slice(0, 20);
+    $('paReactivar').innerHTML = REACTIVAR_LISTA.map((p, i) =>
       `<div class="item-hoy"><div class="hora">${p.meses_sin_volver}m</div>
-       <div class="info"><b>${esc(p.nombre)}</b><small>Última cita ${esc(p.ultima_cita)} · ${esc(p.telefono || '')}</small></div>
-       <button class="btn gris pequeno" onclick="paRecargarHist('${esc(p.telefono || '')}')">Ver</button></div>`).join('')
+       <div class="info"><b>${esc(p.nombre)}</b><small>Última cita ${esc(p.ultima_cita)} · ${esc(p.telefono || '')}</small>
+         <div class="acciones-hoy">
+           <button class="btn verde mini" onclick="abrirWhatsAppReactivar(${i})">💬 Abrir WhatsApp</button>
+           <button class="btn borde mini" onclick="copiarMensajeReactivar(${i})">📋 Copiar mensaje</button>
+           <button class="btn gris mini" onclick="paRecargarHist('${esc(p.telefono || '')}')">Ver</button>
+         </div>
+       </div></div>`).join('')
       + `<div class="nota" style="margin-top:6px;">${r.pacientes.length} pacientes sin volver hace más de ${meses} meses.</div>`;
   } catch (e) {
     $('paReactivar').innerHTML = `<div class="mensaje err">${esc(e.message)}</div>`;
@@ -5433,6 +5466,36 @@ async function rmCopiarNumero(tel) {
   toast(ok ? 'Número copiado.' : 'No se pudo copiar, cópialo manualmente.', ok ? 'okm' : 'err');
 }
 
+// Mismo mecanismo que abrirWhatsAppCita/copiarMensajeCita (wa.me sin ?text=,
+// el mensaje se copia aparte): estos leads normalmente no tienen nombre en
+// la base, solo teléfono y campaña, así que la plantilla no lo usa.
+function rmBuscarFila(fila, hoja) {
+  return REMK && REMK.filas.find(x => x._fila === fila && x._hoja === hoja);
+}
+function plantillaRemarketing(campana) {
+  const camp = campana && campana !== 'FESTIVAL' ? ` por *${campana}*` : '';
+  return `¡Hola! 👋
+
+Somos {{BRAND_NOMBRE}} 💛 Vimos tu interés${camp} y nos encantaría ayudarte a agendar tu cita.
+
+¿Qué día te queda bien? Te esperamos con mucho gusto ✨`;
+}
+function abrirWhatsAppRemarketing(fila, hoja) {
+  const f = rmBuscarFila(fila, hoja);
+  if (!f) return;
+  const tel = limpiarTelPeru(f.B);
+  if (!tel) { toast('Ese número no es un celular peruano válido', 'err'); return; }
+  window.open(`https://wa.me/${tel}`, '_blank', 'noopener');
+}
+async function copiarMensajeRemarketing(fila, hoja) {
+  const f = rmBuscarFila(fila, hoja);
+  if (!f) return;
+  try {
+    await navigator.clipboard.writeText(plantillaRemarketing(f.C));
+    toast('Mensaje copiado', 'okm');
+  } catch (e) { toast('No se pudo copiar (revisa permisos del navegador)', 'err'); }
+}
+
 function esContesta(v) { return String(v || '').trim().toUpperCase() === 'CONTESTA'; }
 function esNoContesta(v) { return String(v || '').trim().toUpperCase() === 'NO CONTESTA'; }
 function esAgendoRemk(v) { return String(v || '').trim().toUpperCase() === 'SI'; }
@@ -5494,9 +5557,13 @@ function pintarRemarketing() {
           <button class="btn borde mini" onclick="rmCopiarNumero('${esc(String(f.B || ''))}')" title="Copiar número">📋</button>
         </span>
         <small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}${f._oculto ? ' · <i>oculto</i>' : ''}</small>
+        <div class="acciones-hoy">
+          <button class="btn verde mini" onclick="abrirWhatsAppRemarketing(${f._fila}, '${f._hoja}')">💬 Abrir WhatsApp</button>
+          <button class="btn borde mini" onclick="copiarMensajeRemarketing(${f._fila}, '${f._hoja}')">📋 Copiar mensaje</button>
+          <button class="btn borde mini" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button>
+          <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila}, '${f._hoja}')">📞 Registrar llamada</button>
+        </div>
       </div>
-      <button class="btn borde mini" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button>
-      <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila}, '${f._hoja}')">📞 Registrar llamada</button>
     </div>`).join('') : '<div class="vacio">No hay nadie pendiente por llamar con estos filtros.</div>';
   $('rmMas').innerHTML = pendientes.length > rmLimite
     ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${pendientes.length - rmLimite} restantes)</button>` : '';
