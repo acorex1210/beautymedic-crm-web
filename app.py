@@ -967,7 +967,7 @@ def yo(request: Request):
     perfil = _usuario_de(request)
     if not perfil:
         raise HTTPException(401, 'Sesión expirada o no iniciada')
-    return {'ok': True, 'usuario': perfil, 'roles': usr.ROLES}
+    return {'ok': True, 'usuario': perfil, 'roles': usr.ROLES, 'orden_menu': _leer_orden_menu()}
 
 
 @app.post('/api/yo/clave')
@@ -1465,6 +1465,40 @@ def guardar_meta_mensual(data: MetaMensualReq):
     with open(META_MENSUAL_PATH, 'w', encoding='utf-8') as f:
         json.dump(metas, f, ensure_ascii=False, indent=2)
     return {'ok': True, 'mes': m, 'anio': data.anio, 'meta': data.meta}
+
+
+# ============================================================
+# Orden del menú lateral (lo fija el ADMIN, se aplica para todos)
+# ============================================================
+ORDEN_MENU_PATH = os.path.join(DATA_DIR, 'orden_menu.json')
+
+
+def _leer_orden_menu():
+    if not os.path.exists(ORDEN_MENU_PATH):
+        return []
+    try:
+        with open(ORDEN_MENU_PATH, 'r', encoding='utf-8') as f:
+            orden = json.load(f)
+        return [c for c in orden if c in usr.SECCIONES] if isinstance(orden, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+class OrdenMenuReq(BaseModel):
+    orden: List[str] = []
+
+
+@app.put('/api/menu-orden')
+def guardar_orden_menu(data: OrdenMenuReq):
+    """Sólo ADMIN puede llamar esto (recurso 'menu', sin permiso para ningún
+    otro rol). El resultado se guarda tal cual, sin exigir la lista
+    completa: cualquier sección de usr.SECCIONES que falte simplemente se
+    agrega al final en el navegador (ver aplicarOrdenMenu en el frontend),
+    en vez de desaparecer."""
+    orden = [c for c in data.orden if c in usr.SECCIONES]
+    with open(ORDEN_MENU_PATH, 'w', encoding='utf-8') as f:
+        json.dump(orden, f, ensure_ascii=False, indent=2)
+    return {'ok': True, 'orden': orden}
 
 
 # ============================================================

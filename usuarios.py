@@ -82,6 +82,11 @@ RECURSOS = {
                  '/api/maestro', '/api/backup', '/api/backups'],
     'whatsapp': ['/api/whatsapp/campanas'],
     'usuarios': ['/api/usuarios'],
+    # No se agrega a ningún rol (ni lectura ni escritura): queda cerrado a
+    # todos salvo ADMIN, igual que /api/debug/*. La lectura del orden
+    # guardado va aparte, colgada de /api/yo (recurso 'comun'), para que
+    # cualquiera que entre vea el menú ya ordenado sin necesitar este permiso.
+    'menu': ['/api/menu-orden'],
 }
 
 # Rutas que no piden sesión. El webhook de WhatsApp lo llama Meta, no el

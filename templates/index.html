@@ -1553,6 +1553,17 @@
         </div>
 
         <div class="tarjeta" style="margin-top:18px;">
+          <h3>Orden del menú</h3>
+          <p class="nota" style="margin:0 0 12px;">Organiza el menú lateral como sea más práctico. El orden que guardes
+            aquí se aplica para todos los que entren al sistema, no sólo para ti.</p>
+          <div id="omLista"></div>
+          <div class="pies">
+            <button type="button" class="btn gris" id="btnOmRestablecer">Restablecer orden por defecto</button>
+            <button type="button" class="btn verde" id="btnOmGuardar" style="margin-left:auto;">Guardar orden</button>
+          </div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
           <h3>Cambiar mi contraseña</h3>
           <form id="formMiClave">
             <div class="form-grid">
@@ -2224,10 +2235,33 @@ const puedeLeer = (rec) => !!YO && (YO.lectura === '*' || YO.lectura.includes(re
 /* La meta del mes cruza Meta Ads con Analítica; sin ambas la tarjeta sobra. */
 const puedeVerMeta = () => puedeVer('metaads') && puedeVer('analitica');
 
+// Orden del menú lateral: lo fija el ADMIN (ver "Orden del menú" en
+// Usuarios) y se aplica para todos los que entren, no sólo para quien lo
+// configuró. Sin orden guardado, el <nav> se queda tal cual está en el
+// HTML (agrupado por Principal/CRM/Analítica/Cuenta).
+function aplicarOrdenMenu(orden) {
+  if (!orden || !orden.length) return;
+  const nav = $('navPrincipal');
+  const porClave = new Map();
+  nav.querySelectorAll('a[data-pagina]').forEach(a => porClave.set(a.dataset.pagina, a));
+  // Los separadores de grupo (Principal/CRM/...) ya no representan nada
+  // una vez que el orden es libre entre grupos: se quitan.
+  nav.querySelectorAll('.sub').forEach(s => s.remove());
+  const usados = new Set();
+  orden.forEach(clave => {
+    const a = porClave.get(clave);
+    if (a) { nav.appendChild(a); usados.add(clave); }
+  });
+  // Una sección que exista en el HTML pero no esté en el orden guardado
+  // (por ejemplo, una nueva que se agregue más adelante) se añade al
+  // final en vez de desaparecer.
+  porClave.forEach((a, clave) => { if (!usados.has(clave)) nav.appendChild(a); });
+}
 async function cargarSesion() {
   const r = await api('/api/yo');
   YO = r.usuario;
   ROLES_DISP = r.roles || {};
+  aplicarOrdenMenu(r.orden_menu);
   document.querySelectorAll('.nav a[data-pagina]').forEach(a => {
     a.style.display = puedeVer(a.dataset.pagina) ? '' : 'none';
   });
@@ -2296,7 +2330,7 @@ function pagina(nombre) {
   if (nombre === 'caja') cargarCaja();
   if (nombre === 'inventario') cargarInventario();
   if (nombre === 'planilla') cargarPlanilla();
-  if (nombre === 'usuarios') cargarUsuarios();
+  if (nombre === 'usuarios') { cargarUsuarios(); pintarOrdenMenu(); }
   // La meta se alimenta de Meta Ads y Analítica: quien no los ve, no la carga.
   if (nombre === 'panel') { cargarEstado(); if (puedeVerMeta()) cargarMetaMensual(); cargarResumenPanel(); if (puedeVer('hoy')) cargarHoy(); }
   if (nombre === 'reportes') { cargarEstado(); cargarSyncEstado(); }
@@ -4190,6 +4224,49 @@ async function cargarUsuarios() {
       <td class="nota">${r.escritura === '*' ? 'Todo' : esc((r.escritura || []).filter(x => x !== 'comun').join(', ') || 'Nada')}</td>
     </tr>`).join('') + '</tbody>';
 }
+
+/* ---------------- Orden del menú (sólo ADMIN, ver aplicarOrdenMenu) ----------------
+   Sube/baja en vez de arrastrar: con 14 secciones como mucho es un par de
+   clics, y evita toda la complejidad (y los casos raros en móvil/touch) de
+   una lista arrastrable, para algo que se configura una vez y no todos los
+   días. Guardar recarga la página: es la forma más simple y segura de que
+   el <nav> quede exactamente como aplicarOrdenMenu() lo arma en frío. */
+let OM_ORDEN = [];
+function pintarOrdenMenu() {
+  OM_ORDEN = [...document.querySelectorAll('.nav a[data-pagina]')].map(a => a.dataset.pagina);
+  renderOmLista();
+}
+function renderOmLista() {
+  $('omLista').innerHTML = OM_ORDEN.map((clave, i) => `
+    <div class="item-hoy">
+      <div class="info"><b>${esc((TITULOS[clave] || [clave])[0])}</b></div>
+      <button type="button" class="btn borde mini" ${i === 0 ? 'disabled' : ''} onclick="omMover(${i},-1)" title="Subir" aria-label="Subir">⬆</button>
+      <button type="button" class="btn borde mini" ${i === OM_ORDEN.length - 1 ? 'disabled' : ''} onclick="omMover(${i},1)" title="Bajar" aria-label="Bajar">⬇</button>
+    </div>`).join('');
+}
+function omMover(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= OM_ORDEN.length) return;
+  [OM_ORDEN[i], OM_ORDEN[j]] = [OM_ORDEN[j], OM_ORDEN[i]];
+  renderOmLista();
+}
+async function omGuardar(orden) {
+  const b = $('btnOmGuardar'), b2 = $('btnOmRestablecer');
+  b.disabled = true; b2.disabled = true;
+  try {
+    await api('/api/menu-orden', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orden }),
+    });
+    toast('Orden del menú guardado.', 'okm');
+    setTimeout(() => location.reload(), 500);
+  } catch (e) {
+    toast(e.message, 'err'); b.disabled = false; b2.disabled = false;
+  }
+}
+$('btnOmGuardar').addEventListener('click', () => omGuardar(OM_ORDEN));
+$('btnOmRestablecer').addEventListener('click', () => {
+  if (confirm('¿Restablecer el menú al orden original?')) omGuardar([]);
+});
 
 function abrirModalUsuario(usuario) {
   usuarioEditando = usuario || null;
