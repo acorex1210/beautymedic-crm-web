@@ -477,14 +477,19 @@ class MotivoReq(BaseModel):
 
 
 class RemarketingReq(BaseModel):
-    """Registrar el resultado de una llamada de re-llamadas (remarketing).
+    """Edición de una fila de re-llamadas (remarketing): cada celda de la
+    tabla se guarda sola al cambiarla, así que cualquier campo puede venir
+    solo o combinado con otros en la misma llamada.
 
     'hoja' distingue de qué pestaña viene la fila: BASE FESTIVAL no tiene
-    CONTESTA propio (ya se les escribió por WhatsApp a todos), sólo AGENDA."""
+    CONTESTA/CAMPAÑA/CRM propios (ya se les escribió por WhatsApp a todos),
+    sólo AGENDA."""
     hoja: str = 'REMARKETING'
-    contesta: str = ''            # 'CONTESTA' | 'NO CONTESTA'
-    agenda: Optional[str] = None  # 'SI' | 'NO'
-    comentario: str = ''
+    contesta: Optional[str] = None  # 'CONTESTA' | 'NO CONTESTA' | '' (limpiar)
+    agenda: Optional[str] = None    # 'SI' | 'NO' | '' (limpiar)
+    comentario: Optional[str] = None
+    campana: Optional[str] = None
+    crm: Optional[str] = None
 
 
 class NuevoRemarketingReq(BaseModel):
@@ -2056,23 +2061,38 @@ def crm_remarketing():
 
 @app.post('/api/crm/remarketing/{fila}')
 def crm_remarketing_registrar(fila: int, data: RemarketingReq):
+    """Guarda sólo los campos que vengan en la petición: la tabla edita
+    celda por celda (una petición por campo cambiado), no un formulario
+    completo como antes."""
     hoja = data.hoja if data.hoja == 'BASE FESTIVAL' else 'REMARKETING'
     campos = {}
     if hoja == 'BASE FESTIVAL':
-        # No hay CONTESTA propio ahí: ya se les escribió por WhatsApp a
-        # todos, sólo falta saber si agendaron.
-        if not data.agenda:
-            raise HTTPException(400, "Indica si agendó ('SI' o 'NO')")
-        campos['E'] = data.agenda.strip().upper()
+        # No hay CONTESTA/CAMPAÑA/CRM propios ahí: ya se les escribió por
+        # WhatsApp a todos, sólo falta saber si agendaron.
+        if data.agenda is not None:
+            agenda = data.agenda.strip().upper()
+            if agenda and agenda not in ('SI', 'NO'):
+                raise HTTPException(400, "Indica si agendó ('SI' o 'NO')")
+            campos['E'] = agenda
     else:
-        contesta = data.contesta.strip().upper()
-        if contesta not in ('CONTESTA', 'NO CONTESTA'):
-            raise HTTPException(400, "Indica si 'CONTESTA' o 'NO CONTESTA'")
-        campos['D'] = contesta
-        if data.agenda:
-            campos['E'] = data.agenda.strip().upper()
-    if data.comentario.strip():
+        if data.contesta is not None:
+            contesta = data.contesta.strip().upper()
+            if contesta and contesta not in ('CONTESTA', 'NO CONTESTA'):
+                raise HTTPException(400, "Indica si 'CONTESTA' o 'NO CONTESTA'")
+            campos['D'] = contesta
+        if data.agenda is not None:
+            agenda = data.agenda.strip().upper()
+            if agenda and agenda not in ('SI', 'NO'):
+                raise HTTPException(400, "Indica si agendó ('SI' o 'NO')")
+            campos['E'] = agenda
+        if data.campana is not None:
+            campos['C'] = data.campana.strip()
+        if data.crm is not None:
+            campos['F'] = data.crm.strip()
+    if data.comentario is not None:
         campos['G'] = data.comentario.strip()
+    if not campos:
+        raise HTTPException(400, 'No hay ningún campo para actualizar')
     with _bloqueo:
         try:
             return crm.actualizar_campos_remarketing(hoja, fila, campos)

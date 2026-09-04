@@ -443,6 +443,11 @@
   .item-hoy .info small { color: var(--gris); }
   .acciones-hoy { display: flex; flex-wrap: wrap; gap: 5px; }
   .item-hoy .acciones-hoy { margin-top: 4px; }
+  /* Celda editable directo en la tabla (Re llamadas): sin borde hasta que
+     se pasa el mouse o se hace foco, como una celda de hoja de cálculo. */
+  .rm-celda { width: 100%; min-width: 84px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; font-size: 13px; font-family: inherit; background: transparent; color: inherit; }
+  .rm-celda:hover { border-color: var(--borde); }
+  .rm-celda:focus { border-color: var(--azul2); background: var(--superficie); outline: none; }
   .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
 
   /* ---------- Citas de hoy: columnas de pipeline, más aire que las
@@ -1464,15 +1469,10 @@
             <button class="btn verde" id="btnRmAgregar">+ Agregar número</button>
           </div>
           <div class="mensaje err oculto" id="msgRmNuevo" style="margin-bottom:10px;"></div>
-          <h3>Por llamar</h3>
-          <div id="rmListaPendientes"></div>
-          <div class="mas" id="rmMas"></div>
-        </div>
-
-        <div class="tarjeta">
-          <h3>Historial de llamadas</h3>
+          <p class="nota" style="margin:0 0 10px;">Edita cualquier celda directo en la tabla, como en el Drive: se
+            guarda sola apenas cambias de campo. Los pendientes por llamar salen primero.</p>
           <div class="tabla-wrap"><table class="drive" id="tablaRemarketing" data-acciones-fijas></table></div>
-          <div class="mas" id="rmMasHist"></div>
+          <div class="mas" id="rmMas"></div>
         </div>
       </section>
 
@@ -2072,40 +2072,6 @@
 </div>
 
 <!-- ============ MODAL RE LLAMADAS ============ -->
-<div class="modal-fondo" id="modalRemarketing">
-  <div class="modal" style="max-width:480px;">
-    <div class="cab"><h3>Registrar llamada</h3><button class="cerrar" onclick="cerrarModales()" aria-label="Cerrar">&times;</button></div>
-    <div class="nota" id="rmModalContacto" style="margin:0 0 12px;"></div>
-    <div class="form-grid">
-      <div class="campo" id="rmCampoContesta">
-        <label>¿Contestó?</label>
-        <select id="rmContesta">
-          <option value="CONTESTA">Sí, contestó</option>
-          <option value="NO CONTESTA">No contestó</option>
-        </select>
-      </div>
-      <div class="campo" id="rmCampoAgenda">
-        <label>¿Agendó?</label>
-        <select id="rmAgenda">
-          <option value="NO">No</option>
-          <option value="SI">Sí</option>
-        </select>
-      </div>
-      <div class="campo ancho">
-        <label>Comentario</label>
-        <div class="toolbar" id="rmChips" style="gap:6px;margin-bottom:8px;"></div>
-        <textarea id="rmComentario" rows="2" placeholder="Ej. Casilla de voz, corta llamada&hellip;"></textarea>
-      </div>
-    </div>
-    <div class="mensaje err oculto" id="msgRmForm"></div>
-    <div class="nota" style="margin:0 0 10px;font-size:12px;">Atajos: <b>C</b>/<b>N</b> contestó · <b>S</b> agendó · <b>1-8</b> comentario rápido · <b>Enter</b> guarda</div>
-    <div class="pies">
-      <button type="button" class="btn gris" onclick="cerrarModales()">Cancelar</button>
-      <button type="button" class="btn verde" id="btnRmGuardar">Guardar</button>
-    </div>
-  </div>
-</div>
-
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -5504,21 +5470,17 @@ $('btnPaLimpiarFechas').addEventListener('click', () => {
    la fila en memoria, se repinta al instante y el modal salta solo al
    siguiente pendiente. La sincronización real con Drive sigue pasando en
    segundo plano (rmRefrescoSilencioso) sin bloquear a nadie. */
-let REMK = null, rmLimite = 200, rmFilaEditando = null, rmHojaEditando = null;
+let REMK = null, rmLimite = 200;
 let rmRefrescoEnCurso = false;
-const RM_CHIPS = ['CASILLA DE VOZ', 'CORTA LLAMADA', 'DESVIO DE LLAMADA',
-  'NO DESEA', 'VIVE LEJOS', 'SE ENCUENTRA TRABAJANDO', 'DEVOLVER LA LLAMADA',
-  'LÍNEA FUERA DE SERVICIO'];
 
 async function cargarRemarketing() {
-  const cont = $('rmListaPendientes');
+  const cont = $('tablaRemarketing');
   const habiaCache = !!REMK;
-  if (habiaCache) pintarRemarketing();
-  else cont.innerHTML = '<div class="carga"><span class="spinner"></span>Cargando cola de re-llamadas&hellip;</div>';
+  if (!habiaCache) cont.innerHTML = '<tbody><tr><td><div class="carga"><span class="spinner"></span>Cargando cola de re-llamadas&hellip;</div></td></tr></tbody>';
   try {
     REMK = await api('/api/crm/remarketing');
   } catch (e) {
-    if (!habiaCache) cont.innerHTML = `<div class="vacio">${esc(e.message)}</div>`;
+    if (!habiaCache) cont.innerHTML = `<tbody><tr><td><div class="vacio">${esc(e.message)}</div></td></tr></tbody>`;
     return;
   }
   llenarSelect($('rmFiltroCampana'), REMK.valores.campana, 'Campaña: todas');
@@ -5611,6 +5573,60 @@ function rmFiltradas() {
   });
 }
 
+// Edición directo en la tabla, como en el Drive: cada celda se guarda sola
+// al cambiarla (evento change/blur), sin ventana emergente. BASE FESTIVAL
+// no tiene columnas propias de campaña/CRM (ver actualizar_campos_remarketing
+// en el backend: ahí sólo existen AGENDO y OBSERVACION), así que esas
+// celdas quedan de sólo lectura para esas filas.
+async function rmEditarCampo(fila, hoja, campo, valor, el) {
+  const payload = { hoja };
+  payload[campo] = valor;
+  el.disabled = true;
+  try {
+    await api(`/api/crm/remarketing/${fila}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const f = rmBuscarFila(fila, hoja);
+    if (f) {
+      const letra = { campana: 'C', contesta: 'D', agenda: 'E', crm: 'F', comentario: 'G' }[campo];
+      f[letra] = valor;
+    }
+    rmRefrescoSilencioso();
+    pintarRemarketing();
+  } catch (e) {
+    toast(e.message, 'err');
+    el.disabled = false;
+  }
+}
+
+function rmFilaHTML(f) {
+  const festival = rmEsFestival(f);
+  return `<tr${f._oculto ? ' class="rm-oculto"' : ''}>
+    <td>${esc(f.A || (festival ? 'FESTIVAL' : '—'))}</td>
+    <td class="num">${esc(f.B || '')} <button class="btn borde mini" onclick="rmCopiarNumero('${esc(String(f.B || ''))}')" title="Copiar número">📋</button></td>
+    <td>${festival ? '<span class="chip gris">FESTIVAL</span>' :
+      `<input type="text" class="rm-celda" value="${esc(f.C || '')}" placeholder="Campaña" onchange="rmEditarCampo(${f._fila},'${f._hoja}','campana',this.value,this)">`}</td>
+    <td>${festival ? '<span class="chip gris">—</span>' : `<select class="rm-celda" onchange="rmEditarCampo(${f._fila},'${f._hoja}','contesta',this.value,this)">
+        <option value=""${!f.D ? ' selected' : ''}>Pendiente</option>
+        <option value="CONTESTA"${esContesta(f.D) ? ' selected' : ''}>Contestó</option>
+        <option value="NO CONTESTA"${esNoContesta(f.D) ? ' selected' : ''}>No contestó</option>
+      </select>`}</td>
+    <td><select class="rm-celda" onchange="rmEditarCampo(${f._fila},'${f._hoja}','agenda',this.value,this)">
+        <option value=""${!f.E ? ' selected' : ''}>—</option>
+        <option value="SI"${esAgendoRemk(f.E) ? ' selected' : ''}>Sí</option>
+        <option value="NO"${f.E && !esAgendoRemk(f.E) ? ' selected' : ''}>No</option>
+      </select></td>
+    <td>${festival ? '<span class="chip gris">—</span>' :
+      `<input type="text" class="rm-celda" value="${esc(f.F || '')}" placeholder="—" onchange="rmEditarCampo(${f._fila},'${f._hoja}','crm',this.value,this)">`}</td>
+    <td><input type="text" class="rm-celda" value="${esc(f.G || '')}" placeholder="—" onchange="rmEditarCampo(${f._fila},'${f._hoja}','comentario',this.value,this)"></td>
+    <td class="acciones-hoy">
+      <button class="btn verde mini" onclick="abrirWhatsAppRemarketing(${f._fila}, '${f._hoja}')" title="Abrir WhatsApp">💬</button>
+      <button class="btn borde mini" onclick="copiarMensajeRemarketing(${f._fila}, '${f._hoja}')" title="Copiar mensaje">📋</button>
+      <button class="btn borde mini" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})" title="${f._oculto ? 'Mostrar' : 'Ocultar'}">${f._oculto ? '👁' : '🙈'}</button>
+    </td>
+  </tr>`;
+}
+
 function pintarRemarketing() {
   if (!REMK) return;
   const filt = rmFiltradas();
@@ -5624,146 +5640,18 @@ function pintarRemarketing() {
   $('rmKpiContesto').textContent = contestaron.length;
   $('rmKpiNoContesto').textContent = noContestaron.length;
 
-  const vis = pendientes.slice(0, rmLimite);
-  $('rmListaPendientes').innerHTML = vis.length ? vis.map(f => `
-    <div class="item-hoy${f._oculto ? ' rm-oculto' : ''}">
-      <span class="hora">${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : '—'))}</span>
-      <div class="info">
-        <span style="display:inline-flex;align-items:center;gap:6px;">
-          <b>${esc(f.B || '—')}</b>
-          <button class="btn borde mini" onclick="rmCopiarNumero('${esc(String(f.B || ''))}')" title="Copiar número">📋</button>
-        </span>
-        <small>${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}${f._oculto ? ' · <i>oculto</i>' : ''}</small>
-        <div class="acciones-hoy">
-          <button class="btn verde mini" onclick="abrirWhatsAppRemarketing(${f._fila}, '${f._hoja}')">💬 Abrir WhatsApp</button>
-          <button class="btn borde mini" onclick="copiarMensajeRemarketing(${f._fila}, '${f._hoja}')">📋 Copiar mensaje</button>
-          <button class="btn borde mini" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button>
-          <button class="btn verde mini" onclick="abrirModalRemarketing(${f._fila}, '${f._hoja}')">📞 Registrar llamada</button>
-        </div>
-      </div>
-    </div>`).join('') : '<div class="vacio">No hay nadie pendiente por llamar con estos filtros.</div>';
-  $('rmMas').innerHTML = pendientes.length > rmLimite
-    ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${pendientes.length - rmLimite} restantes)</button>` : '';
+  // Pendientes primero (lo que urge resolver), luego el resto por fecha de
+  // registro más reciente — una sola tabla en vez de "Por llamar" e
+  // "Historial" separados.
+  const resto = filt.filter(f => !rmEsPendiente(f)).slice().reverse();
+  const todas = [...pendientes, ...resto];
+  const vis = todas.slice(0, rmLimite);
 
-  const historial = filt.filter(f => !rmEsPendiente(f)).slice().reverse().slice(0, rmLimite);
   $('tablaRemarketing').innerHTML = '<thead><tr><th>Fecha</th><th class="num">Celular</th><th>Campaña</th><th>Contestó</th><th>Agendó</th><th>CRM</th><th>Comentario</th><th>Acciones</th></tr></thead><tbody>' +
-    historial.map(f => `<tr${f._oculto ? ' class="rm-oculto"' : ''}>
-      <td>${esc(f.A || (rmEsFestival(f) ? 'FESTIVAL' : ''))}</td>
-      <td class="num">${esc(f.B || '')} <button class="btn borde mini" onclick="rmCopiarNumero('${esc(String(f.B || ''))}')" title="Copiar número">📋</button></td>
-      <td>${esc(f.C || '')}</td>
-      <td>${rmEsFestival(f) ? '<span class="chip gris">—</span>' : (esContesta(f.D) ? '<span class="chip ok">CONTESTA</span>' : '<span class="chip bad">NO CONTESTA</span>')}</td>
-      <td>${esAgendoRemk(f.E) ? '<span class="chip ok">SÍ</span>' : '<span class="chip gris">NO</span>'}</td>
-      <td>${esc(f.F || '')}</td><td>${esc(f.G || '')}</td>
-      <td><button class="btn borde pequeno" onclick="rmAlternarOculto(${f._fila}, '${f._hoja}', ${!f._oculto})">${f._oculto ? '👁 Mostrar' : '🙈 Ocultar'}</button></td>
-    </tr>`).join('') + '</tbody>';
-  $('rmMasHist').innerHTML = filt.filter(f => !rmEsPendiente(f)).length > rmLimite
-    ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más</button>` : '';
+    (vis.length ? vis.map(rmFilaHTML).join('') : '<tr><td colspan="8"><div class="vacio">Nadie en la cola con estos filtros.</div></td></tr>') + '</tbody>';
+  $('rmMas').innerHTML = todas.length > rmLimite
+    ? `<button onclick="rmLimite+=200;pintarRemarketing()">Mostrar más (${todas.length - rmLimite} restantes)</button>` : '';
 }
-
-function abrirModalRemarketing(fila, hoja) {
-  const f = REMK.filas.find(x => x._fila === fila && x._hoja === hoja);
-  if (!f) return;
-  rmFilaEditando = fila;
-  rmHojaEditando = hoja;
-  const restantes = rmFiltradas().filter(rmEsPendiente).length;
-  $('rmModalContacto').innerHTML = `
-    <span style="display:inline-flex;align-items:center;gap:6px;">
-      <b>${esc(f.B || '—')}</b>
-      <button type="button" class="btn borde mini" onclick="rmCopiarNumero('${esc(String(f.B || ''))}')" title="Copiar número">📋</button>
-    </span>
-    · ${esc(f.C || 'Sin campaña')}${f.G ? ' · ' + esc(f.G) : ''}
-    <br><small style="color:var(--gris);">${restantes} pendiente${restantes === 1 ? '' : 's'} por llamar con este filtro</small>`;
-  // BASE FESTIVAL ya tiene el "contestó" resuelto (info por WhatsApp
-  // enviada a todos): sólo se pregunta si agendó.
-  $('rmCampoContesta').classList.toggle('oculto', rmEsFestival(f));
-  $('rmContesta').value = 'CONTESTA';
-  $('rmAgenda').value = 'NO';
-  $('rmComentario').value = '';
-  $('msgRmForm').classList.add('oculto');
-  $('rmChips').innerHTML = RM_CHIPS.map((c, i) => `<button type="button" class="btn borde pequeno" onclick="$('rmComentario').value='${esc(c)}'" title="Atajo: tecla ${i + 1}">${esc(c)}</button>`).join('');
-  actualizarCampoAgendaRemk();
-  $('modalRemarketing').classList.add('abierto');
-  // Foco directo al primer control: quien llama no debería tocar el mouse
-  // para nada salvo casos raros. Ver atajos de teclado más abajo.
-  setTimeout(() => (rmEsFestival(f) ? $('rmAgenda') : $('rmContesta')).focus(), 20);
-}
-function actualizarCampoAgendaRemk() {
-  if (rmHojaEditando === 'BASE FESTIVAL') { $('rmCampoAgenda').classList.remove('oculto'); return; }
-  $('rmCampoAgenda').classList.toggle('oculto', $('rmContesta').value !== 'CONTESTA');
-}
-$('rmContesta').addEventListener('change', actualizarCampoAgendaRemk);
-// Actualiza sólo la fila en memoria con lo que ya se guardó en Drive (el
-// POST de abajo ya confirmó la escritura); evita esperar una recarga
-// completa para poder seguir con el siguiente paciente.
-function rmAplicarLocal(fila, hoja, payload) {
-  const f = REMK.filas.find(x => x._fila === fila && x._hoja === hoja);
-  if (!f) return;
-  if (hoja === 'BASE FESTIVAL') {
-    f.E = payload.agenda;
-  } else {
-    f.D = payload.contesta;
-    f.E = payload.agenda;
-  }
-  if (payload.comentario) f.G = payload.comentario;
-}
-$('btnRmGuardar').addEventListener('click', async () => {
-  const b = $('btnRmGuardar');
-  const esFestival = rmHojaEditando === 'BASE FESTIVAL';
-  const payload = { hoja: rmHojaEditando, comentario: $('rmComentario').value.trim() };
-  if (esFestival) {
-    payload.agenda = $('rmAgenda').value;
-  } else {
-    const contesta = $('rmContesta').value;
-    payload.contesta = contesta;
-    payload.agenda = contesta === 'CONTESTA' ? $('rmAgenda').value : 'NO';
-  }
-  const filaGuardada = rmFilaEditando, hojaGuardada = rmHojaEditando;
-  b.disabled = true; b.textContent = 'Guardando…';
-  try {
-    await api(`/api/crm/remarketing/${filaGuardada}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    });
-    rmAplicarLocal(filaGuardada, hojaGuardada, payload);
-    pintarRemarketing();
-    rmRefrescoSilencioso();
-    // Avanza directo al siguiente pendiente sin cerrar el modal ni volver a
-    // la lista: así la persona que llama no pierde tiempo entre pacientes.
-    const siguientes = rmFiltradas().filter(rmEsPendiente);
-    if (siguientes.length) {
-      toast('Llamada registrada. Siguiente…', 'okm');
-      abrirModalRemarketing(siguientes[0]._fila, siguientes[0]._hoja);
-    } else {
-      cerrarModales();
-      toast('Llamada registrada. No quedan pendientes con estos filtros.', 'okm');
-    }
-  } catch (e) {
-    $('msgRmForm').textContent = e.message; $('msgRmForm').classList.remove('oculto');
-  } finally { b.disabled = false; b.textContent = 'Guardar'; }
-});
-// Atajos de teclado dentro del modal de llamada: quien está llamando puede
-// resolver casi todo sin soltar el teléfono para agarrar el mouse.
-//  - Enter (fuera del comentario)      -> Guardar
-//  - Ctrl/Cmd+Enter (incluso escribiendo el comentario) -> Guardar
-//  - C / N                             -> Contestó / No contestó
-//  - S                                 -> Agendó = Sí
-//  - 1-8                               -> comentario rápido (mismo orden que los chips)
-document.addEventListener('keydown', (e) => {
-  if (!$('modalRemarketing').classList.contains('abierto')) return;
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('btnRmGuardar').click(); return; }
-  const tag = document.activeElement && document.activeElement.tagName;
-  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
-  if (e.key === 'Enter') { e.preventDefault(); $('btnRmGuardar').click(); return; }
-  const k = e.key.toLowerCase();
-  if (k === 'c' && !$('rmCampoContesta').classList.contains('oculto')) {
-    e.preventDefault(); $('rmContesta').value = 'CONTESTA'; actualizarCampoAgendaRemk();
-  } else if (k === 'n' && !$('rmCampoContesta').classList.contains('oculto')) {
-    e.preventDefault(); $('rmContesta').value = 'NO CONTESTA'; actualizarCampoAgendaRemk();
-  } else if (k === 's' && !$('rmCampoAgenda').classList.contains('oculto')) {
-    e.preventDefault(); $('rmAgenda').value = 'SI';
-  } else if (/^[1-8]$/.test(e.key) && RM_CHIPS[Number(e.key) - 1]) {
-    e.preventDefault(); $('rmComentario').value = RM_CHIPS[Number(e.key) - 1];
-  }
-});
 // Ocultar/mostrar una fila (igual que ocultar una fila a mano en
 // Sheets/Excel): no borra nada, sólo la saca de la vista mientras esté
 // oculta. Sirve para achicar la lista sin perder el historial. Se actualiza
@@ -5815,11 +5703,10 @@ $('btnRmAgregar').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ celular, campana }),
     });
-    // Igual que rmAplicarLocal: pinta con lo que ya se confirmó guardado en
-    // Drive y refresca en segundo plano, en vez de esperar una recarga
-    // completa de la cola — así se pueden agregar varios números seguidos
-    // (el caso típico: revisando WhatsApp Web en lote) sin esperar entre uno
-    // y el siguiente.
+    // Pinta con lo que ya se confirmó guardado en Drive y refresca en
+    // segundo plano, en vez de esperar una recarga completa de la cola —
+    // así se pueden agregar varios números seguidos (el caso típico:
+    // revisando WhatsApp Web en lote) sin esperar entre uno y el siguiente.
     const hoy = new Date();
     const fechaHoy = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`;
     if (REMK) {
