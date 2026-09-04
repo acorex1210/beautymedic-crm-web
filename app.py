@@ -1272,45 +1272,45 @@ def _guardar_proyeccion_congelada(clave, datos):
 
 @app.get('/api/analitica/proyeccion')
 def analitica_proyeccion(mes: str = '', anio: str = ''):
-    """La meta proyectada se calcula una sola vez por mes (como si fuera el
-    día 1, antes de que exista ninguna venta real) y queda fija en disco:
-    así no sube ni baja según avance el mes. El avance real (lo ya vendido)
-    sí se recalcula en cada llamada, para poder comparar el progreso contra
-    esa meta fija."""
+    """Devuelve dos proyecciones calculadas con el mismo modelo (ver
+    ana.proyeccion_mes), para comparar una meta estable contra el pulso real
+    del mes:
+
+    - 'fija': calculada una sola vez, como si fuera el día 1 (antes de que
+      exista ninguna venta real), y guardada en disco — no sube ni baja
+      aunque avance el mes.
+    - 'dinamica': recalculada en cada llamada con los datos de HOY (lo ya
+      vendido, el pipeline real de citas agendadas, el ritmo real de leads
+      nuevos) — sí sube y baja según cómo va avanzando el mes de verdad."""
     m, a, _d, _h = _filtros(mes, anio)
     try:
-        en_vivo = ana.proyeccion_mes(m, a)
+        dinamica = ana.proyeccion_mes(m, a)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f'No se pudo calcular la proyección: {e}')
-    if en_vivo is None:
+    if dinamica is None:
         raise HTTPException(400, f'Mes inválido: {m}')
-    clave = f"{en_vivo['mes']}-{en_vivo['anio']}"
-    congelada = _leer_proyecciones_congeladas().get(clave)
-    if not congelada:
+    clave = f"{dinamica['mes']}-{dinamica['anio']}"
+    fija = _leer_proyecciones_congeladas().get(clave)
+    if not fija:
         try:
-            congelada = ana.proyeccion_mes(m, a, dia_referencia=1)
+            fija = ana.proyeccion_mes(m, a, dia_referencia=1)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f'No se pudo calcular la proyección: {e}')
-        _guardar_proyeccion_congelada(clave, congelada)
-    proyeccion = congelada['proyeccion']
-    avance_real = en_vivo['ya_vendido']
-    avance_pct = round(avance_real / proyeccion * 100, 1) if proyeccion else 0.0
+        _guardar_proyeccion_congelada(clave, fija)
+    avance_real = dinamica['ya_vendido']
+    avance_pct_fija = round(avance_real / fija['proyeccion'] * 100, 1) if fija['proyeccion'] else 0.0
+    avance_pct_dinamica = round(avance_real / dinamica['proyeccion'] * 100, 1) if dinamica['proyeccion'] else 0.0
     return {
-        'ok': True, 'mes': congelada['mes'], 'anio': congelada['anio'],
-        'dias_mes': en_vivo['dias_mes'],
-        'dias_transcurridos': en_vivo['dias_transcurridos'],
-        'dias_restantes': en_vivo['dias_restantes'],
-        'proyeccion': proyeccion,
-        'pipeline_esperado': congelada['pipeline_esperado'],
-        'citas_pendientes': congelada['citas_pendientes'],
-        'venta_nuevos_esperada': congelada['venta_nuevos_esperada'],
-        'nuevos_esperados': congelada['nuevos_esperados'],
-        'tasa_conversion_pct': congelada['tasa_conversion_pct'],
-        'tasa_efectividad_pct': congelada['tasa_efectividad_pct'],
-        'ticket_promedio': congelada['ticket_promedio'],
-        'ritmo_agendados_dia': congelada['ritmo_agendados_dia'],
+        'ok': True, 'mes': dinamica['mes'], 'anio': dinamica['anio'],
+        'dias_mes': dinamica['dias_mes'],
+        'dias_transcurridos': dinamica['dias_transcurridos'],
+        'dias_restantes': dinamica['dias_restantes'],
+        'fija': fija,
+        'dinamica': dinamica,
         'ya_vendido': avance_real, 'avance_real': avance_real,
-        'avance_pct': avance_pct, 'ritmo_lineal': en_vivo['ritmo_lineal'],
+        'avance_pct_fija': avance_pct_fija,
+        'avance_pct_dinamica': avance_pct_dinamica,
+        'ritmo_lineal': dinamica['ritmo_lineal'],
     }
 
 
