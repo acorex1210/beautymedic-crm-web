@@ -5734,13 +5734,26 @@ $('btnRmAgregar').addEventListener('click', async () => {
   }
   b.disabled = true; b.textContent = 'Agregando…';
   try {
-    await api('/api/crm/remarketing', {
+    const r = await api('/api/crm/remarketing', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ celular, campana }),
     });
+    // Igual que rmAplicarLocal: pinta con lo que ya se confirmó guardado en
+    // Drive y refresca en segundo plano, en vez de esperar una recarga
+    // completa de la cola — así se pueden agregar varios números seguidos
+    // (el caso típico: revisando WhatsApp Web en lote) sin esperar entre uno
+    // y el siguiente.
+    const hoy = new Date();
+    const fechaHoy = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`;
+    if (REMK) {
+      REMK.filas.push({ _fila: r.fila, _hoja: r.hoja, _oculto: false, A: fechaHoy, B: norm, C: campana, D: '', E: '', F: '', G: '' });
+      REMK.total = (REMK.total || 0) + 1;
+      pintarRemarketing();
+    }
+    rmRefrescoSilencioso();
     $('rmNuevoTel').value = '';
+    $('rmNuevoTel').focus();
     toast('Número agregado a la cola.', 'okm');
-    cargarRemarketing();
   } catch (e) {
     $('msgRmNuevo').textContent = e.message; $('msgRmNuevo').classList.remove('oculto');
   } finally { b.disabled = false; b.textContent = '+ Agregar número'; }
