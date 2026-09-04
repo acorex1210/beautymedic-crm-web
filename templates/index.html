@@ -2528,6 +2528,23 @@ function pintarAlertasPanel(hoyR, confirmR, inactR, syncR) {
       items.push({ n: vencidas, txt: vencidas === 1 ? 'tarea vencida' : 'tareas vencidas',
                    cls: 'bad', pag: 'pacientes' });
     }
+    // "✓ Asistió" y "Compró/No compró" son dos clics separados: si el
+    // segundo nunca se hace, la venta queda sin registrar en ningún lado
+    // (ni Venta diaria ni Caja, que se calcula a partir de ahí) sin que
+    // nada lo avise. Mismo criterio que yaComproHoy()/renderColumnaHoy(),
+    // pero con h.ventas (esta misma respuesta) en vez del global HOY_DATA,
+    // que puede no estar seteado todavía cuando corre esto.
+    const sinResolverCompra = h.citas.filter(c => {
+      if (estadoHoy(c) !== 'ASISTIO') return false;
+      if (HOY_ACCIONES[c.fila]?.compra) return false;
+      const nombre = String(c.nombre || '').trim().toUpperCase();
+      return !(nombre && (h.ventas || []).some(v => String(v.nombre || '').trim().toUpperCase() === nombre));
+    }).length;
+    if (sinResolverCompra > 0) {
+      items.push({ n: sinResolverCompra,
+                   txt: sinResolverCompra === 1 ? 'paciente asistió y falta saber si compró' : 'pacientes asistieron y falta saber si compraron',
+                   cls: 'bad', pag: 'hoy' });
+    }
   }
 
   if (confirmR && confirmR.status === 'fulfilled') {
