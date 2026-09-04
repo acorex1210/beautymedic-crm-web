@@ -1047,6 +1047,7 @@ class Calculo:
 
             modo = None
             candidatos = []
+            motivo_ambiguo = None
             # Etapa 1: mismo teléfono + misma fecha de cita
             if ph:
                 cand = [r for r in self.by_phone[ph] if self._fecha(r) == fv]
@@ -1063,7 +1064,11 @@ class Calculo:
                     if len(cand) == 1:
                         candidatos, modo = cand, 'telefono+fecha'
                     elif len(cand) > 1:
-                        self.revisar.append((v, f'{len(cand)} filas con mismo teléfono+fecha'))
+                        # No es ambigüedad definitiva todavía: la Etapa 2 (nombre+fecha)
+                        # puede desempatar sola (p.ej. dos pacientes que comparten
+                        # teléfono en AGENDADOS pero tienen nombres distintos). Sólo se
+                        # guarda como "a revisar" si nada logra resolverlo más abajo.
+                        motivo_ambiguo = f'{len(cand)} filas con mismo teléfono+fecha'
             # Etapa 2: mismo nombre + misma fecha
             if not candidatos and nm:
                 cand = [r for r in self.by_name[nm] if self._fecha(r) == fv]
@@ -1080,9 +1085,11 @@ class Calculo:
                     if len(cand) == 1:
                         candidatos, modo = cand, 'nombre+fecha'
                     elif len(cand) > 1:
-                        self.revisar.append((v, f'{len(cand)} filas con mismo nombre+fecha'))
+                        motivo_ambiguo = motivo_ambiguo or f'{len(cand)} filas con mismo nombre+fecha'
             if not candidatos:
-                if ph or nm:
+                if motivo_ambiguo:
+                    self.revisar.append((v, motivo_ambiguo))
+                elif ph or nm:
                     walkins[(ph, nm, fv)].append(v)
                 else:
                     self.pendientes.append((v, 'sin coincidencia en maestro'))
