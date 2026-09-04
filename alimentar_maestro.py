@@ -251,6 +251,14 @@ def norm_phone(p):
     return d[-9:] if len(d) >= 9 else d
 
 
+def norm_dni(d):
+    if d is None or d == '':
+        return ''
+    if isinstance(d, float) and d.is_integer():
+        d = int(d)
+    return re.sub(r'\D', '', str(d))
+
+
 def norm_fecha(dia, mes, anio):
     try:
         d = int(dia)
@@ -797,6 +805,7 @@ class Calculo:
         c_a4 = self._idx('ANIO4')
         c_camp = self._idx('CAMPANA')
         self.m_rows = []
+        self.by_dni = defaultdict(list)
         self.by_phone = defaultdict(list)
         self.by_name = defaultdict(list)
         self.by_phone_date = defaultdict(set)  # (tel, fecha) -> set(campañas)
@@ -814,12 +823,15 @@ class Calculo:
                 v = ws.cell(row=r, column=c).value
                 if v is not None:
                     cel[openpyxl.utils.get_column_letter(c)] = v
+            dni = norm_dni(cel.get(self.col.get('DNI')))
             ph = norm_phone(cel.get(self.col.get('TELEFONO')))
             nm = norm_name(cel.get(self.col.get('NOMBRE')))
             fc = norm_fecha(cel.get(self.col.get('DIA2')),
                             cel.get(self.col.get('MES3')),
                             cel.get(self.col.get('ANIO4')))
             camp = norm_name(cel.get(self.col.get('CAMPANA')))
+            if dni:
+                self.by_dni[dni].append(r)
             if ph:
                 self.by_phone[ph].append(r)
             if nm:
@@ -1019,6 +1031,7 @@ class Calculo:
         for v in venta:
             status = txt(v['status']) or ''
             st = status.upper()
+            dni_v = norm_dni(v.get('dni'))
             ph = norm_phone(v['cel'])
             nm = norm_name(v['nombre'])
             fv = norm_fecha(v['dia'], v['mes'], v['anio'])
@@ -1048,8 +1061,28 @@ class Calculo:
             modo = None
             candidatos = []
             motivo_ambiguo = None
+            # Etapa 0: mismo DNI + misma fecha. El DNI nunca se comparte entre
+            # personas (a diferencia del teléfono, que a veces lo dan compartido
+            # a propósito cuando van varios pacientes de la misma familia), así
+            # que si está disponible es la señal más confiable de todas.
+            if dni_v:
+                cand = [r for r in self.by_dni[dni_v] if self._fecha(r) == fv]
+                if any(self._asistio(r) for r in cand):
+                    fila = ya_asistio(cand, 'DNI+fecha')
+                    if fila is None:
+                        for r in cand:
+                            if self._asistio(r):
+                                filas_con_venta.add(r)
+                        continue
+                    candidatos, modo = [fila], 'DNI+fecha (2do tratamiento)'
+                if not candidatos:
+                    cand = empty_p_rows(cand)
+                    if len(cand) == 1:
+                        candidatos, modo = cand, 'DNI+fecha'
+                    elif len(cand) > 1:
+                        motivo_ambiguo = f'{len(cand)} filas con mismo DNI+fecha'
             # Etapa 1: mismo teléfono + misma fecha de cita
-            if ph:
+            if not candidatos and ph:
                 cand = [r for r in self.by_phone[ph] if self._fecha(r) == fv]
                 if any(self._asistio(r) for r in cand):
                     fila = ya_asistio(cand, 'teléfono+fecha')
@@ -1068,7 +1101,7 @@ class Calculo:
                         # puede desempatar sola (p.ej. dos pacientes que comparten
                         # teléfono en AGENDADOS pero tienen nombres distintos). Sólo se
                         # guarda como "a revisar" si nada logra resolverlo más abajo.
-                        motivo_ambiguo = f'{len(cand)} filas con mismo teléfono+fecha'
+                        motivo_ambiguo = motivo_ambiguo or f'{len(cand)} filas con mismo teléfono+fecha'
             # Etapa 2: mismo nombre + misma fecha
             if not candidatos and nm:
                 cand = [r for r in self.by_name[nm] if self._fecha(r) == fv]
