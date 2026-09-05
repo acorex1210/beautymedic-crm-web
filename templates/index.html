@@ -986,7 +986,7 @@
       </span>
       <span class="tema-switch"><span class="tema-switch-bola"></span></span>
     </button>
-    <div class="side-presencia" id="sidePresencia"></div>
+    <div class="side-presencia oculto" id="sidePresencia"></div>
     <div class="side-usuario" id="sideUsuario"></div>
     <div class="side-pies" id="estadoPie"></div>
   </aside>
@@ -2322,13 +2322,15 @@ async function latirPresencia() {
 }
 function arrancarPresencia() {
   clearInterval(PRESENCIA_TIMER);
+  if (!puedeLeer('presencia')) { $('sidePresencia').classList.add('oculto'); return; }
+  $('sidePresencia').classList.remove('oculto');
   latirPresencia();
   PRESENCIA_TIMER = setInterval(latirPresencia, PRESENCIA_CADA_MS);
 }
 /* Con la pestaña en segundo plano el navegador frena los timers y el usuario
    caería de la lista sin haberse ido; al volver se late de inmediato. */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') latirPresencia();
+  if (document.visibilityState === 'visible' && PRESENCIA_TIMER) latirPresencia();
 });
 
 async function cargarSesion() {

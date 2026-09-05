@@ -56,8 +56,7 @@ SECCIONES = ['panel', 'reportes', 'agendados', 'venta', 'caja', 'inventario',
 # (Calendario, por ejemplo, lee de AGENDADOS).
 RECURSOS = {
     # Lo que necesita cualquiera que haya entrado, sea cual sea su rol.
-    'comun': ['/api/estado', '/api/yo', '/api/logout', '/api/asistente',
-              '/api/presencia'],
+    'comun': ['/api/estado', '/api/yo', '/api/logout', '/api/asistente'],
     'agendados': ['/api/crm/agendados'],
     'venta': ['/api/crm/venta'],
     'hoy': ['/api/crm/hoy', '/api/crm/tareas'],
@@ -88,6 +87,11 @@ RECURSOS = {
     # guardado va aparte, colgada de /api/yo (recurso 'comun'), para que
     # cualquiera que entre vea el menú ya ordenado sin necesitar este permiso.
     'menu': ['/api/menu-orden'],
+    # Quién está conectado ahora. Igual que 'menu': no se agrega a ningún rol,
+    # así que "puede()" lo niega por defecto a todos salvo ADMIN. Es
+    # supervisión del equipo, no información que cada quien necesite para
+    # trabajar.
+    'presencia': ['/api/presencia'],
 }
 
 # Rutas que no piden sesión. El webhook de WhatsApp lo llama Meta, no el
