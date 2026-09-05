@@ -13,8 +13,10 @@ Funciones principales:
   recurrentes(mes, anio, desde, hasta)  -> pacientes que repiten y LTV
 """
 import calendar
+import json
 import os
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 
@@ -425,6 +427,240 @@ def proyeccion_mes(mes, anio, dia_referencia=None):
         'ritmo_agendados_dia': round(ritmo_agendados_dia, 2),
         'ritmo_lineal': ritmo_lineal,
         'proyeccion': total,
+    }
+
+
+# Objetivo de eficiencia publicitaria: por cada sol vendido, como máximo
+# ese porcentaje de sol invertido en anuncios. 0.1 = invertir 1 para vender
+# 10 (ROAS 10x). Es el número que la clínica se puso como meta.
+OBJETIVO_INVERSION_VENTA = 0.1
+
+
+def _norm_campana(v):
+    s = unicodedata.normalize('NFD', str(v or ''))
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return ' '.join(s.upper().split())
+
+
+def _carga_meta(carga_id=None):
+    """Carga de Meta Ads a usar: la indicada, o la más reciente subida.
+
+    Las cargas no guardan qué periodo cubre el reporte (Meta no lo trae en el
+    export), así que se devuelve también la fecha de subida para que la
+    pantalla diga con qué archivo está calculando en vez de dar por hecho
+    que corresponde al mes que se está mirando.
+    """
+    try:
+        import meta_ads as mads
+        d = os.path.join(os.environ.get('DATA_DIR', 'data'), 'meta_ads')
+        cargas = mads.listar(d)
+        if not cargas:
+            return None
+        elegida = next((c for c in cargas if c['id'] == carga_id), cargas[0])
+        return mads.detalle(d, elegida['id'])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _gasto_mensual_declarado(mes, anio):
+    """Inversión total del mes escrita a mano en Meta ads (meta_mensual.json).
+
+    Es el respaldo cuando no hay un export de Meta subido: no da el detalle
+    por campaña, pero sí permite calcular el ratio inversión/venta global.
+    """
+    try:
+        ruta = os.path.join(os.environ.get('DATA_DIR', 'data'), 'meta_mensual.json')
+        with open(ruta, encoding='utf-8') as f:
+            return float(json.load(f).get(f'{mes}-{anio}') or 0) or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _inversion_manual(mes, anio):
+    """Inversión por campaña escrita a mano para un mes (inversion_campanas.json).
+
+    Sin API de Meta y sin export subido no hay forma de saber cuánto costó
+    cada campaña, pero el equipo sí lo sabe: es el presupuesto que le puso.
+    Lo escrito a mano manda sobre el export cuando existen los dos, porque
+    el export puede cubrir sólo parte del mes.
+    """
+    try:
+        ruta = os.path.join(os.environ.get('DATA_DIR', 'data'),
+                            'inversion_campanas.json')
+        with open(ruta, encoding='utf-8') as f:
+            datos = json.load(f).get(f'{mes}-{anio}') or {}
+        return {_norm_campana(k): float(v) for k, v in datos.items()
+                if isinstance(v, (int, float))}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _cruce_campana(nombre, disponibles):
+    """Campaña de Meta que corresponde a una campaña de las hojas (o None).
+
+    En Meta la campaña se llama con más texto del que el equipo escribe en
+    AGENDADOS ("ACIDO HIALURONICO" vs "PE | Leads | Ácido hialurónico ago"),
+    así que además del nombre exacto se acepta que uno contenga al otro, y
+    gana la coincidencia más larga (la más específica).
+    """
+    n = _norm_campana(nombre)
+    if not n:
+        return None
+    if n in disponibles:
+        return disponibles[n]
+    mejor = None
+    for otro, dato in disponibles.items():
+        if len(otro) >= 4 and (otro in n or n in otro):
+            largo = min(len(otro), len(n))
+            if mejor is None or largo > mejor[0]:
+                mejor = (largo, dato)
+    return mejor[1] if mejor else None
+
+
+def _pct(parte, total):
+    return round(100.0 * parte / total, 1) if total else 0.0
+
+
+def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
+    """Embudo, costo e inversión/venta de cada campaña, para decidir presupuesto.
+
+    Junta las dos mitades que hoy viven separadas:
+
+      - Lo que costó traer al paciente: gasto y resultados (leads) por campaña
+        del export de Meta Ads.
+      - Lo que ese paciente dejó: agendados -> asistió -> realizó -> ticket
+        promedio -> venta, sacado del maestro por su columna CAMPAÑA.
+
+    Con las dos, cada campaña queda medida por ``inversion / venta`` (lo que
+    la clínica llama "0.2" o "0.1": soles de publicidad por cada sol vendido)
+    y por su ROAS.
+
+    OJO con la lectura: mientras el costo por lead y las tasas no cambien,
+    ese ratio NO mejora invirtiendo más — el doble de presupuesto da el doble
+    de leads y el doble de venta, con el mismo ratio. Por eso se devuelve
+    ``costo_lead_objetivo``: el costo por lead máximo con el que esa campaña
+    llegaría al objetivo con su conversión y su ticket actuales. El
+    presupuesto decide el VOLUMEN; el ratio lo deciden costo por lead,
+    conversión y ticket.
+    """
+    mes = str(mes).strip().upper()
+    anio = int(anio)
+    if mes not in _MM_ORD or not _MM_ORD[mes]:
+        return None
+    objetivo = float(objetivo or 0) or OBJETIVO_INVERSION_VENTA
+
+    # ---- embudo por campaña, desde el maestro ----
+    filas, _ = _filas_maestro()
+    emb = defaultdict(lambda: {'agendados': 0, 'asistidos': 0,
+                               'realizados': 0, 'monto': 0.0})
+    for f in filas:
+        camp = str(f.get('campana') or '').strip() or '(sin campaña)'
+        if _agendado(f, mes, anio, 1, 31):
+            emb[camp]['agendados'] += 1
+        if _asistido(f, mes, anio, 1, 31):
+            emb[camp]['asistidos'] += 1
+            m = _monto(f)
+            emb[camp]['monto'] += m
+            if m > 0:
+                emb[camp]['realizados'] += 1
+
+    # ---- costo por campaña, desde el export de Meta ----
+    carga = _carga_meta(carga_id)
+    por_meta = {}
+    if carga:
+        for c in carga.get('por_campania') or []:
+            por_meta[_norm_campana(c.get('campania'))] = c
+    usados = set()
+    manual = _inversion_manual(mes, anio)
+
+    campanas = []
+    for camp, e in emb.items():
+        m = _cruce_campana(camp, por_meta)
+        if m:
+            usados.add(_norm_campana(m.get('campania')))
+        gasto = round(float(m['gasto']), 2) if m and m.get('gasto') else None
+        a_mano = manual.get(_norm_campana(camp))
+        if a_mano:
+            gasto = round(a_mano, 2)
+        # "Resultados" en Meta es lo que la campaña optimiza (mensajes,
+        # formularios...): es el lead, el paso previo a que alguien lo agende.
+        leads = int(m['resultados'] or 0) or None if m else None
+        monto = round(e['monto'], 2)
+        ticket = round(monto / e['realizados'], 2) if e['realizados'] else 0.0
+        venta_lead = round(monto / leads, 2) if leads else None
+        venta_agendado = round(monto / e['agendados'], 2) if e['agendados'] else 0.0
+        ratio = round(gasto / monto, 3) if gasto and monto else None
+        campanas.append({
+            'campana': camp,
+            'campana_meta': m.get('campania') if m else None,
+            'gasto': gasto,
+            'gasto_origen': 'manual' if a_mano else ('meta' if gasto else None),
+            'leads': leads,
+            'costo_lead': round(gasto / leads, 2) if gasto and leads else None,
+            # Sin export de Meta no hay leads, pero el agendado sí es dato
+            # propio: sirve de ancla para el mismo cálculo.
+            'costo_agendado': round(gasto / e['agendados'], 2) if gasto and e['agendados'] else None,
+            'costo_realizado': round(gasto / e['realizados'], 2) if gasto and e['realizados'] else None,
+            'agendados': e['agendados'],
+            'asistidos': e['asistidos'],
+            'realizados': e['realizados'],
+            'monto': monto,
+            'ticket': ticket,
+            'pct_lead_agenda': _pct(e['agendados'], leads) if leads else None,
+            'pct_agenda_asiste': _pct(e['asistidos'], e['agendados']),
+            'pct_asiste_realiza': _pct(e['realizados'], e['asistidos']),
+            'pct_agenda_realiza': _pct(e['realizados'], e['agendados']),
+            'venta_por_lead': venta_lead,
+            'venta_por_agendado': venta_agendado,
+            'ratio': ratio,
+            'roas': round(monto / gasto, 2) if gasto and monto else None,
+            # Techo de costo por lead para llegar al objetivo con la
+            # conversión y el ticket que esta campaña tiene hoy.
+            'costo_lead_objetivo': round(venta_lead * objetivo, 2) if venta_lead else None,
+            'costo_agendado_objetivo': round(venta_agendado * objetivo, 2) if venta_agendado else None,
+            'cumple': (ratio is not None and ratio <= objetivo),
+        })
+    campanas.sort(key=lambda c: (-(c['monto'] or 0), -(c['agendados'] or 0)))
+
+    # Campañas que Meta cobró y que no aparecen en ninguna ficha: o el nombre
+    # no calza con lo que se escribe en AGENDADOS, o no trajeron a nadie.
+    # En los dos casos es gasto sin retorno visible y hay que mostrarlo.
+    sin_cruce = [{'campana': c.get('campania'),
+                  'gasto': round(float(c.get('gasto') or 0), 2),
+                  'leads': int(c.get('resultados') or 0),
+                  'costo_lead': c.get('costo_resultado')}
+                 for k, c in por_meta.items()
+                 if k not in usados and (c.get('gasto') or 0) > 0]
+    sin_cruce.sort(key=lambda c: -c['gasto'])
+
+    monto_total = round(sum(c['monto'] for c in campanas), 2)
+    gasto_cruzado = round(sum(c['gasto'] or 0 for c in campanas), 2)
+    gasto_total = round(gasto_cruzado + sum(c['gasto'] for c in sin_cruce), 2)
+    gasto_declarado = _gasto_mensual_declarado(mes, anio)
+    # El export puede no cubrir el mes entero; si el gasto declarado a mano
+    # para ese mes es mayor, ese es el que manda para el ratio global.
+    gasto_global = max(gasto_total, gasto_declarado or 0) or None
+
+    return {
+        'mes': mes, 'anio': anio, 'objetivo': objetivo,
+        'carga': ({'id': carga['id'], 'archivo': carga['archivo'],
+                   'fecha': carga['fecha']} if carga else None),
+        'campanas': campanas,
+        'sin_cruce': sin_cruce,
+        'totales': {
+            'gasto': gasto_global,
+            'gasto_declarado': gasto_declarado,
+            'gasto_en_campanas': gasto_total,
+            'leads': sum(c['leads'] or 0 for c in campanas) or None,
+            'agendados': sum(c['agendados'] for c in campanas),
+            'asistidos': sum(c['asistidos'] for c in campanas),
+            'realizados': sum(c['realizados'] for c in campanas),
+            'monto': monto_total,
+            'ticket': round(monto_total / sum(c['realizados'] for c in campanas), 2)
+                      if sum(c['realizados'] for c in campanas) else 0.0,
+            'ratio': round(gasto_global / monto_total, 3) if gasto_global and monto_total else None,
+            'roas': round(monto_total / gasto_global, 2) if gasto_global and monto_total else None,
+        },
     }
 
 

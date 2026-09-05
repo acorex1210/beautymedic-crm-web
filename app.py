@@ -1319,6 +1319,70 @@ def analitica_proyeccion(mes: str = '', anio: str = ''):
     }
 
 
+INVERSION_CAMPANAS_PATH = os.path.join(DATA_DIR, 'inversion_campanas.json')
+
+
+def _leer_inversion_campanas():
+    if not os.path.exists(INVERSION_CAMPANAS_PATH):
+        return {}
+    try:
+        with open(INVERSION_CAMPANAS_PATH, 'r', encoding='utf-8') as f:
+            datos = json.load(f)
+        return datos if isinstance(datos, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+class InversionCampanasReq(BaseModel):
+    inversion: Dict[str, float] = {}
+
+
+@app.get('/api/analitica/plan-campanas')
+def analitica_plan_campanas(mes: str = '', anio: str = '',
+                            objetivo: float = 0.1, carga: str = ''):
+    """Embudo, costo e inversión/venta de cada campaña del mes indicado.
+
+    Sin mes explícito usa el mes ANTERIOR cerrado, que es sobre el que tiene
+    sentido decidir el presupuesto del mes que viene (el mes en curso todavía
+    está a medias y su costo por resultado no es comparable)."""
+    if mes:
+        m, a, _d, _h = _filtros(mes, anio)
+    else:
+        hoy = datetime.now(cp.TZ).date()
+        previo = hoy.replace(day=1) - timedelta(days=1)
+        m, a = ana._MM[previo.month], previo.year
+    try:
+        plan = ana.plan_campanas(m, a, objetivo=objetivo, carga_id=carga or None)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo calcular el plan por campaña: {e}')
+    if plan is None:
+        raise HTTPException(400, f'Mes inválido: {m}')
+    return {'ok': True, **plan}
+
+
+@app.put('/api/analitica/plan-campanas/inversion')
+def analitica_plan_inversion(data: InversionCampanasReq, mes: str = '', anio: str = ''):
+    """Guarda la inversión por campaña de un mes escrita a mano.
+
+    Es lo que reemplaza a la API de Meta: el equipo sabe qué presupuesto le
+    puso a cada campaña aunque no haya subido el export. Un monto en 0 borra
+    la campaña del registro en vez de guardar un cero que después se lea como
+    "gastó cero"."""
+    m, a, _d, _h = _filtros(mes, anio)
+    todo = _leer_inversion_campanas()
+    limpio = {str(k).strip(): round(float(v), 2)
+              for k, v in (data.inversion or {}).items()
+              if str(k).strip() and float(v or 0) > 0}
+    clave = f'{m}-{a}'
+    if limpio:
+        todo[clave] = limpio
+    else:
+        todo.pop(clave, None)
+    with open(INVERSION_CAMPANAS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(todo, f, ensure_ascii=False, indent=2)
+    return {'ok': True, 'mes': m, 'anio': a, 'inversion': limpio}
+
+
 @app.post('/api/analitica/proyeccion/recalcular')
 def analitica_proyeccion_recalcular(mes: str = '', anio: str = ''):
     """Borra la meta fija guardada de un mes para que se vuelva a calcular
