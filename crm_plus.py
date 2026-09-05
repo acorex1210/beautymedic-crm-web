@@ -836,6 +836,77 @@ def leer_dashboard(anio=None, mes=None):
 # ============================================================
 # ACTIVIDADES DE HOY
 # ============================================================
+# Ventana (en días) alrededor de hoy en la que se busca una venta escrita con
+# la fecha equivocada. Más de esto ya no es un dedazo al escribir el día, es
+# otra visita del paciente.
+DIAS_DESFASE_VENTA = 3
+
+
+def _cruzar_ventas_con_otra_fecha(citas, ag_filas, hojas_venta, hoy_iso):
+    """Marca las citas de hoy cuyo paciente tiene una venta con OTRA fecha.
+
+    La fila de VENTA DIARIA se escribe a mano en el Drive y ahí es fácil
+    equivocarse de día (típico: se arrastra la fecha de la fila de arriba).
+    Cuando pasa, la venta existe pero queda invisible para el resto del
+    sistema: la caja del día sólo suma las filas con la fecha de hoy, y la
+    cita se queda para siempre en "asistió, falta saber si compró". Nada
+    cruzaba AGENDADOS con VENTA DIARIA salvo por fecha exacta, así que el
+    error no se notaba hasta cuadrar caja.
+
+    Sólo se marca la venta cuando el paciente NO tuvo cita ese día: si la
+    tuvo, esa fecha es legítima (es otra visita suya) y no hay nada que
+    corregir.
+    """
+    try:
+        hoy_fecha = datetime.strptime(hoy_iso, '%Y-%m-%d').date()
+    except ValueError:
+        return
+
+    citas_persona = set()
+    for f in ag_filas:
+        iso = _fecha_iso(f.get('L'), f.get('M'), f.get('N'))
+        if not iso:
+            continue
+        for k in _claves_persona(f.get('I'), f.get('G')):
+            citas_persona.add((k, iso))
+
+    sueltas = []
+    for hoja, v in hojas_venta.items():
+        for f in v['filas']:
+            iso = _fecha_iso(f.get('B'), f.get('C'), f.get('D'))
+            if not iso or iso == hoy_iso:
+                continue
+            try:
+                dias = (datetime.strptime(iso, '%Y-%m-%d').date() - hoy_fecha).days
+            except ValueError:
+                continue
+            if abs(dias) > DIAS_DESFASE_VENTA:
+                continue
+            claves = set(_claves_persona(f.get('F'), f.get('G')))
+            if not claves or any((k, iso) in citas_persona for k in claves):
+                continue
+            sueltas.append([claves, hoja, f])
+
+    if not sueltas:
+        return
+    usadas = set()
+    for c in citas:
+        if 'CANCEL' in _status_normalizado(c.get('estado')):
+            continue
+        mias = set(_claves_persona(c.get('telefono'), c.get('nombre')))
+        for i, (claves, hoja, f) in enumerate(sueltas):
+            if i in usadas or not (mias & claves):
+                continue
+            usadas.add(i)
+            c['venta_desfasada'] = {
+                'hoja': hoja, 'fila': f.get('_fila'),
+                'fecha': f'{f.get("B")}/{f.get("C")}/{f.get("D")}',
+                'tratamiento': f.get('L'), 'status': f.get('N'),
+                'monto': am.num(f.get('O')), 'pago': f.get('P'),
+            }
+            break
+
+
 def leer_hoy():
     dia, mes, anio = _hoy()
     clave_hoy = f'{dia}/{mes}/{anio}'
@@ -877,8 +948,9 @@ def leer_hoy():
                       'riesgo_alto': r['no_show'] >= 2})
     citas.sort(key=lambda c: c['hora'] or '99')
 
+    hojas_venta = cd.leer_venta()['hojas']
     ventas = []
-    for v in cd.leer_venta()['hojas'].values():
+    for v in hojas_venta.values():
         for f in v['filas']:
             if not (f.get('B') and f.get('C') and f.get('D')):
                 continue
@@ -888,6 +960,8 @@ def leer_hoy():
                            'doctor': f.get('M'), 'status': f.get('N'),
                            'monto': am.num(f.get('O'))})
     ventas.sort(key=lambda v: v['monto'] or 0, reverse=True)
+
+    _cruzar_ventas_con_otra_fecha(citas, ag_filas, hojas_venta, hoy_iso)
 
     tareas_hoy = []
     tareas_vencidas = []

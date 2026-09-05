@@ -1220,6 +1220,53 @@ def editar_venta(hoja, fila_num, datos):
             'conflicto': conflicto}
 
 
+def actualizar_campos_venta(hoja, fila_num, campos):
+    """Actualiza sólo las letras canónicas indicadas de una fila de VENTA DIARIA.
+
+    editar_venta() reescribe la fila entera con lo que manda el formulario,
+    así que no sirve para corregir un solo dato: todo lo que el formulario no
+    envía (DNI, distrito, edad, observación, campaña...) quedaría en blanco.
+    Acá se conserva la fila y sólo se pisan las letras que llegan, igual que
+    actualizar_campos_agendado hace con AGENDADOS.
+    """
+    if hoja not in ('VENTA 2026', 'VENTA 2025'):
+        raise ValueError('Hoja de venta no válida')
+    if not isinstance(fila_num, int) or fila_num < 1:
+        raise ValueError('Fila inválida')
+    campos = {cl: v for cl, v in (campos or {}).items()
+              if v is not None and v != ''}
+    if not campos:
+        raise ValueError('No hay campos para actualizar')
+    with _lock:
+        fid = am.VENTA_FID
+        if _es_sheets(fid):
+            ruta = descargar('VENTA_DIARIA', fid)
+            _, campos_hdr, _ = _detectar_columnas(ruta, hoja, _HEADERS_VENTA)
+            inverso = _mapa_inverso(campos_hdr, VENTA_CANON)
+            actual = _fila_actual_sheets(fid, hoja, fila_num)
+            for cl, v in campos.items():
+                real = inverso.get(cl)
+                if real:
+                    actual[real] = v
+            letras = sorted(actual, key=openpyxl.utils.column_index_from_string)
+            ncols = openpyxl.utils.column_index_from_string(letras[-1]) if letras else 1
+            fila_row = [actual.get(openpyxl.utils.get_column_letter(c))
+                        for c in range(1, ncols + 1)]
+            fila_row = ['' if v is None else v for v in fila_row]
+            _sheets().spreadsheets().values().update(
+                spreadsheetId=fid,
+                range=f"'{hoja}'!A{fila_num}",
+                valueInputOption='RAW',
+                body={'values': [fila_row]}).execute()
+            invalidar('VENTA_DIARIA')
+            return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'campos': campos}
+        conflicto = _editar_xlsx_seguro('VENTA_DIARIA', fid, hoja, fila_num, campos,
+                                        adaptador=lambda ruta, v:
+                                        _adaptador_edicion_venta(ruta, hoja, fila_num, v))
+    return {'ok': True, 'fila': fila_num, 'hoja': hoja, 'campos': campos,
+            'conflicto': conflicto}
+
+
 def _editar_xlsx_seguro(nombre, fid, hoja, fila_num, valores, adaptador=None):
     """Reescribe una fila de un xlsx de Drive con control de concurrencia."""
     destino = os.path.join(am.TMP_DIR, f'{nombre}_editado.xlsx')

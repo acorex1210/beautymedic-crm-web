@@ -448,6 +448,11 @@
   .rm-celda { width: 100%; min-width: 84px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; font-size: 13px; font-family: inherit; background: transparent; color: inherit; }
   .rm-celda:hover { border-color: var(--borde); }
   .rm-celda:focus { border-color: var(--azul2); background: var(--superficie); outline: none; }
+  /* Aviso de venta escrita con otra fecha, dentro de la tarjeta de la cita:
+     usa var(--naranja), que ya está redefinida por tema, para no tener que
+     duplicar la regla en claro y oscuro. */
+  .aviso-desfase { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--naranja); border-radius: 8px; color: var(--naranja); font-size: 12px; line-height: 1.45; }
+  .aviso-desfase .btn { margin-top: 5px; }
   .btn.mini { padding: 4px 9px; font-size: 11px; border-radius: 6px; line-height: 1.35; }
 
   /* ---------- Citas de hoy: columnas de pipeline, más aire que las
@@ -2537,12 +2542,25 @@ function pintarAlertasPanel(hoyR, confirmR, inactR, syncR) {
     const sinResolverCompra = h.citas.filter(c => {
       if (estadoHoy(c) !== 'ASISTIO') return false;
       if (HOY_ACCIONES[c.fila]?.compra) return false;
+      // Si su venta existe pero con otra fecha, el problema no es que falte
+      // registrarla: es la fecha. Ese caso lo avisa la alerta de abajo, y
+      // contarlo también acá sería decir dos cosas distintas del mismo
+      // paciente.
+      if (c.venta_desfasada) return false;
       const nombre = String(c.nombre || '').trim().toUpperCase();
       return !(nombre && (h.ventas || []).some(v => String(v.nombre || '').trim().toUpperCase() === nombre));
     }).length;
     if (sinResolverCompra > 0) {
       items.push({ n: sinResolverCompra,
                    txt: sinResolverCompra === 1 ? 'paciente asistió y falta saber si compró' : 'pacientes asistieron y falta saber si compraron',
+                   cls: 'bad', pag: 'hoy' });
+    }
+    // Venta anotada en el Drive con la fecha equivocada: es plata real que
+    // no aparece en la caja del día hasta que alguien lo note cuadrando.
+    const desfasadas = h.citas.filter(c => c.venta_desfasada).length;
+    if (desfasadas > 0) {
+      items.push({ n: desfasadas,
+                   txt: desfasadas === 1 ? 'venta anotada con otra fecha (no entra en la caja de hoy)' : 'ventas anotadas con otra fecha (no entran en la caja de hoy)',
                    cls: 'bad', pag: 'hoy' });
     }
   }
@@ -4624,9 +4642,42 @@ function accionesPorEtapa(c) {
   if (e === 'CANCELADA') return accionesReprogramaSolo(c);
   return '';
 }
+/* El paciente tiene una venta registrada en VENTA DIARIA con otra fecha (ver
+   _cruzar_ventas_con_otra_fecha en crm_plus.py). Es el caso típico de la
+   fila escrita a mano en el Drive con el día equivocado: la plata está
+   anotada pero no entra en la caja de hoy ni se cruza con esta cita. Se
+   avisa acá, que es donde se ve el problema, con el arreglo al lado. */
+function avisoVentaDesfasada(c) {
+  const v = c.venta_desfasada;
+  if (!v) return '';
+  const detalle = [v.tratamiento, v.monto ? fmtMon(v.monto) : null, v.pago].filter(Boolean).map(esc).join(' · ');
+  const arreglo = puedeEditar('venta')
+    ? `<button class="btn naranja mini" onclick="corregirFechaVenta(${c.fila})">Pasarla a hoy</button>`
+    : 'Avisa a administración para corregir la fecha.';
+  return `<div class="aviso-desfase">⚠ Tiene una venta anotada con fecha <b>${esc(v.fecha)}</b>${detalle ? ' (' + detalle + ')' : ''}. Si fue de hoy, no está entrando en la caja.
+        ${arreglo}</div>`;
+}
+async function corregirFechaVenta(fila) {
+  const c = HOY_DATA.citas.find(x => x.fila === fila);
+  const v = c && c.venta_desfasada;
+  if (!v) return;
+  if (!confirm(`¿Pasar a hoy la venta de ${c.nombre || 'este paciente'} anotada el ${v.fecha}?`)) return;
+  try {
+    await api(`/api/crm/venta/${v.fila}/fecha`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hoja: v.hoja }),
+    });
+    delete c.venta_desfasada;
+    toast('Fecha corregida: la venta ya entra en la caja de hoy', 'okm');
+    await cargarHoy();
+  } catch (e) {
+    toast(e.message || 'No se pudo corregir la fecha', 'err');
+  }
+}
 function itemHoyHtml(c, acciones) {
   return `<div class="item-hoy"><span class="hora">${esc(c.hora || '—')}</span>
       <div class="info"><b>${esc(c.nombre || '—')}</b> ${chipRiesgoNoShow(c)}<small>${esc(c.telefono || '')} ${c.crm ? '· ' + esc(c.crm) : ''} ${c.campana ? '· ' + esc(c.campana) : ''}</small>
+        ${avisoVentaDesfasada(c)}
         ${acciones ? `<div class="acciones-hoy">${acciones}</div>` : ''}
       </div>
       ${chipHoyCita(c)}

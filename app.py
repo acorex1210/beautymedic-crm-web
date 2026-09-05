@@ -2222,6 +2222,44 @@ def crm_venta_editar(fila: int, hoja: str, data: VentaReq):
     return res
 
 
+class FechaVentaReq(BaseModel):
+    hoja: str = 'VENTA 2026'
+    dia: Optional[int] = None
+    mes: Optional[str] = None
+    anio: Optional[int] = None
+
+
+@app.post('/api/crm/venta/{fila}/fecha')
+def crm_venta_fecha(fila: int, data: FechaVentaReq):
+    """Corrige sólo el día/mes/año de una fila de VENTA DIARIA (por defecto,
+    la pasa a hoy).
+
+    Es para las filas que se escribieron en el Drive con la fecha equivocada:
+    la venta existe, pero la caja del día sólo suma las filas con la fecha de
+    hoy, así que esa plata no aparece por ningún lado. No se usa PUT
+    /api/crm/venta/{fila} porque ese reescribe la fila entera desde el
+    formulario y borraría DNI, distrito, observación y campaña.
+    """
+    d = data.model_dump()
+    dia_hoy, mes_hoy, anio_hoy = cp._hoy()
+    dia = d.get('dia') or dia_hoy
+    mes = d.get('mes') or mes_hoy
+    anio = d.get('anio') or anio_hoy
+    _validar_fecha(dia, mes, anio)
+    with _bloqueo:
+        try:
+            res = crm.actualizar_campos_venta(
+                d.get('hoja') or 'VENTA 2026', fila,
+                {'B': int(dia), 'C': str(mes).upper().replace('SEP', 'SET'),
+                 'D': int(anio)})
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(502, f'No se pudo corregir la fecha de la venta en Drive: {e}')
+    _disparar_sync_bg()
+    return res
+
+
 @app.get('/api/crm/venta/recibo')
 def crm_venta_recibo(hoja: str, fila: int, n: int = 1):
     """Recibo interno en PDF de una venta (una o varias líneas consecutivas
