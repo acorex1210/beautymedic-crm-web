@@ -17,7 +17,7 @@ import os
 import re
 import time
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import openpyxl
@@ -1565,6 +1565,100 @@ def reversar_stock_de_venta(hoja, fila):
                                referencia=f'{prefijo_reversa}{mov.get("D") or ""}',
                                nota='Automático al borrar la venta')
     return f'Se devolvieron {cantidad} unidad(es) de "{mov.get("D") or codigo}" al stock.'
+
+
+def _codigo_sugerido(tratamiento):
+    """Código corto propuesto para dar de alta un tratamiento como producto.
+
+    Los nombres de VENTA DIARIA traen la marca entre paréntesis
+    ("TOXINA BOTU FULL FACE (BEUTOX)"): eso es lo que de verdad se compra y
+    se cuenta en stock, así que se usa como código. Si no hay paréntesis, se
+    arma con las primeras palabras.
+    """
+    t = _status_normalizado(tratamiento)
+    dentro = re.search(r'\(([^)]+)\)', t)
+    if dentro and dentro.group(1).strip():
+        base = dentro.group(1)
+    else:
+        base = re.sub(r'\([^)]*\)', ' ', t)
+    palabras = [p for p in re.split(r'[^A-Z0-9]+', base) if p]
+    return '-'.join(palabras)[:20]
+
+
+def _productos_de_tratamiento(tratamiento, productos):
+    """Productos del catálogo que aparecen dentro del texto de un tratamiento.
+
+    El tratamiento se escribe con la marca adentro, no con el código exacto
+    del inventario ("TOXINA BOTU FULL FACE (BEUTOX)"), así que se busca el
+    código o el nombre del producto DENTRO del texto. Devuelve una lista y no
+    uno solo porque los combos gastan de verdad dos cosas
+    ("DUO TOX BEUTOX + AH. NEURAMIS" son un frasco de cada uno); quedarse con
+    uno arbitrario escondería la mitad del consumo.
+
+    Se descarta el producto cuyo texto coincidente está contenido en el de
+    otro, para no listar "TOX" al lado de "BEUTOX" como si fueran dos.
+    """
+    t = _status_normalizado(tratamiento)
+    hallados = []
+    for p in productos:
+        textos = [_status_normalizado(c) for c in (p.get('codigo'), p.get('producto'))]
+        cal = [c for c in textos if len(c) >= 3 and c in t]
+        if cal:
+            hallados.append((max(cal, key=len), p))
+    return [p for txt, p in hallados
+            if not any(txt != otro and txt in otro for otro, _ in hallados)]
+
+
+def consumo_tratamientos(dias=90):
+    """Tratamientos efectivamente realizados, agrupados, desde VENTA DIARIA.
+
+    El inventario arranca vacío y se llena a mano, pero lo que se usó ya está
+    escrito: cada fila realizada de VENTA DIARIA es un tratamiento aplicado.
+    Agruparlo permite dar de alta los productos que de verdad se consumen sin
+    volver a escribirlos, y ver el consumo real contra el stock.
+
+    ``dias`` acota a los últimos N días; 0 trae todo el histórico. Las filas
+    "NO SE REALIZO" no se cuentan: el paciente vino pero no se le aplicó nada.
+    """
+    limite = None
+    if dias:
+        limite = (datetime.now(TZ).date() - timedelta(days=int(dias))).isoformat()
+
+    try:
+        productos = leer_productos()
+    except Exception:  # noqa: BLE001
+        productos = []
+
+    grupos = {}
+    for v in cd.leer_venta()['hojas'].values():
+        for f in v['filas']:
+            trat = str(f.get('L') or '').strip()
+            if not trat or _es_no_realizado(f.get('N')):
+                continue
+            iso = _fecha_iso(f.get('B'), f.get('C'), f.get('D'))
+            if limite and (not iso or iso < limite):
+                continue
+            g = grupos.setdefault(_status_normalizado(trat), {
+                'tratamiento': trat, 'veces': 0, 'ingresos': 0.0,
+                'primera': None, 'ultima': None,
+            })
+            g['veces'] += 1
+            g['ingresos'] += am.num(f.get('O')) or 0
+            if iso:
+                g['primera'] = min(g['primera'] or iso, iso)
+                g['ultima'] = max(g['ultima'] or iso, iso)
+
+    out = []
+    for g in grupos.values():
+        vinc = _productos_de_tratamiento(g['tratamiento'], productos)
+        g['ingresos'] = round(g['ingresos'], 2)
+        g['vinculados'] = [{'codigo': p['codigo'], 'producto': p['producto'],
+                            'stock': p['stock'], 'stock_bajo': p['stock_bajo']}
+                           for p in vinc]
+        g['codigo_sugerido'] = None if vinc else _codigo_sugerido(g['tratamiento'])
+        out.append(g)
+    out.sort(key=lambda g: (-g['veces'], g['tratamiento']))
+    return out
 
 
 # ============================================================

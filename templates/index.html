@@ -1321,6 +1321,22 @@
         </div>
 
         <div class="tarjeta" style="margin-top:18px;">
+          <div class="toolbar">
+            <h3 style="margin:0;">Tratamientos realizados &middot; según Venta diaria</h3>
+            <select id="invConsumoDias" style="width:auto;margin-left:auto;">
+              <option value="30">Últimos 30 días</option>
+              <option value="90" selected>Últimos 90 días</option>
+              <option value="365">Último año</option>
+              <option value="0">Todo el historial</option>
+            </select>
+          </div>
+          <p class="nota" style="margin:0 0 12px;">Lo que ya está anotado en VENTA DIARIA: cada fila realizada es un
+            tratamiento aplicado. Sirve para dar de alta los productos que de verdad se consumen sin volver a
+            escribirlos, y para ver el consumo real contra el stock. Las filas <b>NO SE REALIZO</b> no se cuentan.</p>
+          <div class="tabla-wrap"><table class="drive" id="tablaInvConsumo" data-acciones-fijas></table></div>
+        </div>
+
+        <div class="tarjeta" style="margin-top:18px;">
           <h3>Kardex &middot; últimos movimientos</h3>
           <div class="tabla-wrap"><table class="drive" id="tablaInvMovimientos"></table></div>
         </div>
@@ -3791,6 +3807,7 @@ async function cargarInventario() {
   }
   pintarInventario();
   cargarInvMovimientos();
+  cargarInvConsumo();
 }
 function invFilasActivas() {
   const q = $('invBuscar').value.trim().toLowerCase();
@@ -3839,6 +3856,61 @@ async function cargarInvMovimientos() {
       </tr>`).join('') + '</tbody>'
     : '<tr><td><div class="vacio">Sin movimientos aún.</div></td></tr>';
 }
+
+/* ---- Tratamientos realizados (desde VENTA DIARIA) ----
+   El catálogo de inventario se llena a mano y arranca vacío, pero lo que se
+   usó ya está escrito en Venta diaria. Esto lo trae agrupado para dar de alta
+   el producto sin volver a escribirlo y para ver el consumo contra el stock. */
+let INV_CONSUMO = [];
+function fmtFechaIso(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? `${+m[3]}/${MESES[+m[2] - 1]}/${m[1]}` : '';
+}
+async function cargarInvConsumo() {
+  const tabla = $('tablaInvConsumo');
+  tabla.innerHTML = '<tr><td><div class="carga"><span class="spinner"></span>Leyendo Venta diaria&hellip;</div></td></tr>';
+  try {
+    const r = await api('/api/crm/inventario/consumo?dias=' + encodeURIComponent($('invConsumoDias').value));
+    INV_CONSUMO = r.tratamientos;
+  } catch (e) {
+    tabla.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
+    return;
+  }
+  pintarInvConsumo();
+}
+function pintarInvConsumo() {
+  const puedeCrear = puedeEditar('inventario');
+  $('tablaInvConsumo').innerHTML = INV_CONSUMO.length
+    ? '<thead><tr><th>Tratamiento</th><th class="der">Veces</th><th class="der">Facturado</th><th>Primera vez</th><th>Última vez</th><th>En inventario</th><th>Acciones</th></tr></thead><tbody>' +
+      INV_CONSUMO.map((t, i) => `<tr>
+        <td>${esc(t.tratamiento)}</td>
+        <td class="der">${t.veces}</td>
+        <td class="der">${fmtMon(t.ingresos)}</td>
+        <td>${esc(fmtFechaIso(t.primera))}</td>
+        <td>${esc(fmtFechaIso(t.ultima))}</td>
+        <td>${t.vinculados.length
+              ? t.vinculados.map(v => `${esc(v.codigo)} <span class="chip ${v.stock_bajo ? 'bad' : 'ok'}">stock ${v.stock}</span>`).join('<br>')
+              : '<span class="chip warn">sin producto</span>'}</td>
+        <td>${t.vinculados.length || !puedeCrear ? ''
+              : `<button class="btn verde pequeno" onclick="crearProductoDeTratamiento(${i})">+ Crear producto</button>`}</td>
+      </tr>`).join('') + '</tbody>'
+    : '<tr><td><div class="vacio">Sin tratamientos realizados en ese periodo.</div></td></tr>';
+}
+/* Abre el formulario de producto ya lleno con el tratamiento: sólo queda
+   confirmar el código y escribir el stock real, que es el único dato que la
+   hoja no tiene. */
+function crearProductoDeTratamiento(i) {
+  const t = INV_CONSUMO[i];
+  if (!t) return;
+  abrirModalProducto(null);
+  $('prodNombre').value = t.tratamiento;
+  $('prodCodigo').value = t.codigo_sugerido || '';
+  $('prodStock').value = 0;
+  $('prodCodigo').focus();
+  $('prodCodigo').select();
+}
+$('invConsumoDias').addEventListener('change', cargarInvConsumo);
+
 $('invBuscar').addEventListener('input', pintarInventario);
 $('btnInvRecargar').addEventListener('click', cargarInventario);
 $('btnInvNuevo').addEventListener('click', () => abrirModalProducto(null));

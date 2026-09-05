@@ -2615,6 +2615,18 @@ def inventario_movimientos(codigo: str = '', limite: int = 200):
         raise HTTPException(502, f'No se pudo leer los movimientos (Drive): {e}')
 
 
+@app.get('/api/crm/inventario/consumo')
+def inventario_consumo(dias: int = 90):
+    """Tratamientos realizados según VENTA DIARIA, para dar de alta lo que se
+    consume sin volver a escribirlo y para ver el consumo real contra el stock.
+    `dias=0` trae todo el histórico."""
+    try:
+        return {'ok': True, 'dias': dias,
+                'tratamientos': cp.consumo_tratamientos(dias)}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f'No se pudo leer VENTA DIARIA de Drive: {e}')
+
+
 @app.post('/api/crm/inventario/productos/{pid}/movimiento')
 def inventario_movimiento_nuevo(pid: int, data: MovimientoStockReq):
     try:
