@@ -3193,7 +3193,7 @@ function abrirModalAgendado() {
   $('agHora').value = ''; $('agNombre').value = ''; $('agTelefono').value = '';
   $('agCorreo').value = ''; $('agObservacion').value = ''; $('agObservacion2').value = '';
   $('agCrm').value = ''; $('agCampana').value = ''; $('agRedSocial').value = '';
-  $('agAgendadoPor').value = ''; $('agConfirmado').value = 'CONFIRMADO';
+  $('agAgendadoPor').value = ''; $('agConfirmado').value = '';
   $('agReconfirmado').value = '';
   $('msgAgForm').classList.add('oculto');
   $('modalAgendado').querySelector('.cab h3').textContent = 'Nuevo agendado';
@@ -3220,7 +3220,7 @@ function editarAgendado(fila) {
   $('agCitaDia').value = f.L ?? HOY_D; $('agCitaMes').value = f.M || HOY_M; $('agCitaAnio').value = f.N ?? HOY_A;
   $('agCampana').value = f.O || '';
   $('agHora').value = f.P || '';
-  $('agConfirmado').value = f.Q || 'CONFIRMADO';
+  $('agConfirmado').value = f.Q || '';
   $('agObservacion').value = f.R || '';
   $('agReconfirmado').value = f.S || '';
   $('agObservacion2').value = f.T || '';
