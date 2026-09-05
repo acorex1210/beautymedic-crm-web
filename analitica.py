@@ -462,11 +462,13 @@ def _carga_meta(carga_id=None):
         return None
 
 
-def _gasto_mensual_declarado(mes, anio):
-    """Inversión total del mes escrita a mano en Meta ads (meta_mensual.json).
+def _meta_venta_mes(mes, anio):
+    """Meta de VENTA del mes (meta_mensual.json), la del Panel.
 
-    Es el respaldo cuando no hay un export de Meta subido: no da el detalle
-    por campaña, pero sí permite calcular el ratio inversión/venta global.
+    OJO: "meta" acá es objetivo de venta, no Meta/Facebook. Este archivo no
+    tiene nada que ver con la inversión en publicidad — leerlo como gasto da
+    un ratio inversión/venta inventado. La inversión sale del export de Meta
+    Ads o de lo que se escriba a mano por campaña (ver _inversion_manual).
     """
     try:
         ruta = os.path.join(os.environ.get('DATA_DIR', 'data'), 'meta_mensual.json')
@@ -636,10 +638,11 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
     monto_total = round(sum(c['monto'] for c in campanas), 2)
     gasto_cruzado = round(sum(c['gasto'] or 0 for c in campanas), 2)
     gasto_total = round(gasto_cruzado + sum(c['gasto'] for c in sin_cruce), 2)
-    gasto_declarado = _gasto_mensual_declarado(mes, anio)
-    # El export puede no cubrir el mes entero; si el gasto declarado a mano
-    # para ese mes es mayor, ese es el que manda para el ratio global.
-    gasto_global = max(gasto_total, gasto_declarado or 0) or None
+    # Sólo cuenta como inversión lo que de verdad se invirtió: el export de
+    # Meta o lo escrito a mano por campaña. Si no hay ninguno de los dos, el
+    # ratio queda en None y la pantalla lo pide, en vez de inventar un número.
+    gasto_global = gasto_total or None
+    meta_venta = _meta_venta_mes(mes, anio)
 
     return {
         'mes': mes, 'anio': anio, 'objetivo': objetivo,
@@ -649,7 +652,11 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
         'sin_cruce': sin_cruce,
         'totales': {
             'gasto': gasto_global,
-            'gasto_declarado': gasto_declarado,
+            'meta_venta': meta_venta,
+            # Techo de inversión que esa meta de venta soporta al objetivo:
+            # si la meta son 15 000 y el objetivo 0.1, más de 1 500 en
+            # anuncios ya rompe el objetivo aunque la meta se cumpla.
+            'inversion_para_meta': round(meta_venta * objetivo, 2) if meta_venta else None,
             'gasto_en_campanas': gasto_total,
             'leads': sum(c['leads'] or 0 for c in campanas) or None,
             'agendados': sum(c['agendados'] for c in campanas),

@@ -6647,6 +6647,15 @@ function pcPintarResumen() {
     partes.push(`Con ${fmtMon(inv)} invertidos y ${fmtMon(p.totales.monto)} vendidos, ${p.mes} ${p.anio} cerró en `
       + `<b>${ratio.toFixed(2)}</b> (ROAS ${(1 / ratio).toFixed(2)}x). Para el objetivo ${obj} habría que vender `
       + `<b>${fmtMon(inv / obj)}</b> con esa misma inversión, o invertir <b>${fmtMon(p.totales.monto * obj)}</b> para esa venta.`);
+  } else {
+    partes.push('Todavía no hay inversión registrada: escríbela por campaña y guarda, o sube el export de Meta Ads. '
+      + 'Sin eso no se puede calcular inv./venta ni ROAS.');
+  }
+  // La meta del mes es de VENTA (la del Panel), no de inversión: sirve para
+  // saber cuánto se puede gastar en anuncios sin romper el objetivo.
+  if (p.totales.meta_venta) {
+    partes.push(`Meta de venta del mes: <b>${fmtMon(p.totales.meta_venta)}</b> — al objetivo ${obj} soporta hasta `
+      + `<b>${fmtMon(p.totales.inversion_para_meta)}</b> de inversión publicitaria.`);
   }
   partes.push(`${cumplen.length} de ${medidas.length} campaña(s) medida(s) llegan al ${obj}.`);
   if (sinInv.length) partes.push(`Falta la inversión de: <b>${sinInv.map(c => esc(c.campana)).join(', ')}</b>.`);
