@@ -15,6 +15,7 @@ Funciones principales:
 import calendar
 import json
 import os
+import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
@@ -497,13 +498,31 @@ def _inversion_manual(mes, anio):
         return {}
 
 
+# Palabras que no distinguen una campaña de otra y sólo generan cruces falsos.
+_RUIDO_CAMPANA = {'CAMPANA', 'LEADS', 'MENSAJES', 'WHATSAPP', 'ADS', 'META',
+                  'NUEVO', 'NUEVA', 'PROMO', 'CLINICA', 'DERMA', 'ESSENZA'}
+
+
+def _tokens_campana(nombre):
+    """Palabras que de verdad identifican a una campaña.
+
+    Se van los años y números sueltos ("TOXINA 2026" y "TOXINA FULL FACE" son
+    la misma campaña con el año pegado) y las palabras de relleno.
+    """
+    return {p for p in re.split(r'[^A-Z0-9]+', _norm_campana(nombre))
+            if len(p) >= 4 and not p.isdigit() and p not in _RUIDO_CAMPANA}
+
+
 def _cruce_campana(nombre, disponibles):
     """Campaña de Meta que corresponde a una campaña de las hojas (o None).
 
-    En Meta la campaña se llama con más texto del que el equipo escribe en
-    AGENDADOS ("ACIDO HIALURONICO" vs "PE | Leads | Ácido hialurónico ago"),
-    así que además del nombre exacto se acepta que uno contenga al otro, y
-    gana la coincidencia más larga (la más específica).
+    Los nombres nunca calzan literal: en Meta la campaña se llama
+    "TOXINA 2026" o "CONSULTA GRATIS 2026" y en AGENDADOS se escribe
+    "TOXINA FULL FACE" y "CONSULTA GRATUITA". Se prueba en tres niveles, del
+    más seguro al más flexible: nombre idéntico, uno contenido en el otro, y
+    por último palabras clave en común. Sin ninguna coincidencia se devuelve
+    None y el gasto aparece en "sin cruce", que es lo correcto: mejor que se
+    vea el gasto suelto a inventarle un embudo que no le corresponde.
     """
     n = _norm_campana(nombre)
     if not n:
@@ -516,6 +535,21 @@ def _cruce_campana(nombre, disponibles):
             largo = min(len(otro), len(n))
             if mejor is None or largo > mejor[0]:
                 mejor = (largo, dato)
+    if mejor:
+        return mejor[1]
+    mios = _tokens_campana(n)
+    if not mios:
+        return None
+    mejor = None
+    for otro, dato in disponibles.items():
+        comunes = mios & _tokens_campana(otro)
+        if not comunes:
+            continue
+        # Más palabras en común gana; a igualdad, la palabra más larga (es
+        # la más específica: "HIALURONICO" distingue más que "TOXINA").
+        peso = (len(comunes), sum(len(x) for x in comunes))
+        if mejor is None or peso > mejor[0]:
+            mejor = (peso, dato)
     return mejor[1] if mejor else None
 
 

@@ -6580,7 +6580,8 @@ function pintarPlanCampanas() {
               value="${c.gasto === null ? '' : c.gasto}" oninput="pcRecalcular(${i})" id="pcInv${i}" placeholder="—">
           ${c.gasto_origen === 'meta' ? '<small style="display:block;color:var(--gris);">del export</small>' : ''}</td>
         <td class="der">${c.leads === null ? '—' : `${c.leads}<small style="display:block;color:var(--gris);">S/ ${pcNum(c.costo_lead, 2)} c/u</small>`}</td>
-        <td class="der">${c.agendados}</td>
+        <td class="der">${c.agendados}${c.pct_lead_agenda === null ? ''
+              : `<small style="display:block;color:var(--gris);">${c.pct_lead_agenda}% de leads</small>`}</td>
         <td class="der">${c.asistidos}<small style="display:block;color:var(--gris);">${c.pct_agenda_asiste}%</small></td>
         <td class="der">${c.realizados}<small style="display:block;color:var(--gris);">${c.pct_asiste_realiza}%</small></td>
         <td class="der">${fmtMon(c.ticket)}</td>
