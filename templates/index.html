@@ -82,6 +82,17 @@
   .side-usuario .salir { background: none; border: 0; color: #8fa3c8; cursor: pointer; padding: 5px; border-radius: 7px; display: flex; }
   .side-usuario .salir:hover { color: #fff; background: rgba(255,255,255,.1); }
 
+  .side-presencia { padding: 10px 16px; border-top: 1px solid rgba(255,255,255,.08); font-size: 12px; color: #8fa3c8; }
+  .side-presencia .cab { display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+  .side-presencia .punto { width: 8px; height: 8px; border-radius: 50%; background: #35c98c; flex: none; box-shadow: 0 0 0 0 rgba(53,201,140,.6); animation: latido 2.4s ease-out infinite; }
+  .side-presencia .punto.solo { background: #8fa3c8; animation: none; }
+  @keyframes latido { 0% { box-shadow: 0 0 0 0 rgba(53,201,140,.55); } 70% { box-shadow: 0 0 0 7px rgba(53,201,140,0); } 100% { box-shadow: 0 0 0 0 rgba(53,201,140,0); } }
+  @media (prefers-reduced-motion: reduce) { .side-presencia .punto { animation: none; } }
+  .side-presencia .quienes { margin-top: 8px; display: none; }
+  .side-presencia.abierta .quienes { display: block; }
+  .side-presencia .quien { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; color: #cfdaf0; }
+  .side-presencia .quien small { color: #8fa3c8; }
+
   /* ---------- Main ---------- */
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .topbar {
@@ -975,6 +986,7 @@
       </span>
       <span class="tema-switch"><span class="tema-switch-bola"></span></span>
     </button>
+    <div class="side-presencia" id="sidePresencia"></div>
     <div class="side-usuario" id="sideUsuario"></div>
     <div class="side-pies" id="estadoPie"></div>
   </aside>
@@ -2284,6 +2296,41 @@ function aplicarOrdenMenu(orden) {
   // final en vez de desaparecer.
   porClave.forEach((a, clave) => { if (!usados.has(clave)) nav.appendChild(a); });
 }
+/* ---------------- Presencia: quién está trabajando ahora ----------------
+   El servidor marca presencia en CADA petición autenticada (ver
+   _marcar_presencia en app.py), así que trabajar ya cuenta como estar en
+   línea. Este latido existe sólo para la pestaña abierta que no toca nada:
+   pedir /api/presencia es a la vez la consulta y el latido de quien pregunta. */
+const PRESENCIA_CADA_MS = 30000;
+let PRESENCIA_TIMER = null;
+async function latirPresencia() {
+  const caja = $('sidePresencia');
+  if (!caja) return;
+  let r;
+  try { r = await api('/api/presencia'); }
+  catch (e) { return; }  // sin red o sesión caída: se reintenta al próximo latido
+  const n = r.usuarios.length;
+  const solo = n <= 1;
+  caja.innerHTML = `
+    <div class="cab" onclick="this.parentNode.classList.toggle('abierta')" title="Ver quiénes">
+      <span class="punto ${solo ? 'solo' : ''}"></span>
+      <span><b style="color:#fff;">${n}</b> ${n === 1 ? 'persona en línea' : 'personas en línea'}</span>
+    </div>
+    <div class="quienes">${r.usuarios.map(u => `
+      <div class="quien"><span>${esc(u.nombre)}${u.yo ? ' (tú)' : ''}</span>
+        <small>${u.hace_seg < 15 ? 'ahora' : 'hace ' + u.hace_seg + 's'}</small></div>`).join('')}</div>`;
+}
+function arrancarPresencia() {
+  clearInterval(PRESENCIA_TIMER);
+  latirPresencia();
+  PRESENCIA_TIMER = setInterval(latirPresencia, PRESENCIA_CADA_MS);
+}
+/* Con la pestaña en segundo plano el navegador frena los timers y el usuario
+   caería de la lista sin haberse ido; al volver se late de inmediato. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') latirPresencia();
+});
+
 async function cargarSesion() {
   const r = await api('/api/yo');
   YO = r.usuario;
@@ -2306,6 +2353,7 @@ async function cargarSesion() {
     <button class="salir" id="btnSalir" title="Cerrar sesión" aria-label="Cerrar sesión">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
     </button>`;
+  arrancarPresencia();
   $('btnSalir').addEventListener('click', async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* igual salimos */ }
     location.href = '/login';

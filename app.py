@@ -263,6 +263,67 @@ async def _con_tiempo(request, call_next):
     return resp
 
 
+# ============================================================
+# Presencia: quién está usando la web ahora mismo
+# ============================================================
+# Se considera "en línea" a quien hizo algo en los últimos PRESENCIA_VENTANA_SEG
+# segundos. El frontend late cada 30s, así que el margen deja pasar un latido
+# perdido sin sacar a nadie de la lista.
+PRESENCIA_VENTANA_SEG = 90
+_presencia: Dict[str, Dict] = {}
+_presencia_lock = threading.Lock()
+
+
+def _marcar_presencia(perfil):
+    """Anota que este usuario está activo, desde el middleware.
+
+    Al colgarlo del middleware cualquier acción cuenta como presencia y no
+    hace falta tráfico extra: el latido del navegador (GET /api/presencia)
+    sólo existe para la pestaña abierta que no toca nada.
+
+    Vive en memoria a propósito: es un dato de los últimos 90 segundos y no
+    vale la pena escribirlo a disco. Con más de una réplica cada una vería
+    sólo a los suyos; hoy el servicio corre con una.
+    """
+    with _presencia_lock:
+        _presencia[perfil['usuario']] = {
+            'usuario': perfil['usuario'],
+            'nombre': perfil.get('nombre') or perfil['usuario'],
+            'rol': perfil.get('rol'),
+            'rol_nombre': perfil.get('rol_nombre'),
+            'visto': time.time(),
+        }
+
+
+def _en_linea():
+    corte = time.time() - PRESENCIA_VENTANA_SEG
+    with _presencia_lock:
+        vivos = [dict(v) for v in _presencia.values() if v['visto'] >= corte]
+        # Limpieza oportunista: sin esto el dict crece con cada usuario que
+        # entró alguna vez desde que arrancó el proceso.
+        for u in [k for k, v in _presencia.items() if v['visto'] < corte]:
+            del _presencia[u]
+    vivos.sort(key=lambda v: -v['visto'])
+    return vivos
+
+
+@app.get('/api/presencia')
+def presencia(request: Request):
+    """Usuarios activos ahora. Pedirlo cuenta como latido de quien pregunta,
+    porque la petición ya pasó por el middleware que marca presencia."""
+    yo = getattr(request.state, 'usuario', {}) or {}
+    ahora = time.time()
+    return {
+        'ok': True,
+        'ventana_seg': PRESENCIA_VENTANA_SEG,
+        'usuarios': [{'usuario': v['usuario'], 'nombre': v['nombre'],
+                      'rol': v['rol'], 'rol_nombre': v['rol_nombre'],
+                      'hace_seg': int(ahora - v['visto']),
+                      'yo': v['usuario'] == yo.get('usuario')}
+                     for v in _en_linea()],
+    }
+
+
 @app.middleware('http')
 async def control_de_acceso(request: Request, call_next):
     """Puerta única de entrada: toda ruta pide sesión salvo las públicas, y el
@@ -290,6 +351,7 @@ async def control_de_acceso(request: Request, call_next):
             status_code=403)
 
     request.state.usuario = perfil
+    _marcar_presencia(perfil)
     return await _con_tiempo(request, call_next)
 
 BRAND = {

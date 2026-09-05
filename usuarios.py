@@ -56,7 +56,8 @@ SECCIONES = ['panel', 'reportes', 'agendados', 'venta', 'caja', 'inventario',
 # (Calendario, por ejemplo, lee de AGENDADOS).
 RECURSOS = {
     # Lo que necesita cualquiera que haya entrado, sea cual sea su rol.
-    'comun': ['/api/estado', '/api/yo', '/api/logout', '/api/asistente'],
+    'comun': ['/api/estado', '/api/yo', '/api/logout', '/api/asistente',
+              '/api/presencia'],
     'agendados': ['/api/crm/agendados'],
     'venta': ['/api/crm/venta'],
     'hoy': ['/api/crm/hoy', '/api/crm/tareas'],
