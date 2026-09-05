@@ -1536,6 +1536,12 @@
               <input type="number" id="pcObjetivo" value="0.1" step="0.01" min="0.01" max="2"
                      style="width:74px;padding:7px 9px;border:1px solid var(--borde);border-radius:8px;">
             </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--gris);font-size:12px;"
+                   title="Lo que salió de la cuenta, con IGV y comisiones. El export de Meta no las incluye.">
+              Pagado de verdad S/
+              <input type="number" id="pcReal" step="50" min="0" placeholder="con comisiones"
+                     style="width:118px;padding:7px 9px;border:1px solid var(--borde);border-radius:8px;">
+            </label>
             <button class="btn gris" id="btnPcRecargar">Actualizar</button>
             <button class="btn verde" id="btnPcGuardarInv" style="margin-left:auto;">Guardar inversión</button>
           </div>
@@ -6589,6 +6595,7 @@ async function cargarPlanCampanas() {
     tabla.innerHTML = `<tr><td><div class="vacio">${esc(e.message)}</div></td></tr>`;
     return;
   }
+  $('pcReal').value = PLAN_CAMP.totales.inversion_real || '';
   pintarPlanCampanas();
 }
 function pintarPlanCampanas() {
@@ -6676,6 +6683,16 @@ function pcPintarResumen() {
     partes.push('Todavía no hay inversión registrada: escríbela por campaña y guarda, o sube el export de Meta Ads. '
       + 'Sin eso no se puede calcular inv./venta ni ROAS.');
   }
+  // El export de Meta no trae IGV ni la comisión del cobro. Sin corregirlo,
+  // toda campaña se ve mejor de lo que es.
+  if (p.totales.recargo_pct) {
+    partes.push(`El export de Meta reporta <b>${fmtMon(p.totales.gasto_export)}</b> y de la cuenta salieron `
+      + `<b>${fmtMon(p.totales.inversion_real)}</b>: <b>+${p.totales.recargo_pct}%</b> de IGV y comisiones, `
+      + `repartido entre las campañas. Los ratios de arriba ya usan la cifra real.`);
+  } else if (p.totales.gasto_export) {
+    partes.push(`Los costos vienen del export de Meta, que <b>no incluye IGV ni comisiones</b>. `
+      + `Escribe en "Pagado de verdad" lo que salió de la cuenta para que el ROAS sea el real.`);
+  }
   // La meta del mes es de VENTA (la del Panel), no de inversión: sirve para
   // saber cuánto se puede gastar en anuncios sin romper el objetivo.
   if (p.totales.meta_venta) {
@@ -6699,7 +6716,8 @@ async function pcGuardarInversion() {
   });
   try {
     await api(`/api/analitica/plan-campanas/inversion?mes=${encodeURIComponent(PLAN_CAMP.mes)}&anio=${PLAN_CAMP.anio}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inversion }),
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inversion, real: parseFloat($('pcReal').value) || null }),
     });
     toast('Inversión por campaña guardada', 'okm');
     cargarPlanCampanas();

@@ -513,6 +513,23 @@ def _tokens_campana(nombre):
             if len(p) >= 4 and not p.isdigit() and p not in _RUIDO_CAMPANA}
 
 
+def _inversion_real_mes(mes, anio):
+    """Lo que de verdad se pagó de publicidad en el mes (inversion_real.json).
+
+    El export de Meta trae el "importe gastado" sin IGV ni la comisión que
+    cobran al cobrar la tarjeta: en agosto reportó S/ 2 731 y de la cuenta
+    salieron ~S/ 3 500, un 28% más. Calcular el ROAS con la cifra del export
+    hace ver toda campaña mejor de lo que es. Este número es un solo total
+    por mes y se reparte proporcionalmente entre las campañas.
+    """
+    try:
+        ruta = os.path.join(os.environ.get('DATA_DIR', 'data'), 'inversion_real.json')
+        with open(ruta, encoding='utf-8') as f:
+            return float(json.load(f).get(f'{mes}-{anio}') or 0) or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _cruce_campana(nombre, disponibles):
     """Campaña de Meta que corresponde a una campaña de las hojas (o None).
 
@@ -606,6 +623,11 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
     if carga:
         for c in carga.get('por_campania') or []:
             por_meta[_norm_campana(c.get('campania'))] = c
+    # Recargo: lo pagado de verdad / lo que reporta el export. Se aplica sólo
+    # al gasto que sale del export; lo escrito a mano ya es plata real.
+    inversion_real = _inversion_real_mes(mes, anio)
+    gasto_export = sum(float(c.get('gasto') or 0) for c in por_meta.values())
+    recargo = (inversion_real / gasto_export) if (inversion_real and gasto_export) else 1.0
     usados = set()
     manual = _inversion_manual(mes, anio)
 
@@ -614,7 +636,7 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
         m = _cruce_campana(camp, por_meta)
         if m:
             usados.add(_norm_campana(m.get('campania')))
-        gasto = round(float(m['gasto']), 2) if m and m.get('gasto') else None
+        gasto = round(float(m['gasto']) * recargo, 2) if m and m.get('gasto') else None
         a_mano = manual.get(_norm_campana(camp))
         if a_mano:
             gasto = round(a_mano, 2)
@@ -662,7 +684,7 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
     # no calza con lo que se escribe en AGENDADOS, o no trajeron a nadie.
     # En los dos casos es gasto sin retorno visible y hay que mostrarlo.
     sin_cruce = [{'campana': c.get('campania'),
-                  'gasto': round(float(c.get('gasto') or 0), 2),
+                  'gasto': round(float(c.get('gasto') or 0) * recargo, 2),
                   'leads': int(c.get('resultados') or 0),
                   'costo_lead': c.get('costo_resultado')}
                  for k, c in por_meta.items()
@@ -686,6 +708,9 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
         'sin_cruce': sin_cruce,
         'totales': {
             'gasto': gasto_global,
+            'gasto_export': round(gasto_export, 2) or None,
+            'inversion_real': inversion_real,
+            'recargo_pct': round((recargo - 1) * 100, 1) if recargo != 1.0 else None,
             'meta_venta': meta_venta,
             # Techo de inversión que esa meta de venta soporta al objetivo:
             # si la meta son 15 000 y el objetivo 0.1, más de 1 500 en

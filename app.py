@@ -1329,6 +1329,7 @@ def analitica_proyeccion(mes: str = '', anio: str = ''):
 
 
 INVERSION_CAMPANAS_PATH = os.path.join(DATA_DIR, 'inversion_campanas.json')
+INVERSION_REAL_PATH = os.path.join(DATA_DIR, 'inversion_real.json')
 
 
 def _leer_inversion_campanas():
@@ -1344,6 +1345,9 @@ def _leer_inversion_campanas():
 
 class InversionCampanasReq(BaseModel):
     inversion: Dict[str, float] = {}
+    # Total realmente pagado en el mes, con IGV y comisiones incluidas. El
+    # export de Meta no las trae, así que sin esto el ROAS sale inflado.
+    real: Optional[float] = None
 
 
 @app.get('/api/analitica/plan-campanas')
@@ -1389,7 +1393,22 @@ def analitica_plan_inversion(data: InversionCampanasReq, mes: str = '', anio: st
         todo.pop(clave, None)
     with open(INVERSION_CAMPANAS_PATH, 'w', encoding='utf-8') as f:
         json.dump(todo, f, ensure_ascii=False, indent=2)
-    return {'ok': True, 'mes': m, 'anio': a, 'inversion': limpio}
+
+    reales = {}
+    if os.path.exists(INVERSION_REAL_PATH):
+        try:
+            with open(INVERSION_REAL_PATH, 'r', encoding='utf-8') as f:
+                reales = json.load(f) or {}
+        except Exception:  # noqa: BLE001
+            reales = {}
+    if data.real and data.real > 0:
+        reales[clave] = round(float(data.real), 2)
+    else:
+        reales.pop(clave, None)
+    with open(INVERSION_REAL_PATH, 'w', encoding='utf-8') as f:
+        json.dump(reales, f, ensure_ascii=False, indent=2)
+    return {'ok': True, 'mes': m, 'anio': a, 'inversion': limpio,
+            'real': reales.get(clave)}
 
 
 @app.post('/api/analitica/proyeccion/recalcular')
