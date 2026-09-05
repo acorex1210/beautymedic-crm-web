@@ -448,6 +448,13 @@
   .rm-celda { width: 100%; min-width: 84px; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; font-size: 13px; font-family: inherit; background: transparent; color: inherit; }
   .rm-celda:hover { border-color: var(--borde); }
   .rm-celda:focus { border-color: var(--azul2); background: var(--superficie); outline: none; }
+  /* Celda de monto del plan de campañas: a diferencia de Re llamadas, acá el
+     input suele estar VACÍO (todavía no se escribió la inversión), y con el
+     borde transparente de .rm-celda la columna entera se ve en blanco, como
+     si no existiera. Acá el borde va siempre visible. */
+  .pc-monto { width: 100%; min-width: 92px; padding: 6px 8px; text-align: right; border: 1px solid var(--borde); border-radius: 7px; font-size: 13px; font-family: inherit; background: var(--superficie); color: inherit; }
+  .pc-monto:focus { border-color: var(--azul2); outline: none; }
+  .pc-monto::placeholder { color: var(--gris); opacity: .7; }
   /* Aviso de venta escrita con otra fecha, dentro de la tarjeta de la cita:
      usa var(--naranja), que ya está redefinida por tema, para no tener que
      duplicar la regla en claro y oscuro. */
@@ -2481,18 +2488,19 @@ async function cargarMetaMensual() {
     meta = r.meta || 0;
   } catch (e) { /* sin meta guardada aún */ }
   $('metaInput').value = meta || '';
-  if (!meta) { $('metaProgreso').classList.add('oculto'); return; }
+  $('metaProgreso').classList.toggle('oculto', !meta);
   try {
     const k = await api(`/api/analitica/kpis?mes=${HOY_M}&anio=${HOY_A}&desde=1&hasta=31`);
     const actual = k.monto || 0;
-    const pct = Math.min(100, Math.round(100 * actual / meta));
-    $('metaProgreso').classList.remove('oculto');
-    $('metaMontoActual').textContent = fmtMon(actual);
-    $('metaMontoObjetivo').textContent = 'Meta: ' + fmtMon(meta);
-    $('metaBarra').style.width = pct + '%';
-    $('metaBarra').style.background = pct >= 100 ? 'linear-gradient(90deg,#2e9e5b,#57c785)' : pct >= 60 ? 'linear-gradient(90deg,#e08a2e,#f0b45e)' : 'linear-gradient(90deg,#d64545,#e57373)';
-    $('metaPct').textContent = `${pct}% de la meta ${pct >= 100 ? '· ¡meta alcanzada!' : ''}`;
-    $('metaNota').classList.add('oculto');
+    if (meta) {
+      const pct = Math.min(100, Math.round(100 * actual / meta));
+      $('metaMontoActual').textContent = fmtMon(actual);
+      $('metaMontoObjetivo').textContent = 'Meta: ' + fmtMon(meta);
+      $('metaBarra').style.width = pct + '%';
+      $('metaBarra').style.background = pct >= 100 ? 'linear-gradient(90deg,#2e9e5b,#57c785)' : pct >= 60 ? 'linear-gradient(90deg,#e08a2e,#f0b45e)' : 'linear-gradient(90deg,#d64545,#e57373)';
+      $('metaPct').textContent = `${pct}% de la meta ${pct >= 100 ? '· ¡meta alcanzada!' : ''}`;
+      $('metaNota').classList.add('oculto');
+    }
 
     // Dos proyecciones del mismo modelo (ver ana.proyeccion_mes en el
     // backend): 'fija' se calcula UNA sola vez por mes (como si fuera el
@@ -2503,22 +2511,38 @@ async function cargarMetaMensual() {
     const py = await api(`/api/analitica/proyeccion?mes=${HOY_M}&anio=${HOY_A}`);
     const { fija, dinamica } = py;
     const bloqueProy = (etiqueta, detalle, monto, pct) => {
-      const color = monto >= meta ? 'var(--verde)' : pct >= 70 ? 'var(--naranja)' : 'var(--rojo)';
+      const color = !meta ? 'var(--texto)' : monto >= meta ? 'var(--verde)' : pct >= 70 ? 'var(--naranja)' : 'var(--rojo)';
       const icono = monto >= meta ? '✓' : '⚠';
       return `<div style="flex:1;min-width:160px;">
         <div style="color:var(--gris);">${etiqueta} <span style="font-size:11px;">(${detalle})</span></div>
         <div style="font-weight:700;font-size:16px;color:${color};margin-top:2px;">${fmtMon(monto)}</div>
-        <div style="margin-top:2px;color:${color};">${icono} ${pct}% de la meta</div>
+        <div style="margin-top:2px;color:${meta ? color : 'var(--gris)'};">${meta ? `${icono} ${pct}% de la meta` : 'sin meta puesta este mes'}</div>
       </div>`;
     };
     const pctFija = meta ? Math.round(100 * fija.proyeccion / meta) : 0;
     const pctDinamica = meta ? Math.round(100 * dinamica.proyeccion / meta) : 0;
     const pctAvance = Math.min(100, Math.round(py.avance_pct_dinamica || 0));
+    // Tercera proyección, por un camino distinto: no el ritmo del mes sino el
+    // embudo que compra la inversión publicitaria (inversión -> leads ->
+    // agendados -> asistieron -> compraron -> ticket). Sólo aparece si el mes
+    // base tiene inversión medida.
+    const inv = py.por_inversion;
+    const pctInv = (meta && inv) ? Math.round(100 * inv.proyeccion / meta) : 0;
     $('metaProyeccion').innerHTML = `
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
         ${bloqueProy('Proyección fija', 'calculada el día 1', fija.proyeccion, pctFija)}
         ${bloqueProy('Proyección dinámica', `hoy, día ${dinamica.dias_transcurridos}`, dinamica.proyeccion, pctDinamica)}
+        ${inv ? bloqueProy('Proyección por inversión',
+            `${fmtMon(inv.inversion)} en anuncios · ${inv.planificada ? 'presupuesto puesto' : 'repitiendo ' + inv.base_mes}`,
+            inv.proyeccion, pctInv) : ''}
       </div>
+      ${inv ? `<div style="margin-top:10px;color:var(--gris);font-size:12px;line-height:1.7;">
+        Por inversión: ${fmtMon(inv.inversion)} compran ~${inv.leads ? Math.round(inv.leads) + ' leads → ' : ''}${Math.round(inv.agendados)} agendado(s)
+        → ${Math.round(inv.asistidos)} asistencia(s) → ${inv.realizados.toFixed(1)} venta(s) a ticket de ${fmtMon(inv.campanas[0].ticket)} promedio,
+        con las tasas y el costo por lead de ${inv.base_mes} ${inv.base_anio}.
+        Da inv./venta <b>${inv.ratio}</b> (ROAS ${inv.roas}x); para el objetivo ${inv.objetivo} esa inversión tendría que vender
+        <b>${fmtMon(inv.venta_para_objetivo)}</b>. El presupuesto por campaña se pone en Analítica → Plan de inversión por campaña.
+      </div>` : ''}
       <div style="margin-top:10px;display:flex;justify-content:space-between;color:var(--gris);">
         <span>Avance real hasta hoy (día ${py.dias_transcurridos} de ${py.dias_mes})</span>
         <span style="font-weight:700;">${fmtMon(py.avance_real)} · ${pctAvance}% de la dinámica</span>
@@ -6576,8 +6600,8 @@ function pintarPlanCampanas() {
       + '<th class="der">Costo x agendado</th><th class="der">Presupuesto</th><th class="der">Esperado</th></tr></thead><tbody>'
       + p.campanas.map((c, i) => `<tr>
         <td>${esc(c.campana)}${c.campana_meta ? `<small style="display:block;color:var(--gris);">Meta: ${esc(c.campana_meta)}</small>` : ''}</td>
-        <td class="der"><input type="number" class="rm-celda der" style="text-align:right;" min="0" step="50"
-              value="${c.gasto === null ? '' : c.gasto}" oninput="pcRecalcular(${i})" id="pcInv${i}" placeholder="—">
+        <td class="der"><input type="number" class="pc-monto" min="0" step="50"
+              value="${c.gasto === null ? '' : c.gasto}" oninput="pcRecalcular(${i})" id="pcInv${i}" placeholder="escribe S/">
           ${c.gasto_origen === 'meta' ? '<small style="display:block;color:var(--gris);">del export</small>' : ''}</td>
         <td class="der">${c.leads === null ? '—' : `${c.leads}<small style="display:block;color:var(--gris);">S/ ${pcNum(c.costo_lead, 2)} c/u</small>`}</td>
         <td class="der">${c.agendados}${c.pct_lead_agenda === null ? ''
@@ -6589,8 +6613,8 @@ function pintarPlanCampanas() {
         <td class="der" id="pcRatio${i}">${pcChipRatio(c)}</td>
         <td class="der" id="pcCa${i}">${c.costo_agendado === null ? '—' : fmtMon(c.costo_agendado)}
           <small style="display:block;color:var(--gris);">máx. ${c.costo_agendado_objetivo === null ? '—' : fmtMon(c.costo_agendado_objetivo)}</small></td>
-        <td class="der"><input type="number" class="rm-celda der" style="text-align:right;" min="0" step="50"
-              value="${c.gasto === null ? '' : c.gasto}" oninput="pcRecalcular(${i})" id="pcPres${i}" placeholder="—"></td>
+        <td class="der"><input type="number" class="pc-monto" min="0" step="50"
+              value="${c.gasto === null ? '' : c.gasto}" oninput="pcRecalcular(${i})" id="pcPres${i}" placeholder="escribe S/"></td>
         <td class="der" id="pcEsp${i}">—</td>
       </tr>`).join('')
       + `<tr style="font-weight:700;"><td>TOTAL</td>

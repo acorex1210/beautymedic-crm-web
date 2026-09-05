@@ -705,6 +705,85 @@ def plan_campanas(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA, carga_id=None):
     }
 
 
+def proyeccion_por_inversion(mes, anio, objetivo=OBJETIVO_INVERSION_VENTA):
+    """Proyección de venta del mes a partir de lo que se invierte en anuncios.
+
+    proyeccion_mes() responde "cuánto vamos a vender si el mes sigue como
+    viene": parte de lo ya vendido, el pipeline y el ritmo de agendamiento.
+    No sabe nada de presupuesto, así que no puede contestar la pregunta que
+    de verdad se hace al planificar: *si pongo X en esta campaña, cuánto
+    vendo*.
+
+    Esta arma la proyección al revés, por el embudo completo:
+
+        inversión / costo por lead -> leads
+        leads x (lead->agendado) x (agendado->asistió) x (asistió->realizó)
+        -> ventas x ticket promedio -> venta esperada
+
+    Las tasas, el costo por lead y el ticket salen del mes ANTERIOR cerrado
+    (plan_campanas). La inversión sale de lo planificado para ESTE mes
+    (inversion_campanas.json); si no hay nada escrito, se asume repetir lo
+    que se invirtió el mes pasado, y se avisa cuál de las dos cosas es.
+
+    Sólo entran campañas con inversión y con venta medida el mes base: sin
+    esas dos no hay ratio y no se puede proyectar nada — no se rellenan con
+    promedios de otras campañas.
+    """
+    mes = str(mes).strip().upper()
+    anio = int(anio)
+    previos = _meses_previos(mes, anio, 1)
+    if not previos:
+        return None
+    base_mes, base_anio = previos[0]
+    base = plan_campanas(base_mes, base_anio, objetivo=objetivo)
+    if not base:
+        return None
+
+    planificado = _inversion_manual(mes, anio)
+    detalle = []
+    for c in base['campanas']:
+        if not c['gasto'] or not c['monto']:
+            continue
+        inv = planificado.get(_norm_campana(c['campana']))
+        factor = (inv / c['gasto']) if inv else 1.0
+        detalle.append({
+            'campana': c['campana'],
+            'inversion': round(inv if inv else c['gasto'], 2),
+            'origen': 'planificada' if inv else 'repite el mes base',
+            'costo_lead': c['costo_lead'],
+            'leads': round((c['leads'] or 0) * factor, 1) or None,
+            'agendados': round(c['agendados'] * factor, 1),
+            'asistidos': round(c['asistidos'] * factor, 1),
+            'realizados': round(c['realizados'] * factor, 1),
+            'ticket': c['ticket'],
+            'venta_esperada': round(c['monto'] * factor, 2),
+            'ratio': c['ratio'],
+        })
+    if not detalle:
+        return None
+
+    inversion = round(sum(d['inversion'] for d in detalle), 2)
+    venta = round(sum(d['venta_esperada'] for d in detalle), 2)
+    return {
+        'mes': mes, 'anio': anio,
+        'base_mes': base_mes, 'base_anio': base_anio,
+        'objetivo': objetivo,
+        'campanas': detalle,
+        'planificada': bool(planificado),
+        'inversion': inversion,
+        'leads': round(sum(d['leads'] or 0 for d in detalle), 1) or None,
+        'agendados': round(sum(d['agendados'] for d in detalle), 1),
+        'asistidos': round(sum(d['asistidos'] for d in detalle), 1),
+        'realizados': round(sum(d['realizados'] for d in detalle), 1),
+        'proyeccion': venta,
+        'ratio': round(inversion / venta, 3) if venta else None,
+        'roas': round(venta / inversion, 2) if inversion else None,
+        # Lo que habría que vender con esa inversión para cumplir el objetivo:
+        # la distancia entre esto y 'proyeccion' es lo que falta de embudo.
+        'venta_para_objetivo': round(inversion / objetivo, 2) if objetivo else None,
+    }
+
+
 def perfil(mes, anio, desde, hasta):
     filas, _ = _filas_maestro()
     trat = Counter(); dist = Counter(); sexo = Counter(); canal = Counter()

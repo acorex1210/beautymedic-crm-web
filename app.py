@@ -1305,8 +1305,17 @@ def analitica_proyeccion(mes: str = '', anio: str = ''):
     avance_real = dinamica['ya_vendido']
     avance_pct_fija = round(avance_real / fija['proyeccion'] * 100, 1) if fija['proyeccion'] else 0.0
     avance_pct_dinamica = round(avance_real / dinamica['proyeccion'] * 100, 1) if dinamica['proyeccion'] else 0.0
+    # Tercera lectura del mismo mes, por un camino distinto: en vez del ritmo
+    # histórico, el embudo que compra la inversión publicitaria (ver
+    # ana.proyeccion_por_inversion). Devuelve None si el mes base no tiene
+    # inversión medida, y en ese caso la pantalla simplemente no la muestra.
+    try:
+        por_inversion = ana.proyeccion_por_inversion(m, a)
+    except Exception:  # noqa: BLE001
+        por_inversion = None
     return {
         'ok': True, 'mes': dinamica['mes'], 'anio': dinamica['anio'],
+        'por_inversion': por_inversion,
         'dias_mes': dinamica['dias_mes'],
         'dias_transcurridos': dinamica['dias_transcurridos'],
         'dias_restantes': dinamica['dias_restantes'],
